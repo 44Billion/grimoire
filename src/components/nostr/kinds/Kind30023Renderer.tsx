@@ -1,0 +1,40 @@
+import { useMemo } from "react";
+import { BaseEventContainer, BaseEventProps } from "./BaseEventRenderer";
+import {
+  getArticleTitle,
+  getArticleSummary,
+} from "applesauce-core/helpers/article";
+
+/**
+ * Renderer for Kind 30023 - Long-form Article
+ * Displays article title and summary in feed
+ */
+export function Kind30023Renderer({ event, showTimestamp }: BaseEventProps) {
+  const title = useMemo(() => getArticleTitle(event), [event]);
+  const summary = useMemo(() => getArticleSummary(event), [event]);
+
+  return (
+    <BaseEventContainer event={event} showTimestamp={showTimestamp}>
+      <div className="flex flex-col gap-2">
+        {/* Title */}
+        {title && (
+          <h3 className="text-lg font-bold text-foreground">{title}</h3>
+        )}
+
+        {/* Summary */}
+        {summary && (
+          <p className="text-sm text-muted-foreground line-clamp-3">
+            {summary}
+          </p>
+        )}
+
+        {/* No content fallback */}
+        {!title && !summary && (
+          <p className="text-sm text-muted-foreground italic">
+            (Untitled article)
+          </p>
+        )}
+      </div>
+    </BaseEventContainer>
+  );
+}

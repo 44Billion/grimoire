@@ -1,0 +1,161 @@
+import { useState } from "react";
+import { NostrEvent } from "@/types/nostr";
+import { UserName } from "../UserName";
+import { KindBadge } from "@/components/KindBadge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Menu, Copy, FileJson, ExternalLink } from "lucide-react";
+import { useGrimoire } from "@/core/state";
+import { JsonViewer } from "@/components/JsonViewer";
+
+/**
+ * Universal event properties and utilities shared across all kind renderers
+ */
+export interface BaseEventProps {
+  event: NostrEvent;
+  showTimestamp?: boolean;
+}
+
+/**
+ * User component - displays author info with profile
+ */
+export function EventAuthor({ pubkey }: { pubkey: string }) {
+  return (
+    <div className="flex flex-col gap-0">
+      <UserName
+        pubkey={pubkey}
+        className="text-md cursor-crosshair font-semibold hover:underline hover:decoration-dotted"
+      />
+    </div>
+  );
+}
+
+/**
+ * Event menu - universal actions for any event
+ */
+export function EventMenu({ event }: { event: NostrEvent }) {
+  const { addWindow } = useGrimoire();
+  const [jsonDialogOpen, setJsonDialogOpen] = useState(false);
+
+  const openEventDetail = () => {
+    // For replaceable/parameterized replaceable events, use AddressPointer
+    // Replaceable: 10000-19999, Parameterized: 30000-39999
+    const isAddressable =
+      (event.kind >= 10000 && event.kind < 20000) ||
+      (event.kind >= 30000 && event.kind < 40000);
+
+    let pointer;
+    if (isAddressable) {
+      // Find d-tag for identifier
+      const dTag = event.tags.find((t) => t[0] === "d")?.[1] || "";
+      pointer = {
+        kind: event.kind,
+        pubkey: event.pubkey,
+        identifier: dTag,
+      };
+    } else {
+      // For regular events, use EventPointer
+      pointer = {
+        id: event.id,
+      };
+    }
+
+    addWindow("open", { pointer }, `Event ${event.id.slice(0, 8)}...`);
+  };
+
+  const copyEventId = () => {
+    navigator.clipboard.writeText(event.id);
+  };
+
+  const viewEventJson = () => {
+    setJsonDialogOpen(true);
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="hover:text-foreground text-muted-foreground transition-colors">
+          <Menu className="size-3" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel>
+          <div className="flex flex-row items-center gap-4">
+            <KindBadge kind={event.kind} variant="compact" />
+            <KindBadge
+              kind={event.kind}
+              showName
+              showKindNumber
+              showIcon={false}
+            />
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={openEventDetail}>
+          <ExternalLink className="size-4 mr-2" />
+          Open
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={copyEventId}>
+          <Copy className="size-4 mr-2" />
+          Copy ID
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={viewEventJson}>
+          <FileJson className="size-4 mr-2" />
+          View JSON
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+      <JsonViewer
+        data={event}
+        open={jsonDialogOpen}
+        onOpenChange={setJsonDialogOpen}
+        title={`Event ${event.id.slice(0, 8)}... - Raw JSON`}
+      />
+    </DropdownMenu>
+  );
+}
+
+/**
+ * Base event container with universal header
+ * Kind-specific renderers can wrap their content with this
+ */
+export function BaseEventContainer({
+  event,
+  children,
+  showTimestamp = false,
+}: {
+  event: NostrEvent;
+  children: React.ReactNode;
+  showTimestamp?: boolean;
+}) {
+  // Format timestamp
+  const timestamp = new Date(event.created_at * 1000).toLocaleString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return (
+    <div className="flex flex-col gap-1 p-2">
+      <div className="flex flex-row justify-between items-center">
+        <EventAuthor pubkey={event.pubkey} />
+        {showTimestamp ? (
+          <span className="text-xs text-muted-foreground font-mono">
+            {timestamp}
+          </span>
+        ) : (
+          <EventMenu event={event} />
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}

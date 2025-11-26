@@ -1,0 +1,57 @@
+import { useNip } from "@/hooks/useNip";
+import { Markdown } from "./Markdown";
+import { KindBadge } from "./KindBadge";
+import { getKindsForNip } from "@/lib/nip-kinds";
+
+interface NipRendererProps {
+  nipId: string;
+  className?: string;
+}
+
+export function NipRenderer({ nipId, className = "" }: NipRendererProps) {
+  const { content, loading, error } = useNip(nipId);
+  const kinds = getKindsForNip(nipId);
+
+  if (loading) {
+    return (
+      <div className={`p-4 ${className}`}>
+        <div className="text-muted-foreground text-sm">
+          Loading NIP-{nipId}...
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className={`p-4 ${className}`}>
+        <div className="text-destructive text-sm">
+          Error loading NIP-{nipId}: {error.message}
+        </div>
+      </div>
+    );
+  }
+
+  if (!content) {
+    return null;
+  }
+
+  return (
+    <div className={`p-4 overflow-x-hidden ${className}`}>
+      <Markdown content={content} />
+
+      {kinds.length > 0 && (
+        <div className="mt-6 pt-4 border-t border-border">
+          <h3 className="text-sm font-bold mb-3">
+            Event Kinds Defined in NIP-{nipId}
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {kinds.map((kind) => (
+              <KindBadge key={kind} kind={kind} variant="full" />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,303 @@
+import { nip19 } from "nostr-tools";
+import type { NostrFilter } from "@/types/nostr";
+import { isNip05 } from "./nip05";
+
+export interface ParsedReqCommand {
+  filter: NostrFilter;
+  relays?: string[];
+  closeOnEose?: boolean;
+  nip05Authors?: string[]; // NIP-05 identifiers that need async resolution
+  nip05PTags?: string[]; // NIP-05 identifiers for #p tags that need async resolution
+}
+
+/**
+ * Parse REQ command arguments into a Nostr filter
+ * Supports:
+ * - Filters: -k (kinds), -a (authors), -l (limit), -e (#e), -p (#p), -t (#t), -d (#d)
+ * - Time: --since, --until
+ * - Search: --search
+ * - Relays: wss://relay.com or relay.com (auto-adds wss://)
+ * - Options: --close-on-eose (close stream after EOSE, default: stream stays open)
+ */
+export function parseReqCommand(args: string[]): ParsedReqCommand {
+  const filter: NostrFilter = {};
+  const relays: string[] = [];
+  const nip05Authors: string[] = [];
+  const nip05PTags: string[] = [];
+  let closeOnEose = false;
+
+  let i = 0;
+
+  while (i < args.length) {
+    const arg = args[i];
+
+    // Relay URLs (starts with wss://, ws://, or looks like a domain)
+    if (arg.startsWith("wss://") || arg.startsWith("ws://")) {
+      relays.push(arg);
+      i++;
+      continue;
+    }
+
+    // Shorthand relay (domain-like string without protocol)
+    if (isRelayDomain(arg)) {
+      relays.push(`wss://${arg}`);
+      i++;
+      continue;
+    }
+
+    // Flags
+    if (arg.startsWith("-")) {
+      const flag = arg;
+      const nextArg = args[i + 1];
+
+      switch (flag) {
+        case "-k":
+        case "--kind": {
+          const kind = parseInt(nextArg, 10);
+          if (!isNaN(kind)) {
+            if (!filter.kinds) filter.kinds = [];
+            filter.kinds.push(kind);
+            i += 2;
+          } else {
+            i++;
+          }
+          break;
+        }
+
+        case "-a":
+        case "--author": {
+          // Check if it's a NIP-05 identifier
+          if (isNip05(nextArg)) {
+            nip05Authors.push(nextArg);
+            i += 2;
+          } else {
+            const pubkey = parseNpubOrHex(nextArg);
+            if (pubkey) {
+              if (!filter.authors) filter.authors = [];
+              filter.authors.push(pubkey);
+              i += 2;
+            } else {
+              i++;
+            }
+          }
+          break;
+        }
+
+        case "-l":
+        case "--limit": {
+          const limit = parseInt(nextArg, 10);
+          if (!isNaN(limit)) {
+            filter.limit = limit;
+            i += 2;
+          } else {
+            i++;
+          }
+          break;
+        }
+
+        case "-e": {
+          const eventId = parseNoteOrHex(nextArg);
+          if (eventId) {
+            if (!filter["#e"]) filter["#e"] = [];
+            filter["#e"].push(eventId);
+            i += 2;
+          } else {
+            i++;
+          }
+          break;
+        }
+
+        case "-p": {
+          // Check if it's a NIP-05 identifier
+          if (isNip05(nextArg)) {
+            nip05PTags.push(nextArg);
+            i += 2;
+          } else {
+            const pubkey = parseNpubOrHex(nextArg);
+            if (pubkey) {
+              if (!filter["#p"]) filter["#p"] = [];
+              filter["#p"].push(pubkey);
+              i += 2;
+            } else {
+              i++;
+            }
+          }
+          break;
+        }
+
+        case "-t": {
+          // Hashtag filter
+          if (nextArg) {
+            if (!filter["#t"]) filter["#t"] = [];
+            filter["#t"].push(nextArg);
+            i += 2;
+          } else {
+            i++;
+          }
+          break;
+        }
+
+        case "-d": {
+          // D-tag filter (for replaceable events)
+          if (nextArg) {
+            if (!filter["#d"]) filter["#d"] = [];
+            filter["#d"].push(nextArg);
+            i += 2;
+          } else {
+            i++;
+          }
+          break;
+        }
+
+        case "--since": {
+          const timestamp = parseTimestamp(nextArg);
+          if (timestamp) {
+            filter.since = timestamp;
+            i += 2;
+          } else {
+            i++;
+          }
+          break;
+        }
+
+        case "--until": {
+          const timestamp = parseTimestamp(nextArg);
+          if (timestamp) {
+            filter.until = timestamp;
+            i += 2;
+          } else {
+            i++;
+          }
+          break;
+        }
+
+        case "--search": {
+          if (nextArg) {
+            filter.search = nextArg;
+            i += 2;
+          } else {
+            i++;
+          }
+          break;
+        }
+
+        case "--close-on-eose": {
+          closeOnEose = true;
+          i++;
+          break;
+        }
+
+        default:
+          i++;
+          break;
+      }
+    } else {
+      i++;
+    }
+  }
+
+  const result = {
+    filter,
+    relays: relays.length > 0 ? relays : undefined,
+    closeOnEose,
+    nip05Authors: nip05Authors.length > 0 ? nip05Authors : undefined,
+    nip05PTags: nip05PTags.length > 0 ? nip05PTags : undefined,
+  };
+
+  console.log("parseReqCommand result:", result);
+  return result;
+}
+
+/**
+ * Check if a string looks like a relay domain
+ * Must contain a dot and not be a flag
+ */
+function isRelayDomain(value: string): boolean {
+  if (!value || value.startsWith("-")) return false;
+  // Must contain at least one dot and look like a domain
+  return /^[a-zA-Z0-9][\w.-]+\.[a-zA-Z]{2,}(:\d+)?(\/.*)?$/.test(value);
+}
+
+/**
+ * Parse timestamp - supports unix timestamp, relative time (1h, 30m, 7d)
+ */
+function parseTimestamp(value: string): number | null {
+  if (!value) return null;
+
+  // Unix timestamp (10 digits)
+  if (/^\d{10}$/.test(value)) {
+    return parseInt(value, 10);
+  }
+
+  // Relative time: 1h, 30m, 7d, 2w
+  const relativeMatch = value.match(/^(\d+)([smhdw])$/);
+  if (relativeMatch) {
+    const amount = parseInt(relativeMatch[1], 10);
+    const unit = relativeMatch[2];
+    const now = Math.floor(Date.now() / 1000);
+
+    const multipliers: Record<string, number> = {
+      s: 1,
+      m: 60,
+      h: 3600,
+      d: 86400,
+      w: 604800,
+    };
+
+    return now - amount * multipliers[unit];
+  }
+
+  return null;
+}
+
+/**
+ * Parse npub or hex pubkey
+ */
+function parseNpubOrHex(value: string): string | null {
+  if (!value) return null;
+
+  // Try to decode npub
+  if (value.startsWith("npub")) {
+    try {
+      const decoded = nip19.decode(value);
+      if (decoded.type === "npub") {
+        return decoded.data;
+      }
+    } catch (e) {
+      // Not valid npub, continue
+    }
+  }
+
+  // Check if it's hex (64 chars, hex characters)
+  if (/^[0-9a-f]{64}$/i.test(value)) {
+    return value.toLowerCase();
+  }
+
+  return null;
+}
+
+/**
+ * Parse note1 or hex event ID
+ */
+function parseNoteOrHex(value: string): string | null {
+  if (!value) return null;
+
+  // Try to decode note1
+  if (value.startsWith("note")) {
+    try {
+      const decoded = nip19.decode(value);
+      if (decoded.type === "note") {
+        return decoded.data;
+      }
+    } catch (e) {
+      // Not valid note, continue
+    }
+  }
+
+  // Check if it's hex (64 chars, hex characters)
+  if (/^[0-9a-f]{64}$/i.test(value)) {
+    return value.toLowerCase();
+  }
+
+  return null;
+}
