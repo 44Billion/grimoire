@@ -3,67 +3,16 @@ import { atomWithStorage } from "jotai/utils";
 import { GrimoireState, AppId } from "@/types/app";
 import * as Logic from "./logic";
 
-// Initial State Definition
+// Initial State Definition - Empty canvas on first load
 const initialState: GrimoireState = {
-  windows: {
-    "win-1": {
-      id: "win-1",
-      appId: "win",
-      title: "WIN - Window Tree",
-      props: {},
-    },
-    "feed-1": {
-      id: "feed-1",
-      appId: "feed",
-      title: "FEED - Nostr Feed",
-      props: {},
-    },
-    "nip-1": {
-      id: "nip-1",
-      appId: "nip",
-      title: "NIP-01 - Basic protocol",
-      props: { number: "01" },
-    },
-    "kind-1": {
-      id: "kind-1",
-      appId: "kind",
-      title: "KIND-1 - Short Text Note",
-      props: { number: "1" },
-    },
-    "man-1": {
-      id: "man-1",
-      appId: "man",
-      title: "MAN - Help",
-      props: { cmd: "help" },
-    },
-  },
+  windows: {},
   activeWorkspaceId: "default",
   workspaces: {
     default: {
       id: "default",
       label: "1",
-      windowIds: ["win-1", "feed-1", "nip-1", "kind-1", "man-1"],
-      layout: {
-        direction: "row",
-        first: {
-          direction: "column",
-          first: "win-1",
-          second: "feed-1",
-          splitPercentage: 50,
-        },
-        second: {
-          direction: "column",
-          first: {
-            direction: "row",
-            first: "nip-1",
-            second: "kind-1",
-            splitPercentage: 50,
-          },
-          second: "man-1",
-          splitPercentage: 50,
-        },
-        splitPercentage: 50,
-      },
+      windowIds: [],
+      layout: null,
     },
   },
 };
