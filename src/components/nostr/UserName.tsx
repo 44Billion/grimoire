@@ -19,7 +19,8 @@ export function UserName({ pubkey, isMention, className }: UserNameProps) {
   const profile = useProfile(pubkey);
   const displayName = getDisplayName(pubkey, profile);
 
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
     addWindow("profile", { pubkey }, `Profile ${pubkey.slice(0, 8)}...`);
   };
 
