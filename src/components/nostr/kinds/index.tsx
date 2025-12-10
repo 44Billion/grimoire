@@ -37,9 +37,9 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
  * Default renderer for kinds without custom implementations
  * Shows basic event info with raw content
  */
-function DefaultKindRenderer({ event, showTimestamp }: BaseEventProps) {
+function DefaultKindRenderer({ event }: BaseEventProps) {
   return (
-    <BaseEventContainer event={event} showTimestamp={showTimestamp}>
+    <BaseEventContainer event={event}>
       <div className="text-sm text-muted-foreground">
         <div className="text-xs mb-1">Kind {event.kind} event</div>
         <pre className="text-xs overflow-x-auto whitespace-pre-wrap break-words">
@@ -56,15 +56,13 @@ function DefaultKindRenderer({ event, showTimestamp }: BaseEventProps) {
  */
 export function KindRenderer({
   event,
-  showTimestamp = false,
   depth = 0,
 }: {
   event: NostrEvent;
-  showTimestamp?: boolean;
   depth?: number;
 }) {
   const Renderer = kindRenderers[event.kind] || DefaultKindRenderer;
-  return <Renderer event={event} showTimestamp={showTimestamp} depth={depth} />;
+  return <Renderer event={event} depth={depth} />;
 }
 
 /**

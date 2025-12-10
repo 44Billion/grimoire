@@ -9,24 +9,16 @@ import { useGrimoire } from "@/core/state";
 /**
  * Renderer for Kind 1 - Short Text Note
  */
-export function Kind1Renderer({
-  event,
-  showTimestamp,
-  depth = 0,
-}: BaseEventProps) {
+export function Kind1Renderer({ event, depth = 0 }: BaseEventProps) {
   const { addWindow } = useGrimoire();
   const refs = getNip10References(event);
-  const hasReply = refs.reply?.e || refs.reply?.a;
-
-  // Fetch parent event if replying
-  const parentEvent = useNostrEvent(
-    hasReply ? refs.reply?.e || refs.reply?.a : undefined,
-  );
+  const pointer =
+    refs.reply?.e || refs.reply?.a || refs.root?.e || refs.root?.a;
+  const parentEvent = useNostrEvent(pointer);
 
   const handleReplyClick = () => {
     if (!parentEvent) return;
 
-    const pointer = refs.reply?.e || refs.reply?.a;
     if (pointer) {
       addWindow(
         "open",
@@ -37,8 +29,8 @@ export function Kind1Renderer({
   };
 
   return (
-    <BaseEventContainer event={event} showTimestamp={showTimestamp}>
-      {hasReply && parentEvent && (
+    <BaseEventContainer event={event}>
+      {pointer && parentEvent && (
         <div
           onClick={handleReplyClick}
           className="flex items-start gap-2 p-1 bg-muted/20 text-xs text-muted-foreground hover:bg-muted/30 cursor-pointer rounded transition-colors"

@@ -13,13 +13,13 @@ import {
 import { Menu, Copy, FileJson, ExternalLink } from "lucide-react";
 import { useGrimoire } from "@/core/state";
 import { JsonViewer } from "@/components/JsonViewer";
+import { formatTimestamp } from "@/hooks/useLocale";
 
 /**
  * Universal event properties and utilities shared across all kind renderers
  */
 export interface BaseEventProps {
   event: NostrEvent;
-  showTimestamp?: boolean;
   depth?: number;
 }
 
@@ -126,35 +126,37 @@ export function EventMenu({ event }: { event: NostrEvent }) {
  * Base event container with universal header
  * Kind-specific renderers can wrap their content with this
  */
+/**
+ * Format relative time (e.g., "2m ago", "3h ago", "5d ago")
+ */
+
 export function BaseEventContainer({
   event,
   children,
-  showTimestamp = false,
 }: {
   event: NostrEvent;
   children: React.ReactNode;
-  showTimestamp?: boolean;
 }) {
-  // Format timestamp
-  const timestamp = new Date(event.created_at * 1000).toLocaleString("en-US", {
-    month: "2-digit",
-    day: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  // Format relative time for display
+  const { locale } = useGrimoire();
+  const relativeTime = formatTimestamp(event.created_at, "relative", locale.locale);
+
+  // Format absolute timestamp for hover (ISO-8601 style)
+  const absoluteTime = formatTimestamp(event.created_at, "absolute", locale.locale);
 
   return (
     <div className="flex flex-col gap-2 p-3 border-b border-border/50 last:border-0">
       <div className="flex flex-row justify-between items-center">
-        <EventAuthor pubkey={event.pubkey} />
-        {showTimestamp ? (
-          <span className="text-xs text-muted-foreground font-mono">
-            {timestamp}
+        <div className="flex flex-row gap-2 items-baseline">
+          <EventAuthor pubkey={event.pubkey} />
+          <span
+            className="text-xs font-light text-muted-foreground cursor-help"
+            title={absoluteTime}
+          >
+            {relativeTime}
           </span>
-        ) : (
-          <EventMenu event={event} />
-        )}
+        </div>
+        <EventMenu event={event} />
       </div>
       {children}
     </div>

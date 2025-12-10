@@ -9,12 +9,12 @@ import {
  * Renderer for Kind 30023 - Long-form Article
  * Displays article title and summary in feed
  */
-export function Kind30023Renderer({ event, showTimestamp }: BaseEventProps) {
+export function Kind30023Renderer({ event }: BaseEventProps) {
   const title = useMemo(() => getArticleTitle(event), [event]);
   const summary = useMemo(() => getArticleSummary(event), [event]);
 
   return (
-    <BaseEventContainer event={event} showTimestamp={showTimestamp}>
+    <BaseEventContainer event={event} >
       <div className="flex flex-col gap-2">
         {/* Title */}
         {title && (

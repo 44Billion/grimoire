@@ -7,7 +7,7 @@ import { Users, Sparkles } from "lucide-react";
  * Kind 3 Renderer - Contact/Follow List
  * Shows follow count and "follows you" indicator
  */
-export function Kind3Renderer({ event, showTimestamp }: BaseEventProps) {
+export function Kind3Renderer({ event }: BaseEventProps) {
   const { state } = useGrimoire();
 
   // Extract followed pubkeys from p tags
@@ -20,7 +20,7 @@ export function Kind3Renderer({ event, showTimestamp }: BaseEventProps) {
     : false;
 
   return (
-    <BaseEventContainer event={event} showTimestamp={showTimestamp}>
+    <BaseEventContainer event={event} >
       <div className="flex flex-col gap-2 text-xs">
         <span className="flex items-center gap-1">
           <Users className="size-3 text-muted-foreground" />

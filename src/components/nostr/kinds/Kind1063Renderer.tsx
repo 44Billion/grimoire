@@ -14,7 +14,7 @@ import { FileText, Download } from "lucide-react";
  * Renderer for Kind 1063 - File Metadata (NIP-94)
  * Displays file metadata with appropriate preview for images, videos, and audio
  */
-export function Kind1063Renderer({ event, showTimestamp }: BaseEventProps) {
+export function Kind1063Renderer({ event }: BaseEventProps) {
   const metadata = parseFileMetadata(event);
 
   // Determine file type from MIME
@@ -29,7 +29,7 @@ export function Kind1063Renderer({ event, showTimestamp }: BaseEventProps) {
     event.tags.find((t) => t[0] === "summary")?.[1] || event.content;
 
   return (
-    <BaseEventContainer event={event} showTimestamp={showTimestamp}>
+    <BaseEventContainer event={event} >
       <div className="flex flex-col gap-3">
         {/* File preview */}
         {metadata.url && (isImage || isVideo || isAudio) ? (

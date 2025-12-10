@@ -7,7 +7,7 @@ import { parseImetaTags } from "@/lib/imeta";
  * Renderer for Kind 20 - Picture Event (NIP-68)
  * Picture-first feed events with imeta tags for image metadata
  */
-export function Kind20Renderer({ event, showTimestamp }: BaseEventProps) {
+export function Kind20Renderer({ event }: BaseEventProps) {
   // Parse imeta tags to get image URLs and metadata
   const images = parseImetaTags(event);
 
@@ -15,7 +15,7 @@ export function Kind20Renderer({ event, showTimestamp }: BaseEventProps) {
   const title = event.tags.find((t) => t[0] === "title")?.[1];
 
   return (
-    <BaseEventContainer event={event} showTimestamp={showTimestamp}>
+    <BaseEventContainer event={event} >
       <div className="flex flex-col gap-2">
         {/* Title if present */}
         {title && (

@@ -175,7 +175,7 @@ export function EventDetailViewer({ pointer }: EventDetailViewerProps) {
         ) : event.kind === 9802 ? (
           <Kind9802DetailRenderer event={event} />
         ) : (
-          <KindRenderer event={event} showTimestamp={true} />
+          <KindRenderer event={event} />
         )}
       </div>
     </div>

@@ -10,7 +10,7 @@ import { KindRenderer } from "./index";
  * Displays emoji/reaction with the event being reacted to
  * Supports both e tags (event ID) and a tags (address/replaceable events)
  */
-export function Kind7Renderer({ event, showTimestamp }: BaseEventProps) {
+export function Kind7Renderer({ event }: BaseEventProps) {
   // Get the reaction content (usually an emoji)
   const reaction = event.content || "❤️";
 
@@ -108,7 +108,7 @@ export function Kind7Renderer({ event, showTimestamp }: BaseEventProps) {
   };
 
   return (
-    <BaseEventContainer event={event} showTimestamp={showTimestamp}>
+    <BaseEventContainer event={event} >
       <div className="flex flex-col gap-2">
         {/* Reaction indicator */}
         <div className="flex items-center gap-2">

@@ -11,13 +11,13 @@ import {
  * Renderer for Kind 9802 - Highlight
  * Displays highlighted text with optional comment and source URL
  */
-export function Kind9802Renderer({ event, showTimestamp }: BaseEventProps) {
+export function Kind9802Renderer({ event }: BaseEventProps) {
   const highlightText = useMemo(() => getHighlightText(event), [event]);
   const sourceUrl = useMemo(() => getHighlightSourceUrl(event), [event]);
   const comment = useMemo(() => getHighlightComment(event), [event]);
 
   return (
-    <BaseEventContainer event={event} showTimestamp={showTimestamp}>
+    <BaseEventContainer event={event} >
       <div className="flex flex-col gap-2">
         {/* Comment */}
         {comment && <p className="text-sm text-foreground">{comment}</p>}

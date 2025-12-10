@@ -18,7 +18,7 @@ import { RichText } from "../RichText";
  * Renderer for Kind 9735 - Zap Receipts
  * Displays zap amount, sender, and zapped content
  */
-export function Kind9735Renderer({ event, showTimestamp }: BaseEventProps) {
+export function Kind9735Renderer({ event }: BaseEventProps) {
   // Validate zap
   const isValid = useMemo(() => isValidZap(event), [event]);
 
@@ -49,7 +49,7 @@ export function Kind9735Renderer({ event, showTimestamp }: BaseEventProps) {
 
   if (!isValid) {
     return (
-      <BaseEventContainer event={event} showTimestamp={showTimestamp}>
+      <BaseEventContainer event={event} >
         <div className="text-xs text-muted-foreground">Invalid zap receipt</div>
       </BaseEventContainer>
     );
@@ -65,7 +65,7 @@ export function Kind9735Renderer({ event, showTimestamp }: BaseEventProps) {
   );
 
   return (
-    <BaseEventContainer event={displayEvent} showTimestamp={showTimestamp}>
+    <BaseEventContainer event={displayEvent} >
       <div className="flex flex-col gap-2">
         {/* Zap indicator */}
         <div className="flex items-center gap-2">

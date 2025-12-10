@@ -7,7 +7,7 @@ import { useGrimoire } from "@/core/state";
  * Renderer for Kind 6 - Reposts
  * Displays repost indicator with the original event embedded
  */
-export function Kind6Renderer({ event, showTimestamp }: BaseEventProps) {
+export function Kind6Renderer({ event }: BaseEventProps) {
   const { addWindow } = useGrimoire();
 
   // Get the event being reposted (e tag)
@@ -15,7 +15,7 @@ export function Kind6Renderer({ event, showTimestamp }: BaseEventProps) {
   const repostedEventId = eTag?.[1];
 
   return (
-    <BaseEventContainer event={event} showTimestamp={showTimestamp}>
+    <BaseEventContainer event={event} >
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Repeat2 className="size-4" />

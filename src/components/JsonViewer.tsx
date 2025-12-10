@@ -58,7 +58,7 @@ export function JsonViewer({
           </DialogTitle>
         </DialogHeader>
         <div className="flex-1 overflow-auto mt-2">
-          <pre className="text-xs font-mono bg-muted p-4 rounded-lg">
+          <pre className="text-xs font-mono bg-muted p-4 overflow-scroll">
             {jsonString}
           </pre>
         </div>

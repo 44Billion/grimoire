@@ -8,7 +8,7 @@ import { RichText } from "../RichText";
  * Renderer for Kind 0 - Profile Metadata
  * Displays as a compact profile card in feed view
  */
-export function Kind0Renderer({ event, showTimestamp }: BaseEventProps) {
+export function Kind0Renderer({ event }: BaseEventProps) {
   const pubkey = event.pubkey;
   const profile = useProfile(pubkey);
 
@@ -16,7 +16,7 @@ export function Kind0Renderer({ event, showTimestamp }: BaseEventProps) {
   const website = profile?.website;
 
   return (
-    <BaseEventContainer event={event} showTimestamp={showTimestamp}>
+    <BaseEventContainer event={event} >
       <div className="flex flex-col gap-3">
         {/* Profile Info */}
         <div className="flex flex-col gap-2 p-3 border border-muted bg-muted/20">

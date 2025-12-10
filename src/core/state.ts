@@ -1,6 +1,7 @@
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { GrimoireState, AppId } from "@/types/app";
+import { useLocale } from "@/hooks/useLocale";
 import * as Logic from "./logic";
 
 // Initial State Definition - Empty canvas on first load
@@ -26,9 +27,16 @@ export const grimoireStateAtom = atomWithStorage<GrimoireState>(
 // The Hook
 export const useGrimoire = () => {
   const [state, setState] = useAtom(grimoireStateAtom);
+  const browserLocale = useLocale();
+
+  // Initialize locale from browser if not set
+  if (!state.locale) {
+    setState((prev) => ({ ...prev, locale: browserLocale }));
+  }
 
   return {
     state,
+    locale: state.locale || browserLocale,
     activeWorkspace: state.workspaces[state.activeWorkspaceId],
     createWorkspace: () => {
       const count = Object.keys(state.workspaces).length + 1;

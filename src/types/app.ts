@@ -46,4 +46,11 @@ export interface GrimoireState {
     pubkey: string;
     relays?: UserRelays;
   };
+  locale?: {
+    locale: string;
+    language: string;
+    region?: string;
+    timezone: string;
+    timeFormat: "12h" | "24h";
+  };
 }
