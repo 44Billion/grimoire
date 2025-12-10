@@ -14,14 +14,9 @@ export function RelayViewer({ url }: RelayViewerProps) {
   const { copy, copied } = useCopy();
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="flex flex-col gap-6 p-4">
       {/* Header */}
       <div className="flex items-center gap-4">
-        {info?.icon ? (
-          <img src={info.icon} alt={info.name || url} className="size-16" />
-        ) : (
-          <Server className="size-16 text-muted-foreground" />
-        )}
         <div className="flex-1">
           <h2 className="text-2xl font-bold">
             {info?.name || "Unknown Relay"}
