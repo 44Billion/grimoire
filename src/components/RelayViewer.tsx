@@ -1,4 +1,4 @@
-import { Copy, Check, Server } from "lucide-react";
+import { Copy, Check } from "lucide-react";
 import { useRelayInfo } from "../hooks/useRelayInfo";
 import { useCopy } from "../hooks/useCopy";
 import { Button } from "./ui/button";
@@ -46,7 +46,7 @@ export function RelayViewer({ url }: RelayViewerProps) {
       {(info?.contact || info?.pubkey) && (
         <div>
           <h3 className="mb-2 font-semibold text-sm">Operator</h3>
-          <div className="space-y-2 text-sm">
+          <div className="space-y-2 text-sm text-accent">
             {info.contact && info.contact.length == 64 && (
               <UserName pubkey={info.contact} />
             )}

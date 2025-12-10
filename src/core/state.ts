@@ -1,5 +1,6 @@
+import { useEffect } from "react";
 import { useAtom } from "jotai";
-import { atomWithStorage } from "jotai/utils";
+import { atomWithStorage, createJSONStorage } from "jotai/utils";
 import { GrimoireState, AppId } from "@/types/app";
 import { useLocale } from "@/hooks/useLocale";
 import * as Logic from "./logic";
@@ -18,10 +19,47 @@ const initialState: GrimoireState = {
   },
 };
 
-// Persistence Atom
+// Custom storage with error handling
+const storage = createJSONStorage<GrimoireState>(() => ({
+  getItem: (key: string) => {
+    try {
+      const value = localStorage.getItem(key);
+      return value;
+    } catch (error) {
+      console.warn("Failed to read from localStorage:", error);
+      return null;
+    }
+  },
+  setItem: (key: string, value: string) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (error) {
+      console.error("Failed to write to localStorage:", error);
+      // Handle quota exceeded or other errors
+      if (
+        error instanceof DOMException &&
+        error.name === "QuotaExceededError"
+      ) {
+        console.error(
+          "localStorage quota exceeded. State will not be persisted.",
+        );
+      }
+    }
+  },
+  removeItem: (key: string) => {
+    try {
+      localStorage.removeItem(key);
+    } catch (error) {
+      console.warn("Failed to remove from localStorage:", error);
+    }
+  },
+}));
+
+// Persistence Atom with custom storage
 export const grimoireStateAtom = atomWithStorage<GrimoireState>(
   "grimoire_v6",
   initialState,
+  storage,
 );
 
 // The Hook
@@ -29,10 +67,12 @@ export const useGrimoire = () => {
   const [state, setState] = useAtom(grimoireStateAtom);
   const browserLocale = useLocale();
 
-  // Initialize locale from browser if not set
-  if (!state.locale) {
-    setState((prev) => ({ ...prev, locale: browserLocale }));
-  }
+  // Initialize locale from browser if not set (moved to useEffect to avoid race condition)
+  useEffect(() => {
+    if (!state.locale) {
+      setState((prev) => ({ ...prev, locale: browserLocale }));
+    }
+  }, [state.locale, browserLocale, setState]);
 
   return {
     state,
