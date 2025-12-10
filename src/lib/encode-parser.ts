@@ -1,4 +1,5 @@
 import { nip19 } from "nostr-tools";
+import { isValidHexEventId, isValidHexPubkey } from "./nostr-validation";
 
 export type EncodeType = "npub" | "note" | "nevent" | "nprofile" | "naddr";
 
@@ -88,24 +89,24 @@ function validateEncodeInput(
   relays: string[],
   author?: string,
 ) {
-  // Validate hex strings are 64 characters
+  // Validate hex strings
   if (type === "npub" || type === "nprofile") {
-    if (!/^[0-9a-f]{64}$/i.test(value)) {
+    if (!isValidHexPubkey(value)) {
       throw new Error("Pubkey must be 64-character hex string");
     }
   }
 
   if (type === "note") {
-    if (!/^[0-9a-f]{64}$/i.test(value)) {
+    if (!isValidHexEventId(value)) {
       throw new Error("Event ID must be 64-character hex string");
     }
   }
 
   if (type === "nevent") {
-    if (!/^[0-9a-f]{64}$/i.test(value)) {
+    if (!isValidHexEventId(value)) {
       throw new Error("Event ID must be 64-character hex string");
     }
-    if (author && !/^[0-9a-f]{64}$/i.test(author)) {
+    if (author && !isValidHexPubkey(author)) {
       throw new Error("Author pubkey must be 64-character hex string");
     }
   }
@@ -121,7 +122,7 @@ function validateEncodeInput(
     if (isNaN(kind)) {
       throw new Error("Kind must be a number");
     }
-    if (!/^[0-9a-f]{64}$/i.test(pubkey)) {
+    if (!isValidHexPubkey(pubkey)) {
       throw new Error("Pubkey must be 64-character hex string");
     }
   }

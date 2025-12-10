@@ -4,6 +4,7 @@ import { UserName } from "./nostr/UserName";
 import Nip05 from "./nostr/nip05";
 import {
   Copy,
+  Check,
   ChevronDown,
   ChevronRight,
   User as UserIcon,
@@ -14,6 +15,7 @@ import {
 import { kinds, nip19 } from "nostr-tools";
 import { useEventStore, useObservableMemo } from "applesauce-react/hooks";
 import { getInboxes, getOutboxes } from "applesauce-core/helpers/mailboxes";
+import { useCopy } from "../hooks/useCopy";
 import { RichText } from "./nostr/RichText";
 
 export interface ProfileViewerProps {
@@ -46,10 +48,7 @@ export function ProfileViewer({ pubkey }: ProfileViewerProps) {
     [eventStore, pubkey],
   );
 
-  // Helper to copy to clipboard
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
+  const { copy, copied } = useCopy();
 
   // Combine all relays (inbox + outbox) for nprofile
   const allRelays = [...new Set([...inboxRelays, ...outboxRelays])];
@@ -69,11 +68,15 @@ export function ProfileViewer({ pubkey }: ProfileViewerProps) {
       <div className="border-b border-border px-4 py-2 font-mono text-xs flex items-center justify-between gap-3">
         {/* Left: npub/nprofile */}
         <button
-          onClick={() => copyToClipboard(identifier)}
+          onClick={() => copy(identifier)}
           className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors truncate min-w-0"
           title={identifier}
         >
-          <Copy className="size-3 flex-shrink-0" />
+          {copied ? (
+            <Check className="size-3 flex-shrink-0 text-green-500" />
+          ) : (
+            <Copy className="size-3 flex-shrink-0" />
+          )}
           <code className="truncate">
             {identifier.slice(0, 16)}...{identifier.slice(-8)}
           </code>
@@ -180,7 +183,10 @@ export function ProfileViewer({ pubkey }: ProfileViewerProps) {
           <div className="flex flex-col gap-4 max-w-2xl">
             <div className="flex flex-col gap-0">
               {/* Display Name */}
-              <UserName pubkey={pubkey} className="text-2xl font-bold" />
+              <UserName
+                pubkey={pubkey}
+                className="text-2xl font-bold pointer-events-none"
+              />
               {/* NIP-05 */}
               {profile.nip05 && (
                 <div className="text-xs text-muted-foreground">

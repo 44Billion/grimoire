@@ -9,6 +9,7 @@ import { Kind9802DetailRenderer } from "./nostr/kinds/Kind9802DetailRenderer";
 import { KindBadge } from "./KindBadge";
 import {
   Copy,
+  Check,
   ChevronDown,
   ChevronRight,
   FileJson,
@@ -16,6 +17,7 @@ import {
   Circle,
 } from "lucide-react";
 import { nip19 } from "nostr-tools";
+import { useCopy } from "../hooks/useCopy";
 import { getSeenRelays } from "applesauce-core/helpers/relays";
 
 export interface EventDetailViewerProps {
@@ -40,10 +42,7 @@ export function EventDetailViewer({ pointer }: EventDetailViewerProps) {
     );
   }
 
-  // Helper to copy to clipboard
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
+  const { copy, copied } = useCopy();
 
   // Get relays this event was seen on using applesauce
   const seenRelaysSet = getSeenRelays(event);
@@ -79,11 +78,15 @@ export function EventDetailViewer({ pointer }: EventDetailViewerProps) {
       <div className="border-b border-border px-4 py-2 font-mono text-xs flex items-center justify-between gap-3">
         {/* Left: Event ID */}
         <button
-          onClick={() => copyToClipboard(bech32Id)}
+          onClick={() => copy(bech32Id)}
           className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors truncate min-w-0"
           title={bech32Id}
         >
-          <Copy className="size-3 flex-shrink-0" />
+          {copied ? (
+            <Check className="size-3 flex-shrink-0 text-green-500" />
+          ) : (
+            <Copy className="size-3 flex-shrink-0" />
+          )}
           <code className="truncate">
             {bech32Id.slice(0, 16)}...{bech32Id.slice(-8)}
           </code>
@@ -151,11 +154,15 @@ export function EventDetailViewer({ pointer }: EventDetailViewerProps) {
         <div className="border-b border-border px-4 py-2 bg-muted">
           <div className="flex justify-end mb-2">
             <button
-              onClick={() => copyToClipboard(JSON.stringify(event, null, 2))}
+              onClick={() => copy(JSON.stringify(event, null, 2))}
               className="hover:text-foreground text-muted-foreground transition-colors text-xs flex items-center gap-1"
             >
-              <Copy className="size-3" />
-              Copy JSON
+              {copied ? (
+                <Check className="size-3 text-green-500" />
+              ) : (
+                <Copy className="size-3" />
+              )}
+              {copied ? "Copied!" : "Copy JSON"}
             </button>
           </div>
           <pre className="text-xs overflow-x-auto whitespace-pre-wrap break-words bg-background p-2 rounded border border-border font-mono">

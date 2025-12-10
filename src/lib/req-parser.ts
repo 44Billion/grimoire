@@ -1,6 +1,7 @@
 import { nip19 } from "nostr-tools";
 import type { NostrFilter } from "@/types/nostr";
 import { isNip05 } from "./nip05";
+import { isValidHexPubkey, isValidHexEventId, normalizeHex } from "./nostr-validation";
 
 export interface ParsedReqCommand {
   filter: NostrFilter;
@@ -268,9 +269,9 @@ function parseNpubOrHex(value: string): string | null {
     }
   }
 
-  // Check if it's hex (64 chars, hex characters)
-  if (/^[0-9a-f]{64}$/i.test(value)) {
-    return value.toLowerCase();
+  // Check if it's hex pubkey
+  if (isValidHexPubkey(value)) {
+    return normalizeHex(value);
   }
 
   return null;
@@ -294,9 +295,9 @@ function parseNoteOrHex(value: string): string | null {
     }
   }
 
-  // Check if it's hex (64 chars, hex characters)
-  if (/^[0-9a-f]{64}$/i.test(value)) {
-    return value.toLowerCase();
+  // Check if it's hex event ID
+  if (isValidHexEventId(value)) {
+    return normalizeHex(value);
   }
 
   return null;

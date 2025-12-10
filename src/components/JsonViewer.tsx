@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useCopy } from "../hooks/useCopy";
 
 interface JsonViewerProps {
   data: any;
@@ -21,14 +22,12 @@ export function JsonViewer({
   onOpenChange,
   title = "Raw JSON",
 }: JsonViewerProps) {
-  const [copied, setCopied] = useState(false);
+  const { copy, copied } = useCopy();
 
   const jsonString = JSON.stringify(data, null, 2);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(jsonString);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    copy(jsonString);
   };
 
   return (

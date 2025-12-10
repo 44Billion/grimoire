@@ -1,4 +1,5 @@
 import { nip19 } from "nostr-tools";
+import { isValidHexEventId, isValidHexPubkey, normalizeHex } from "./nostr-validation";
 
 // Define pointer types locally since they're not exported from nostr-tools
 export interface EventPointer {
@@ -70,11 +71,11 @@ export function parseOpenCommand(args: string[]): ParsedOpenCommand {
     }
   }
 
-  // Check if it's a hex event ID (64 chars, hex only)
-  if (/^[0-9a-f]{64}$/i.test(identifier)) {
+  // Check if it's a hex event ID
+  if (isValidHexEventId(identifier)) {
     return {
       pointer: {
-        id: identifier.toLowerCase(),
+        id: normalizeHex(identifier),
       },
     };
   }
@@ -92,14 +93,14 @@ export function parseOpenCommand(args: string[]): ParsedOpenCommand {
         throw new Error("Invalid address format: kind must be a number");
       }
 
-      if (!/^[0-9a-f]{64}$/i.test(pubkey)) {
+      if (!isValidHexPubkey(pubkey)) {
         throw new Error("Invalid address format: pubkey must be 64 hex chars");
       }
 
       return {
         pointer: {
           kind,
-          pubkey: pubkey.toLowerCase(),
+          pubkey: normalizeHex(pubkey),
           identifier: dTag,
         },
       };

@@ -1,4 +1,6 @@
 import { nip19 } from "nostr-tools";
+import { isNip05, resolveNip05 } from "./nip05";
+import { isValidHexPubkey, normalizeHex } from "./nostr-validation";
 
 export interface ParsedProfileCommand {
   pubkey: string;
@@ -10,9 +12,12 @@ export interface ParsedProfileCommand {
  * - npub1... (bech32 npub)
  * - nprofile1... (bech32 nprofile with relay hints)
  * - abc123... (64-char hex pubkey)
- * - nip05@domain.com (NIP-05 identifier - not implemented yet)
+ * - user@domain.com (NIP-05 identifier)
+ * - domain.com (bare domain, resolved as _@domain.com)
  */
-export function parseProfileCommand(args: string[]): ParsedProfileCommand {
+export async function parseProfileCommand(
+  args: string[],
+): Promise<ParsedProfileCommand> {
   const identifier = args[0];
 
   if (!identifier) {
@@ -42,21 +47,25 @@ export function parseProfileCommand(args: string[]): ParsedProfileCommand {
     }
   }
 
-  // Check if it's a hex pubkey (64 chars, hex only)
-  if (/^[0-9a-f]{64}$/i.test(identifier)) {
+  // Check if it's a hex pubkey
+  if (isValidHexPubkey(identifier)) {
     return {
-      pubkey: identifier.toLowerCase(),
+      pubkey: normalizeHex(identifier),
     };
   }
 
   // Check if it's a NIP-05 identifier (user@domain.com)
-  if (identifier.includes("@")) {
-    throw new Error(
-      "NIP-05 identifier lookup not yet implemented. Please use npub or hex pubkey.",
-    );
+  if (isNip05(identifier)) {
+    const pubkey = await resolveNip05(identifier);
+    if (!pubkey) {
+      throw new Error(
+        `Failed to resolve NIP-05 identifier: ${identifier}. Please check the identifier and try again.`,
+      );
+    }
+    return { pubkey };
   }
 
   throw new Error(
-    "Invalid user identifier. Supported formats: npub1..., nprofile1..., or hex pubkey",
+    "Invalid user identifier. Supported formats: npub1..., nprofile1..., hex pubkey, user@domain.com, or domain.com",
   );
 }

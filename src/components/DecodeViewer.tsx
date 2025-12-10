@@ -7,6 +7,7 @@ import {
   type DecodedData,
 } from "@/lib/decode-parser";
 import { useGrimoire } from "@/core/state";
+import { useCopy } from "../hooks/useCopy";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
@@ -16,7 +17,7 @@ interface DecodeViewerProps {
 
 export default function DecodeViewer({ args }: DecodeViewerProps) {
   const { addWindow } = useGrimoire();
-  const [copied, setCopied] = useState(false);
+  const { copy, copied } = useCopy();
   const [relays, setRelays] = useState<string[]>([]);
   const [newRelay, setNewRelay] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -56,9 +57,7 @@ export default function DecodeViewer({ args }: DecodeViewerProps) {
 
   const copyToClipboard = () => {
     if (reencoded) {
-      navigator.clipboard.writeText(reencoded);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      copy(reencoded);
     }
   };
 

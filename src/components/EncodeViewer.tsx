@@ -5,6 +5,7 @@ import {
   encodeToNostr,
   type ParsedEncodeCommand,
 } from "@/lib/encode-parser";
+import { useCopy } from "../hooks/useCopy";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
@@ -13,7 +14,7 @@ interface EncodeViewerProps {
 }
 
 export default function EncodeViewer({ args }: EncodeViewerProps) {
-  const [copied, setCopied] = useState(false);
+  const { copy, copied } = useCopy();
   const [relays, setRelays] = useState<string[]>([]);
   const [newRelay, setNewRelay] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -46,9 +47,7 @@ export default function EncodeViewer({ args }: EncodeViewerProps) {
 
   const copyToClipboard = () => {
     if (encoded) {
-      navigator.clipboard.writeText(encoded);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      copy(encoded);
     }
   };
 

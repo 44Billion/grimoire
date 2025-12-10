@@ -123,7 +123,7 @@ export const manPages: Record<string, ManPageEntry> = {
       {
         flag: "-a, --author <npub|hex|nip05>",
         description:
-          "Filter by author pubkey (supports npub, hex, or NIP-05 identifier like user@domain.com)",
+          "Filter by author pubkey (supports npub, hex, NIP-05 identifier, or bare domain)",
       },
       {
         flag: "-l, --limit <number>",
@@ -136,7 +136,7 @@ export const manPages: Record<string, ManPageEntry> = {
       {
         flag: "-p <npub|hex|nip05>",
         description:
-          "Filter by mentioned pubkey (#p tag, supports npub, hex, or NIP-05 identifier)",
+          "Filter by mentioned pubkey (#p tag, supports npub, hex, NIP-05, or bare domain)",
       },
       {
         flag: "-t <hashtag>",
@@ -175,6 +175,7 @@ export const manPages: Record<string, ManPageEntry> = {
       "req -k 1 -l 20                      Get 20 recent notes (streams live by default)",
       "req -k 0 -a npub1...                 Get profile for author",
       "req -k 1 -a user@domain.com          Get notes from NIP-05 identifier",
+      "req -k 1 -a dergigi.com              Get notes from bare domain (resolves to _@dergigi.com)",
       "req -k 1 -p verbiricha@habla.news    Get notes mentioning NIP-05 user",
       "req -k 1 --since 1h relay.damus.io   Get notes from last hour",
       "req -k 1 --close-on-eose             Get recent notes and close after EOSE",
@@ -261,7 +262,7 @@ export const manPages: Record<string, ManPageEntry> = {
     section: "1",
     synopsis: "profile <identifier>",
     description:
-      "Open a detailed view of a Nostr user profile. Accepts multiple identifier formats including npub, nprofile, and hex pubkeys. Displays profile metadata, inbox/outbox relays, and raw JSON.",
+      "Open a detailed view of a Nostr user profile. Accepts multiple identifier formats including npub, nprofile, hex pubkeys, and NIP-05 identifiers (including bare domains). Displays profile metadata, inbox/outbox relays, and raw JSON.",
     options: [
       {
         flag: "<identifier>",
@@ -272,12 +273,15 @@ export const manPages: Record<string, ManPageEntry> = {
       "profile npub1abc...                   Open profile by npub",
       "profile nprofile1xyz...               Open profile with relay hints",
       "profile abc123...                     Open profile by hex pubkey (64 chars)",
+      "profile user@domain.com               Open profile by NIP-05 identifier",
+      "profile jack@cash.app                 Open profile using NIP-05",
+      "profile dergigi.com                   Open profile by domain (resolves to _@dergigi.com)",
     ],
     seeAlso: ["open", "req"],
     appId: "profile",
     category: "Nostr",
-    argParser: (args: string[]) => {
-      const parsed = parseProfileCommand(args);
+    argParser: async (args: string[]) => {
+      const parsed = await parseProfileCommand(args);
       return parsed;
     },
   },
@@ -343,6 +347,32 @@ export const manPages: Record<string, ManPageEntry> = {
     category: "Nostr",
     argParser: (args: string[]) => {
       return { args };
+    },
+  },
+  relay: {
+    name: "relay",
+    section: "1",
+    synopsis: "relay <url>",
+    description:
+      "View detailed information about a Nostr relay. Displays NIP-11 relay information document including connection status, supported NIPs, operator details, limitations, and software information.",
+    options: [
+      {
+        flag: "<url>",
+        description:
+          "Relay WebSocket URL (wss:// or ws://) or domain (auto-adds wss://)",
+      },
+    ],
+    examples: [
+      "relay wss://relay.damus.io           View relay information",
+      "relay relay.primal.net               Auto-adds wss:// protocol",
+      "relay nos.lol                        View relay capabilities",
+    ],
+    seeAlso: ["req", "profile"],
+    appId: "relay",
+    category: "Nostr",
+    argParser: (args: string[]) => {
+      const parsed = parseRelayCommand(args);
+      return parsed;
     },
   },
 };

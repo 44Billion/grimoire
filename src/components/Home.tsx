@@ -14,6 +14,7 @@ import { EventDetailViewer } from "./EventDetailViewer";
 import { ProfileViewer } from "./ProfileViewer";
 import EncodeViewer from "./EncodeViewer";
 import DecodeViewer from "./DecodeViewer";
+import { RelayViewer } from "./RelayViewer";
 import KindRenderer from "./KindRenderer";
 import { Terminal } from "lucide-react";
 import UserMenu from "./nostr/user-menu";

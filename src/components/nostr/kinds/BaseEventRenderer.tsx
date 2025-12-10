@@ -10,8 +10,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Menu, Copy, FileJson, ExternalLink } from "lucide-react";
+import { Menu, Copy, Check, FileJson, ExternalLink } from "lucide-react";
 import { useGrimoire } from "@/core/state";
+import { useCopy } from "@/hooks/useCopy";
 import { JsonViewer } from "@/components/JsonViewer";
 import { formatTimestamp } from "@/hooks/useLocale";
 
@@ -42,6 +43,7 @@ export function EventAuthor({ pubkey }: { pubkey: string }) {
  */
 export function EventMenu({ event }: { event: NostrEvent }) {
   const { addWindow } = useGrimoire();
+  const { copy, copied } = useCopy();
   const [jsonDialogOpen, setJsonDialogOpen] = useState(false);
 
   const openEventDetail = () => {
@@ -71,7 +73,7 @@ export function EventMenu({ event }: { event: NostrEvent }) {
   };
 
   const copyEventId = () => {
-    navigator.clipboard.writeText(event.id);
+    copy(event.id);
   };
 
   const viewEventJson = () => {
@@ -104,8 +106,12 @@ export function EventMenu({ event }: { event: NostrEvent }) {
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={copyEventId}>
-          <Copy className="size-4 mr-2" />
-          Copy ID
+          {copied ? (
+            <Check className="size-4 mr-2 text-green-500" />
+          ) : (
+            <Copy className="size-4 mr-2" />
+          )}
+          {copied ? "Copied!" : "Copy ID"}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={viewEventJson}>
           <FileJson className="size-4 mr-2" />
@@ -139,10 +145,18 @@ export function BaseEventContainer({
 }) {
   // Format relative time for display
   const { locale } = useGrimoire();
-  const relativeTime = formatTimestamp(event.created_at, "relative", locale.locale);
+  const relativeTime = formatTimestamp(
+    event.created_at,
+    "relative",
+    locale.locale,
+  );
 
   // Format absolute timestamp for hover (ISO-8601 style)
-  const absoluteTime = formatTimestamp(event.created_at, "absolute", locale.locale);
+  const absoluteTime = formatTimestamp(
+    event.created_at,
+    "absolute",
+    locale.locale,
+  );
 
   return (
     <div className="flex flex-col gap-2 p-3 border-b border-border/50 last:border-0">
