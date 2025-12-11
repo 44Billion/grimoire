@@ -896,6 +896,13 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     nip: "geocaching",
     icon: Map,
   },
+  38383: {
+    kind: 38383,
+    name: "P2P Order",
+    description: "Peer-to-peer Order events",
+    nip: "69",
+    icon: ShoppingBag,
+  },
   39701: {
     kind: 39701,
     name: "Web Bookmarks",
