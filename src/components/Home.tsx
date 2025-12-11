@@ -1,21 +1,11 @@
 import { useState, useEffect } from "react";
 import { useGrimoire } from "@/core/state";
 import { useAccountSync } from "@/hooks/useAccountSync";
-import Feed from "./nostr/Feed";
-import { WinViewer } from "./WinViewer";
-import { WindowToolbar } from "./WindowToolbar";
 import { TabBar } from "./TabBar";
 import { Mosaic, MosaicWindow, MosaicBranch } from "react-mosaic-component";
-import { NipRenderer } from "./NipRenderer";
-import ManPage from "./ManPage";
 import CommandLauncher from "./CommandLauncher";
-import ReqViewer from "./ReqViewer";
-import { EventDetailViewer } from "./EventDetailViewer";
-import { ProfileViewer } from "./ProfileViewer";
-import EncodeViewer from "./EncodeViewer";
-import DecodeViewer from "./DecodeViewer";
-import { RelayViewer } from "./RelayViewer";
-import KindRenderer from "./KindRenderer";
+import { WindowToolbar } from "./WindowToolbar";
+import { WindowTile } from "./WindowTitle";
 import { Terminal } from "lucide-react";
 import UserMenu from "./nostr/user-menu";
 import { GrimoireWelcome } from "./GrimoireWelcome";
@@ -62,68 +52,13 @@ export default function Home() {
       );
     }
 
-    // Render based on appId
-    let content;
-    switch (window.appId) {
-      case "nip":
-        content = <NipRenderer nipId={window.props.number} />;
-        break;
-      case "feed":
-        content = <Feed className="h-full w-full overflow-auto" />;
-        break;
-      case "win":
-        content = <WinViewer />;
-        break;
-      case "kind":
-        content = <KindRenderer kind={parseInt(window.props.number)} />;
-        break;
-      case "man":
-        content = <ManPage cmd={window.props.cmd} />;
-        break;
-      case "req":
-        content = (
-          <ReqViewer
-            filter={window.props.filter}
-            relays={window.props.relays}
-            closeOnEose={window.props.closeOnEose}
-            nip05Authors={window.props.nip05Authors}
-            nip05PTags={window.props.nip05PTags}
-          />
-        );
-        break;
-      case "open":
-        content = <EventDetailViewer pointer={window.props.pointer} />;
-        break;
-      case "profile":
-        content = <ProfileViewer pubkey={window.props.pubkey} />;
-        break;
-      case "encode":
-        content = <EncodeViewer args={window.props.args} />;
-        break;
-      case "decode":
-        content = <DecodeViewer args={window.props.args} />;
-        break;
-      case "relay":
-        content = <RelayViewer url={window.props.url} />;
-        break;
-      default:
-        content = (
-          <div className="p-4 text-muted-foreground">
-            Unknown app: {window.appId}
-          </div>
-        );
-    }
-
     return (
-      <MosaicWindow
+      <WindowTile
+        id={id}
+        window={window}
         path={path}
-        title={window.title}
-        toolbarControls={
-          <WindowToolbar onClose={() => handleRemoveWindow(id)} />
-        }
-      >
-        <div className="h-full w-full overflow-auto">{content}</div>
-      </MosaicWindow>
+        onClose={handleRemoveWindow}
+      />
     );
   };
 

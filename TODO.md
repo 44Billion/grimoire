@@ -3,7 +3,7 @@
 ## Known Issues
 
 ### RTL Support in Rich Text
-**Priority**: Medium  
+**Priority**: Medium
 **File**: `src/components/nostr/RichText/Text.tsx`
 
 Current RTL implementation is partial and has limitations:
@@ -11,7 +11,7 @@ Current RTL implementation is partial and has limitations:
 - RTL text alignment (right-align) doesn't work properly with inline elements
 - Mixed LTR/RTL content with inline elements (hashtags, mentions) creates layout conflicts
 
-**The core problem**: 
+**The core problem**:
 - Inline elements (hashtags, mentions) need inline flow to stay on same line
 - RTL alignment requires block-level containers
 - These two requirements conflict
