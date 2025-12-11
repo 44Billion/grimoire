@@ -16,6 +16,12 @@ import { useCopy } from "@/hooks/useCopy";
 import { JsonViewer } from "@/components/JsonViewer";
 import { formatTimestamp } from "@/hooks/useLocale";
 
+// NIP-01 Kind ranges
+const REPLACEABLE_START = 10000;
+const REPLACEABLE_END = 20000;
+const PARAMETERIZED_REPLACEABLE_START = 30000;
+const PARAMETERIZED_REPLACEABLE_END = 40000;
+
 /**
  * Universal event properties and utilities shared across all kind renderers
  */
@@ -45,10 +51,10 @@ export function EventMenu({ event }: { event: NostrEvent }) {
 
   const openEventDetail = () => {
     // For replaceable/parameterized replaceable events, use AddressPointer
-    // Replaceable: 10000-19999, Parameterized: 30000-39999
     const isAddressable =
-      (event.kind >= 10000 && event.kind < 20000) ||
-      (event.kind >= 30000 && event.kind < 40000);
+      (event.kind >= REPLACEABLE_START && event.kind < REPLACEABLE_END) ||
+      (event.kind >= PARAMETERIZED_REPLACEABLE_START &&
+        event.kind < PARAMETERIZED_REPLACEABLE_END);
 
     let pointer;
     if (isAddressable) {

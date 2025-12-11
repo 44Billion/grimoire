@@ -16,7 +16,7 @@ import {
   Wifi,
   Circle,
 } from "lucide-react";
-import { nip19 } from "nostr-tools";
+import { nip19, kinds } from "nostr-tools";
 import { useCopy } from "../hooks/useCopy";
 import { getSeenRelays } from "applesauce-core/helpers/relays";
 
@@ -173,13 +173,13 @@ export function EventDetailViewer({ pointer }: EventDetailViewerProps) {
 
       {/* Rendered Content - Focus Here */}
       <div className="flex-1 overflow-y-auto">
-        {event.kind === 0 ? (
+        {event.kind === kinds.Metadata ? (
           <Kind0DetailRenderer event={event} />
-        ) : event.kind === 3 ? (
+        ) : event.kind === kinds.Contacts ? (
           <Kind3DetailView event={event} />
-        ) : event.kind === 30023 ? (
+        ) : event.kind === kinds.LongFormArticle ? (
           <Kind30023DetailRenderer event={event} />
-        ) : event.kind === 9802 ? (
+        ) : event.kind === kinds.Highlights ? (
           <Kind9802DetailRenderer event={event} />
         ) : (
           <KindRenderer event={event} />
