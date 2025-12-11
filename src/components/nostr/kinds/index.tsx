@@ -12,6 +12,7 @@ import { Kind9802Renderer } from "./Kind9802Renderer";
 import { Kind10002Renderer } from "./Kind10002Renderer";
 import { Kind30023Renderer } from "./Kind30023Renderer";
 import { Kind39701Renderer } from "./Kind39701Renderer";
+import { GenericRelayListRenderer } from "./GenericRelayListRenderer";
 import { NostrEvent } from "@/types/nostr";
 import { BaseEventContainer, type BaseEventProps } from "./BaseEventRenderer";
 
@@ -33,6 +34,11 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   9735: Kind9735Renderer, // Zap Receipt
   9802: Kind9802Renderer, // Highlight
   10002: Kind10002Renderer, // Relay List Metadata (NIP-65)
+  10006: GenericRelayListRenderer, // Blocked Relays (NIP-51)
+  10007: GenericRelayListRenderer, // Search Relays (NIP-51)
+  10012: GenericRelayListRenderer, // Favorite Relays (NIP-51)
+  10050: GenericRelayListRenderer, // DM Relay List (NIP-51)
+  30002: GenericRelayListRenderer, // Relay Sets (NIP-51)
   30023: Kind30023Renderer, // Long-form Article
   39701: Kind39701Renderer, // Web Bookmarks (NIP-B0)
 };

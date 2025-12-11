@@ -12,6 +12,7 @@ export interface RelayLinkProps {
   url: string;
   read?: boolean;
   write?: boolean;
+  showInboxOutbox?: boolean;
   className?: string;
   urlClassname?: string;
   iconClassname?: string;
@@ -28,6 +29,7 @@ export function RelayLink({
   iconClassname,
   read = false,
   write = false,
+  showInboxOutbox = true,
   className,
 }: RelayLinkProps) {
   const { addWindow } = useGrimoire();
@@ -56,7 +58,7 @@ export function RelayLink({
         <span className={cn("text-xs truncate", urlClassname)}>{url}</span>
       </div>
       <div className="flex items-center gap-1 flex-shrink-0">
-        {read && (
+        {showInboxOutbox && read && (
           <HoverCard openDelay={200}>
             <HoverCardTrigger asChild>
               <div className="cursor-help">
@@ -81,7 +83,7 @@ export function RelayLink({
             </HoverCardContent>
           </HoverCard>
         )}
-        {write && (
+        {showInboxOutbox && write && (
           <HoverCard openDelay={200}>
             <HoverCardTrigger asChild>
               <div className="cursor-help">
