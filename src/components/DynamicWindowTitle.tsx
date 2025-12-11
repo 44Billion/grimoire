@@ -174,6 +174,14 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
     }
   }, [appId, props]);
 
+  // Fetch profiles for REQ authors (up to 2)
+  const reqAuthors =
+    appId === "req" && props.filter?.authors ? props.filter.authors : [];
+  const author1Pubkey = reqAuthors[0] || "";
+  const author2Pubkey = reqAuthors[1] || "";
+  const author1Profile = useProfile(author1Pubkey);
+  const author2Profile = useProfile(author2Pubkey);
+
   // REQ titles
   const reqTitle = useMemo(() => {
     if (appId !== "req") return null;
@@ -195,13 +203,48 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
     }
 
     if (filter.authors && filter.authors.length > 0) {
-      parts.push(
-        `${filter.authors.length} author${filter.authors.length > 1 ? "s" : ""}`,
-      );
+      const authorNames: string[] = [];
+
+      // Add first author
+      if (author1Profile) {
+        const name = author1Profile.display_name || author1Profile.name;
+        authorNames.push(
+          name ? `@${name}` : `@${author1Pubkey.slice(0, 8)}...`,
+        );
+      } else if (author1Pubkey) {
+        authorNames.push(`@${author1Pubkey.slice(0, 8)}...`);
+      }
+
+      // Add second author if exists
+      if (filter.authors.length > 1) {
+        if (author2Profile) {
+          const name = author2Profile.display_name || author2Profile.name;
+          authorNames.push(
+            name ? `@${name}` : `@${author2Pubkey.slice(0, 8)}...`,
+          );
+        } else if (author2Pubkey) {
+          authorNames.push(`@${author2Pubkey.slice(0, 8)}...`);
+        }
+      }
+
+      // Add "& X other(s)" if more than 2
+      if (filter.authors.length > 2) {
+        const othersCount = filter.authors.length - 2;
+        authorNames.push(`& ${othersCount} other${othersCount > 1 ? "s" : ""}`);
+      }
+
+      parts.push(authorNames.join(", "));
     }
 
     return parts.length > 0 ? parts.join(" • ") : "REQ";
-  }, [appId, props]);
+  }, [
+    appId,
+    props,
+    author1Profile,
+    author2Profile,
+    author1Pubkey,
+    author2Pubkey,
+  ]);
 
   // Encode/Decode titles
   const encodeTitle = useMemo(() => {
