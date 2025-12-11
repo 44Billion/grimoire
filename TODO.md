@@ -110,3 +110,4 @@ Show timestamps/dates for notes in feed views for better chronological context.
 - **App-wide error boundary** - Splash crash screen for unhandled errors
 - **Collapsible relay list** - Show user relay links without inbox/outbox icons initially
 - **NIP badges everywhere** - Use consistent NIP badge components for linking to NIP documentation
+- **External spec event kind support** - Add references and documentation links for commented-out event kinds from external specs (Blossom, Marmot Protocol, NKBIP, nostrocket, Corny Chat, NUD, etc.) in `src/constants/kinds.ts`. Consider adding a separate registry or documentation for non-official-NIP event kinds.
