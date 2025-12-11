@@ -11,6 +11,7 @@ import { Kind9735Renderer } from "./Kind9735Renderer";
 import { Kind9802Renderer } from "./Kind9802Renderer";
 import { Kind10002Renderer } from "./Kind10002Renderer";
 import { Kind30023Renderer } from "./Kind30023Renderer";
+import { Kind39701Renderer } from "./Kind39701Renderer";
 import { NostrEvent } from "@/types/nostr";
 import { BaseEventContainer, type BaseEventProps } from "./BaseEventRenderer";
 
@@ -33,6 +34,7 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   9802: Kind9802Renderer, // Highlight
   10002: Kind10002Renderer, // Relay List Metadata (NIP-65)
   30023: Kind30023Renderer, // Long-form Article
+  39701: Kind39701Renderer, // Web Bookmarks (NIP-B0)
 };
 
 /**

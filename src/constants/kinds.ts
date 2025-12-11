@@ -31,7 +31,6 @@ import {
   Wallet,
   Package,
   Map,
-  Globe,
   Highlighter,
   BarChart3,
   Timer,
@@ -902,7 +901,7 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     name: "Web Bookmarks",
     description: "Web bookmarks",
     nip: "B0",
-    icon: Globe,
+    icon: Bookmark,
   },
 };
 
