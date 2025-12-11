@@ -56,6 +56,7 @@ Current RTL implementation is partial and has limitations:
 - **Window crashes on unsupported kind event** - Need graceful error handling for unknown kinds
 - **Nested lists in Markdown should be padded** - Markdown renderer spacing issue
 - **Text rendering**: Avoid inserting `<br>` tags, investigate noStrudel's EOL metadata approach
+- **JSON viewer scrolling**: Expandable JSON in event details cannot be scrolled when content exceeds available height - needs overflow handling
 
 ## Command Palette / UX Improvements
 
@@ -185,3 +186,179 @@ Show timestamps/dates for notes in feed views for better chronological context.
 - [NIP-10 Threading](https://github.com/nostr-protocol/nips/blob/master/10.md) (for contrast - what NOT to do)
 
 **Note**: This is a significant feature requiring careful attention to the threading model differences between NIP-10 (kind 1 notes) and NIP-22 (kind 1111 comments).
+
+---
+
+## Event Rendering System Improvements
+
+**Reference**: See `claudedocs/event-rendering-system-analysis.md` for comprehensive analysis
+
+### Phase 1: Foundation Fixes (1-2 weeks)
+**Goal:** Fix critical architectural issues and quick wins
+
+#### 1.1 Unified Detail Renderer Registry
+**Priority**: High | **Effort**: Low
+**Files**: `src/components/nostr/kinds/index.tsx`, `src/components/EventDetailViewer.tsx`
+
+**Problem**: EventDetailViewer uses hardcoded switch statement instead of registry pattern
+```tsx
+// Current anti-pattern:
+event.kind === kinds.Metadata ? <Kind0DetailRenderer />
+: event.kind === kinds.Contacts ? <Kind3DetailView />
+```
+
+**Solution**: Create `detailRenderers` map parallel to `kindRenderers` with fallback logic
+
+#### 1.2 Systematic Depth Tracking
+**Priority**: High | **Effort**: Medium
+**Files**: All `*Renderer.tsx` files
+
+**Problem**: Depth tracking inconsistent - can cause infinite loops in Kind6Renderer (reposts), Kind9735Renderer (zaps)
+
+**Solution**:
+- Add `MAX_EMBED_DEPTH = 3` constant
+- Update `BaseEventProps` to require depth
+- Audit all renderers using `EmbeddedEvent`
+- Implement `CollapsedPreview` component for max depth exceeded
+
+#### 1.3 Error Boundaries
+**Priority**: High | **Effort**: Low
+**File**: `src/components/EventErrorBoundary.tsx`
+
+**Problem**: One broken event crashes entire feed
+
+**Solution**: Create `EventErrorBoundary` component wrapping all events with diagnostic error cards
+
+#### 1.4 Renderer Memoization
+**Priority**: Medium | **Effort**: Low
+**Files**: All `*Renderer.tsx` files
+
+**Problem**: Renderers recalculate on every parent render - no performance optimization
+
+**Solution**:
+- Wrap all renderer components with `React.memo`
+- Add `useMemo` for expensive computations (parsing, extraction)
+- Add `useCallback` for event handlers
+
+### Phase 2: Component Library (2-3 weeks)
+**Goal:** Build reusable abstractions for common patterns
+
+#### 2.1 Generic Threading Components
+**Priority**: High | **Effort**: High
+**Files**: `src/lib/threading.ts`, `src/components/Thread/`
+
+**Problem**: Only NIP-10 threading supported, need NIP-22, NIP-28, NIP-29
+
+**Solution**: Create abstraction layer
+- `getThreadReferences()` helper supporting multiple NIPs
+- `<ThreadIndicator>` component (universal "replying to")
+- `<ThreadContext>` for parent preview
+- `<ThreadTree>` for detail view reply chains
+
+**Related**: Works with NIP-22 Comment Support (existing TODO)
+
+#### 2.2 Relationship Panels
+**Priority**: Medium | **Effort**: Medium
+**Files**: `src/components/nostr/Relationships/`
+
+**Problem**: Detail views don't show replies, zaps, reactions
+
+**Solution**: Create reusable relationship components
+- `<RepliesPanel>` - Show replies to event
+- `<ZapsPanel>` - Show zaps with total/list
+- `<ReactionsPanel>` - Group reactions by emoji
+- `<EngagementFooter>` - Universal engagement indicators
+
+#### 2.3 Enhanced Media Components
+**Priority**: Medium | **Effort**: Medium
+**Files**: `src/components/nostr/MediaEmbed.tsx`
+
+**Problem**: No multi-stage rendering, no lazy loading, no NSFW handling
+
+**Solution**: Enhance MediaEmbed with
+- Multi-stage rendering (placeholder → thumbnail → full → error)
+- Lazy loading with IntersectionObserver
+- NSFW blur with content-warning tag support
+- Quality selection for videos
+- Accessibility improvements (alt text, captions)
+
+#### 2.4 Context-Aware Rendering
+**Priority**: Medium | **Effort**: Low
+**Files**: `src/components/nostr/kinds/index.tsx`, all renderers
+
+**Problem**: Same rendering for feed, detail, and embed contexts
+
+**Solution**: Add `context` prop to BaseEventProps, renderers adapt display
+
+### Phase 3: Architecture Evolution (3-4 weeks)
+**Goal:** Transform into production-grade framework
+
+#### 3.1 Performance Optimization
+**Priority**: High | **Effort**: Medium
+**Files**: `src/components/ReqViewer.tsx`, `EventDetailViewer.tsx`
+
+**Target**: Feed with 10,000 events scrolls at 60fps
+
+**Tasks**:
+- Virtual scrolling with react-virtuoso
+- Code splitting for detail renderers (lazy load)
+- Batch profile fetching (avoid N+1 queries)
+- Suspense boundaries for async content
+- Performance monitoring
+
+#### 3.2 Helper Library Expansion
+**Priority**: High | **Effort**: High
+**Files**: `src/lib/helpers/` directory
+
+**Problem**: Many renderers parse tags manually instead of using helpers
+
+**Solution**: Create helpers for all NIPs
+- File metadata (1063): url, hash, size, mime, dimensions
+- Media events (20, 21, 22): URLs, thumbnails, dimensions
+- Lists (30000+): systematic list item extraction
+- Reposts (6, 16, 18): reposted event extraction
+- Highlights (9802): context, highlight text
+- Calendar (31922-31925): date/time parsing
+- Polls (1068): options, votes, tally
+
+**Note**: Submit generic ones to applesauce-core upstream
+
+#### 3.3 Accessibility Improvements
+**Priority**: Medium | **Effort**: Medium
+**Files**: All renderers, BaseEventContainer
+
+**Target**: WCAG AA compliance
+
+**Tasks**:
+- Semantic HTML (`<article>`, `<time>`, proper headings)
+- ARIA labels and roles (`role="feed"`, `aria-label` on actions)
+- Keyboard navigation system (arrow keys, enter, escape)
+- Focus management (modals, detail views)
+- Screen reader testing and fixes
+- Color contrast audit
+
+#### 3.4 Internationalization
+**Priority**: Medium | **Effort**: Medium
+**Files**: Setup i18n infrastructure, translate all components
+
+**Problem**: Hardcoded English strings, inconsistent locale usage
+
+**Solution**:
+- i18next integration
+- Extract all hardcoded strings
+- Locale-aware number/date formatting (zap amounts, timestamps)
+- Kind name translations
+- RTL support improvements (related to existing RTL TODO)
+
+#### 3.5 Composable Renderer System
+**Priority**: Medium | **Effort**: High
+**Files**: Refactor complex renderers
+
+**Problem**: Renderers are monolithic, hard to reuse pieces
+
+**Solution**: Break into smaller components
+- Content components (primary payload display)
+- Metadata components (structured data display)
+- Relationship components (connections/replies)
+- Action components (user interactions)
+- Enable mix-and-match composition
