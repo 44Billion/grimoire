@@ -24,21 +24,6 @@ Current RTL implementation is partial and has limitations:
 
 **Test case**: Arabic text with hashtags on same line should display properly with right-alignment.
 
-### NIP-05 Resolution with @ Prefix
-**Priority**: High
-**File**: `src/lib/nip05.ts`
-
-**Issue**: Commands like `req -a @fiatjaf.com` (without username, just @domain) return unexpected results.
-
-**Current behavior**:
-- `req -a fiatjaf.com` works (normalized to `_@fiatjaf.com`) ✅
-- `req -a user@fiatjaf.com` works ✅
-- `req -a @fiatjaf.com` fails - not recognized as valid NIP-05 ❌
-
-**Root cause**: The `isNip05()` regex patterns don't match the `@domain.com` format (@ prefix without username).
-
-**Solution**: Either normalize `@domain.com` → `_@domain.com` or show helpful error message.
-
 ### Live Mode Reliability
 **Priority**: High
 **File**: `src/components/ReqViewer.tsx`
@@ -65,9 +50,6 @@ When selecting an action from the dropdown, pressing Enter should insert the com
 
 ### Command Options Display
 When an action is entered, show the list of available options below and provide auto-completion for flags/arguments.
-
-### Date Display
-Show timestamps/dates for notes in feed views for better chronological context.
 
 ## Feature Requests
 

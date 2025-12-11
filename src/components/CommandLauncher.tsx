@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 import { Command } from "cmdk";
 import { useGrimoire } from "@/core/state";
 import { manPages } from "@/types/man";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { VisuallyHidden } from "@/components/ui/visually-hidden";
 import "./command-launcher.css";
 
 interface CommandLauncherProps {
@@ -90,89 +96,96 @@ export default function CommandLauncher({
     : "Type a command...";
 
   return (
-    <Command.Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      label="Command Launcher"
-      className="grimoire-command-launcher"
-      shouldFilter={false}
-    >
-      <div className="command-launcher-wrapper">
-        <Command.Input
-          value={input}
-          onValueChange={setInput}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          className="command-input"
-        />
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="grimoire-command-launcher p-0">
+        <VisuallyHidden>
+          <DialogTitle>Command Launcher</DialogTitle>
+        </VisuallyHidden>
+        <Command
+          label="Command Launcher"
+          className="grimoire-command-content"
+          shouldFilter={false}
+        >
+          <div className="command-launcher-wrapper">
+            <Command.Input
+              value={input}
+              onValueChange={setInput}
+              onKeyDown={handleKeyDown}
+              placeholder={placeholder}
+              className="command-input"
+            />
 
-        {recognizedCommand && args.length > 0 && (
-          <div className="command-hint">
-            <span className="command-hint-label">Parsed:</span>
-            <span className="command-hint-command">{commandName}</span>
-            <span className="command-hint-args">{args.join(" ")}</span>
+            {recognizedCommand && args.length > 0 && (
+              <div className="command-hint">
+                <span className="command-hint-label">Parsed:</span>
+                <span className="command-hint-command">{commandName}</span>
+                <span className="command-hint-args">{args.join(" ")}</span>
+              </div>
+            )}
+
+            <Command.List className="command-list">
+              <Command.Empty className="command-empty">
+                {commandName
+                  ? `No command found: ${commandName}`
+                  : "Start typing..."}
+              </Command.Empty>
+
+              {categories.map((category) => (
+                <Command.Group
+                  key={category}
+                  heading={category}
+                  className="command-group"
+                >
+                  {filteredCommands
+                    .filter(([_, cmd]) => cmd.category === category)
+                    .map(([name, cmd]) => {
+                      const isExactMatch = name === commandName;
+                      return (
+                        <Command.Item
+                          key={name}
+                          value={name}
+                          onSelect={() => handleSelect(name)}
+                          className="command-item"
+                          data-exact-match={isExactMatch}
+                        >
+                          <div className="command-item-content">
+                            <div className="command-item-name">
+                              <span className="command-name">{name}</span>
+                              {cmd.synopsis !== name && (
+                                <span className="command-args">
+                                  {cmd.synopsis.replace(name, "").trim()}
+                                </span>
+                              )}
+                              {isExactMatch && (
+                                <span className="command-match-indicator">
+                                  ✓
+                                </span>
+                              )}
+                            </div>
+                            <div className="command-item-description">
+                              {cmd.description.split(".")[0]}
+                            </div>
+                          </div>
+                        </Command.Item>
+                      );
+                    })}
+                </Command.Group>
+              ))}
+            </Command.List>
+
+            <div className="command-footer">
+              <div>
+                <kbd>↑↓</kbd> navigate
+                <kbd>↵</kbd> execute
+                <kbd>esc</kbd> close
+              </div>
+              {recognizedCommand && (
+                <div className="command-footer-status">Ready to execute</div>
+              )}
+            </div>
           </div>
-        )}
-
-        <Command.List className="command-list">
-          <Command.Empty className="command-empty">
-            {commandName
-              ? `No command found: ${commandName}`
-              : "Start typing..."}
-          </Command.Empty>
-
-          {categories.map((category) => (
-            <Command.Group
-              key={category}
-              heading={category}
-              className="command-group"
-            >
-              {filteredCommands
-                .filter(([_, cmd]) => cmd.category === category)
-                .map(([name, cmd]) => {
-                  const isExactMatch = name === commandName;
-                  return (
-                    <Command.Item
-                      key={name}
-                      value={name}
-                      onSelect={() => handleSelect(name)}
-                      className="command-item"
-                      data-exact-match={isExactMatch}
-                    >
-                      <div className="command-item-content">
-                        <div className="command-item-name">
-                          <span className="command-name">{name}</span>
-                          {cmd.synopsis !== name && (
-                            <span className="command-args">
-                              {cmd.synopsis.replace(name, "").trim()}
-                            </span>
-                          )}
-                          {isExactMatch && (
-                            <span className="command-match-indicator">✓</span>
-                          )}
-                        </div>
-                        <div className="command-item-description">
-                          {cmd.description.split(".")[0]}
-                        </div>
-                      </div>
-                    </Command.Item>
-                  );
-                })}
-            </Command.Group>
-          ))}
-        </Command.List>
-
-        <div className="command-footer">
-          <div>
-            <kbd>↑↓</kbd> navigate
-            <kbd>↵</kbd> execute
-            <kbd>esc</kbd> close
-          </div>
-          {recognizedCommand && (
-            <div className="command-footer-status">Ready to execute</div>
-          )}
-        </div>
-      </div>
-    </Command.Dialog>
+        </Command>
+      </DialogContent>
+    </Dialog>
   );
 }

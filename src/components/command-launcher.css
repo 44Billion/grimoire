@@ -1,44 +1,17 @@
 /* Command Launcher Styles - Terminal Aesthetic */
 .grimoire-command-launcher {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  background: rgba(0, 0, 0, 0.8);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 20vh;
-  animation: fadeIn 0.2s ease;
+  max-width: 640px;
+  padding: 0;
+  overflow: hidden;
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+.grimoire-command-content {
+  width: 100%;
 }
 
 .command-launcher-wrapper {
   width: 100%;
-  max-width: 640px;
   background: hsl(var(--background));
-  border: 1px solid hsl(var(--border));
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-  overflow: hidden;
-  animation: slideDown 0.2s ease;
-}
-
-@keyframes slideDown {
-  from {
-    transform: translateY(-20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
 }
 
 .command-input {

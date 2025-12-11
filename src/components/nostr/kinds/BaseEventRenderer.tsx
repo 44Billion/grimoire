@@ -15,6 +15,7 @@ import { useGrimoire } from "@/core/state";
 import { useCopy } from "@/hooks/useCopy";
 import { JsonViewer } from "@/components/JsonViewer";
 import { formatTimestamp } from "@/hooks/useLocale";
+import { nip19 } from "nostr-tools";
 
 // NIP-01 Kind ranges
 const REPLACEABLE_START = 10000;
@@ -76,7 +77,29 @@ export function EventMenu({ event }: { event: NostrEvent }) {
   };
 
   const copyEventId = () => {
-    copy(event.id);
+    // For replaceable/parameterized replaceable events, encode as naddr
+    const isAddressable =
+      (event.kind >= REPLACEABLE_START && event.kind < REPLACEABLE_END) ||
+      (event.kind >= PARAMETERIZED_REPLACEABLE_START &&
+        event.kind < PARAMETERIZED_REPLACEABLE_END);
+
+    if (isAddressable) {
+      // Find d-tag for identifier
+      const dTag = event.tags.find((t) => t[0] === "d")?.[1] || "";
+      const naddr = nip19.naddrEncode({
+        kind: event.kind,
+        pubkey: event.pubkey,
+        identifier: dTag,
+      });
+      copy(naddr);
+    } else {
+      // For regular events, encode as nevent
+      const nevent = nip19.neventEncode({
+        id: event.id,
+        author: event.pubkey,
+      });
+      copy(nevent);
+    }
   };
 
   const viewEventJson = () => {
