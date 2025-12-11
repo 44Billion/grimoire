@@ -87,6 +87,18 @@ export const manPages: Record<string, ManPageEntry> = {
     category: "System",
     defaultProps: { cmd: "help" },
   },
+  kinds: {
+    name: "kinds",
+    section: "1",
+    synopsis: "kinds",
+    description:
+      "Display all Nostr event kinds with rich rendering support in Grimoire. Shows kind numbers, names, descriptions, and links to their defining NIPs.",
+    examples: ["kinds    View all supported event kinds"],
+    seeAlso: ["kind", "nip", "man"],
+    appId: "kinds",
+    category: "System",
+    defaultProps: {},
+  },
   // debug: {
   //   name: "debug",
   //   section: "1",

@@ -11,6 +11,7 @@ import EncodeViewer from "./EncodeViewer";
 import DecodeViewer from "./DecodeViewer";
 import { RelayViewer } from "./RelayViewer";
 import KindRenderer from "./KindRenderer";
+import KindsViewer from "./KindsViewer";
 import Feed from "./nostr/Feed";
 import { WinViewer } from "./WinViewer";
 import { DebugViewer } from "./DebugViewer";
@@ -100,6 +101,9 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
         break;
       case "kind":
         content = <KindRenderer kind={parseInt(window.props.number)} />;
+        break;
+      case "kinds":
+        content = <KindsViewer />;
         break;
       case "man":
         content = <ManPage cmd={window.props.cmd} />;

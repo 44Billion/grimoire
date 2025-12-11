@@ -3,6 +3,7 @@ import { MosaicNode } from "react-mosaic-component";
 export type AppId =
   | "nip"
   | "kind"
+  | "kinds"
   | "man"
   | "feed"
   | "win"

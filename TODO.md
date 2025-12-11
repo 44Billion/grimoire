@@ -34,3 +34,6 @@ avoid inserting `br`, look into noStrudel's eol metadata
 
 ## TODO: window crashes on unsupported kind event
 ## TODO: app-wide error boundary. splash crash screen.
+## TODO: collapsible relay list -> user relaylink without inbox/outbox icon
+
+## TODO: use NIP badges everywhere for linking NIPs
