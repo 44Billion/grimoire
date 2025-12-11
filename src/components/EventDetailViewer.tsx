@@ -33,7 +33,8 @@ export function EventDetailViewer({ pointer }: EventDetailViewerProps) {
   const event = useNostrEvent(pointer);
   const [showJson, setShowJson] = useState(false);
   const [showRelays, setShowRelays] = useState(false);
-  const { copy, copied } = useCopy();
+  const { copy: copyBech32, copied: copiedBech32 } = useCopy();
+  const { copy: copyJson, copied: copiedJson } = useCopy();
 
   // Loading state
   if (!event) {
@@ -78,11 +79,11 @@ export function EventDetailViewer({ pointer }: EventDetailViewerProps) {
       <div className="border-b border-border px-4 py-2 font-mono text-xs flex items-center justify-between gap-3">
         {/* Left: Event ID */}
         <button
-          onClick={() => copy(bech32Id)}
+          onClick={() => copyBech32(bech32Id)}
           className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors truncate min-w-0"
           title={bech32Id}
         >
-          {copied ? (
+          {copiedBech32 ? (
             <Check className="size-3 flex-shrink-0 text-green-500" />
           ) : (
             <Copy className="size-3 flex-shrink-0" />
@@ -154,15 +155,15 @@ export function EventDetailViewer({ pointer }: EventDetailViewerProps) {
         <div className="border-b border-border px-4 py-2 bg-muted">
           <div className="flex justify-end mb-2">
             <button
-              onClick={() => copy(JSON.stringify(event, null, 2))}
+              onClick={() => copyJson(JSON.stringify(event, null, 2))}
               className="hover:text-foreground text-muted-foreground transition-colors text-xs flex items-center gap-1"
             >
-              {copied ? (
+              {copiedJson ? (
                 <Check className="size-3 text-green-500" />
               ) : (
                 <Copy className="size-3" />
               )}
-              {copied ? "Copied!" : "Copy JSON"}
+              {copiedJson ? "Copied!" : "Copy JSON"}
             </button>
           </div>
           <pre className="text-xs overflow-x-auto whitespace-pre-wrap break-words bg-background p-2 rounded border border-border font-mono">
