@@ -204,7 +204,7 @@ export default function ReqViewer({
           )}
           {/* Raw Query */}
           <details className="text-xs">
-            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+            <summary className="cursor-crosshair text-muted-foreground hover:text-foreground">
               Query Filter
             </summary>
             <pre className="mt-2 text-xs font-mono text-muted-foreground bg-background p-2 overflow-x-auto">

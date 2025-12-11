@@ -56,7 +56,7 @@ export default function Command({
   return (
     <div className="relative inline-block">
       <button
-        className="px-2 py-1 border border-accent text-accent hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer font-mono text-sm uppercase"
+        className="px-2 py-1 border border-accent text-accent hover:bg-accent hover:text-accent-foreground transition-colors cursor-crosshair font-mono text-sm uppercase"
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         onClick={handleClick}

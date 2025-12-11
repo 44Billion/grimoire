@@ -1,4 +1,4 @@
-import { User, Circle } from "lucide-react";
+import { User } from "lucide-react";
 import accounts from "@/services/accounts";
 import { ExtensionSigner } from "applesauce-signers";
 import { ExtensionAccount } from "applesauce-accounts/accounts";
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Nip05 from "./nip05";
+import { RelayLink } from "./RelayLink";
 
 function UserAvatar({ pubkey }: { pubkey: string }) {
   const profile = useProfile(pubkey);
@@ -95,67 +96,37 @@ export default function UserMenu() {
           <>
             <DropdownMenuGroup>
               <DropdownMenuLabel
-                className="cursor-pointer hover:bg-muted/50"
+                className="cursor-crosshair hover:bg-muted/50"
                 onClick={openProfile}
               >
                 <UserLabel pubkey={account.pubkey} />
               </DropdownMenuLabel>
             </DropdownMenuGroup>
 
-            {relays && (
+            {relays && relays.all.length > 0 && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
                   <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
-                    Inbox Relays
+                    Relays
                   </DropdownMenuLabel>
-                  {relays.inbox.length > 0 ? (
-                    relays.inbox.map((relay) => (
-                      <div
-                        key={relay.url}
-                        className="flex items-center gap-2 px-2 py-1"
-                      >
-                        <Circle className="size-2 fill-green-500 text-green-500" />
-                        <span className="text-xs font-mono text-muted-foreground truncate">
-                          {relay.url}
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="px-2 py-1 text-xs text-muted-foreground italic">
-                      No inbox relays configured
-                    </div>
-                  )}
-                </DropdownMenuGroup>
-
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
-                    Outbox Relays
-                  </DropdownMenuLabel>
-                  {relays.outbox.length > 0 ? (
-                    relays.outbox.map((relay) => (
-                      <div
-                        key={relay.url}
-                        className="flex items-center gap-2 px-2 py-1"
-                      >
-                        <Circle className="size-2 fill-green-500 text-green-500" />
-                        <span className="text-xs font-mono text-muted-foreground truncate">
-                          {relay.url}
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="px-2 py-1 text-xs text-muted-foreground italic">
-                      No outbox relays configured
-                    </div>
-                  )}
+                  {relays.all.map((relay) => (
+                    <RelayLink
+                      className="px-2 py-0.5"
+                      key={relay.url}
+                      url={relay.url}
+                      read={relay.read}
+                      write={relay.write}
+                    />
+                  ))}
                 </DropdownMenuGroup>
               </>
             )}
 
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={logout}>Log out</DropdownMenuItem>
+            <DropdownMenuItem onClick={logout} className="cursor-crosshair">
+              Log out
+            </DropdownMenuItem>
           </>
         ) : (
           <DropdownMenuItem onClick={login}>Log in</DropdownMenuItem>

@@ -105,7 +105,7 @@ export function Markdown({ content, className = "" }: MarkdownProps) {
                   addWindow("nip", { number: nipNumber }, `NIP ${nipNumber}`);
                   console.log("[Markdown] addWindow called");
                 }}
-                className="text-accent underline decoration-dotted cursor-pointer hover:text-accent/80 transition-colors"
+                className="text-accent underline decoration-dotted cursor-crosshair hover:text-accent/80 transition-colors"
               >
                 {children}
               </a>

@@ -154,7 +154,8 @@ export function MediaEmbed({
       <div
         className={cn(
           "flex items-center gap-3 p-3 border border-border rounded-lg bg-muted/20",
-          onAudioClick && "cursor-pointer hover:bg-muted/30 transition-colors",
+          onAudioClick &&
+            "cursor-crosshair hover:bg-muted/30 transition-colors",
           className,
         )}
         onClick={onAudioClick}

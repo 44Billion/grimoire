@@ -72,7 +72,7 @@ export default function Home() {
         <header className="flex flex-row items-center justify-between px-1 border-b border-border">
           <button
             onClick={() => setCommandLauncherOpen(true)}
-            className="p-1 text-muted-foreground hover:text-accent transition-colors cursor-pointer"
+            className="p-1 text-muted-foreground hover:text-accent transition-colors cursor-crosshair"
             title="Launch command (Cmd+K)"
           >
             <Terminal className="size-4" />

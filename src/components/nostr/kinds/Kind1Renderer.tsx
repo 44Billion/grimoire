@@ -33,7 +33,7 @@ export function Kind1Renderer({ event, depth = 0 }: BaseEventProps) {
       {pointer && parentEvent && (
         <div
           onClick={handleReplyClick}
-          className="flex items-start gap-2 p-1 bg-muted/20 text-xs text-muted-foreground hover:bg-muted/30 cursor-pointer rounded transition-colors"
+          className="flex items-start gap-2 p-1 bg-muted/20 text-xs text-muted-foreground hover:bg-muted/30 cursor-crosshair rounded transition-colors"
         >
           <Reply className="size-3 flex-shrink-0 mt-0.5" />
           <div className="flex items-baseline gap-1 min-w-0 flex-1">
