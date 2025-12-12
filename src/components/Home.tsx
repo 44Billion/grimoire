@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useGrimoire } from "@/core/state";
 import { useAccountSync } from "@/hooks/useAccountSync";
+import { useRelayState } from "@/hooks/useRelayState";
+import relayStateManager from "@/services/relay-state-manager";
 import { TabBar } from "./TabBar";
 import { Mosaic, MosaicWindow, MosaicBranch } from "react-mosaic-component";
 import CommandLauncher from "./CommandLauncher";
@@ -9,6 +11,7 @@ import { WindowTile } from "./WindowTitle";
 import { Terminal } from "lucide-react";
 import UserMenu from "./nostr/user-menu";
 import { GrimoireWelcome } from "./GrimoireWelcome";
+import { GlobalAuthPrompt } from "./GlobalAuthPrompt";
 
 export default function Home() {
   const { state, updateLayout, removeWindow } = useGrimoire();
@@ -16,6 +19,16 @@ export default function Home() {
 
   // Sync active account and fetch relay lists
   useAccountSync();
+
+  // Initialize global relay state manager
+  useEffect(() => {
+    relayStateManager.initialize().catch((err) => {
+      console.error("Failed to initialize relay state manager:", err);
+    });
+  }, []);
+
+  // Sync relay state with Jotai
+  useRelayState();
 
   // Keyboard shortcut: Cmd/Ctrl+K
   useEffect(() => {
@@ -68,6 +81,7 @@ export default function Home() {
         open={commandLauncherOpen}
         onOpenChange={setCommandLauncherOpen}
       />
+      <GlobalAuthPrompt />
       <main className="h-screen w-screen flex flex-col bg-background text-foreground">
         <header className="flex flex-row items-center justify-between px-1 border-b border-border">
           <button

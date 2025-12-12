@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import pool from "@/services/relay-pool";
 import type { NostrEvent, Filter } from "nostr-tools";
+import { useEventStore } from "applesauce-react/hooks";
 
 interface UseReqTimelineOptions {
   limit?: number;
@@ -29,26 +30,34 @@ export function useReqTimeline(
   relays: string[],
   options: UseReqTimelineOptions = { limit: 50 },
 ): UseReqTimelineReturn {
+  const eventStore = useEventStore();
   const { limit, stream = false } = options;
-  const [events, setEvents] = useState<NostrEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [eoseReceived, setEoseReceived] = useState(false);
+  const [eventsMap, setEventsMap] = useState<Map<string, NostrEvent>>(
+    new Map(),
+  );
 
-  // Use pool.req() directly to query relays
+  // Sort events by created_at (newest first) and deduplicate by ID
+  const events = useMemo(() => {
+    return Array.from(eventsMap.values()).sort(
+      (a, b) => b.created_at - a.created_at,
+    );
+  }, [eventsMap]);
+
   useEffect(() => {
     if (relays.length === 0) {
       setLoading(false);
-      setEvents([]);
       return;
     }
 
     console.log("REQ: Starting query", { relays, filters, limit, stream });
+
     setLoading(true);
     setError(null);
     setEoseReceived(false);
-
-    const collectedEvents = new Map<string, NostrEvent>();
+    setEventsMap(new Map());
 
     // Normalize filters to array
     const filterArray = Array.isArray(filters) ? filters : [filters];
@@ -59,9 +68,12 @@ export function useReqTimeline(
       limit: limit || f.limit,
     }));
 
-    // Use pool.req() for direct relay querying
-    // pool.req() returns an Observable of events
-    const observable = pool.req(relays, filtersWithLimit);
+    const observable = pool.subscription(relays, filtersWithLimit, {
+      retries: 5,
+      reconnect: 5,
+      resubscribe: true,
+      eventStore,
+    });
 
     const subscription = observable.subscribe(
       (response) => {
@@ -73,12 +85,14 @@ export function useReqTimeline(
             setLoading(false);
           }
         } else {
+          // It's an event - store in memory, deduplicate by ID
           const event = response as NostrEvent;
-          console.log("REQ: Event received", event.id);
-          // Use Map to deduplicate by event ID
-          collectedEvents.set(event.id, event);
-          // Update state with deduplicated events
-          setEvents(Array.from(collectedEvents.values()));
+          eventStore.add(event);
+          setEventsMap((prev) => {
+            const next = new Map(prev);
+            next.set(event.id, event);
+            return next;
+          });
         }
       },
       (err: Error) => {
@@ -87,10 +101,6 @@ export function useReqTimeline(
         setLoading(false);
       },
       () => {
-        console.log("REQ: Query complete", {
-          total: collectedEvents.size,
-          stream,
-        });
         // Only set loading to false if not streaming
         if (!stream) {
           setLoading(false);
@@ -98,29 +108,13 @@ export function useReqTimeline(
       },
     );
 
-    // Set a timeout to prevent infinite loading (only for non-streaming queries)
-    const timeout = !stream
-      ? setTimeout(() => {
-          console.warn("REQ: Query timeout, forcing completion");
-          setLoading(false);
-        }, 10000)
-      : undefined;
-
     return () => {
-      if (timeout) {
-        clearTimeout(timeout);
-      }
       subscription.unsubscribe();
     };
   }, [id, JSON.stringify(filters), relays.join(","), limit, stream]);
 
-  // Sort events by created_at (newest first)
-  const sortedEvents = useMemo(() => {
-    return [...events].sort((a, b) => b.created_at - a.created_at);
-  }, [events]);
-
   return {
-    events: sortedEvents,
+    events: events || [],
     loading,
     error,
     eoseReceived,

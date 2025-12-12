@@ -15,6 +15,7 @@ import KindsViewer from "./KindsViewer";
 import Feed from "./nostr/Feed";
 import { WinViewer } from "./WinViewer";
 import { DebugViewer } from "./DebugViewer";
+import ConnViewer from "./ConnViewer";
 
 interface WindowRendererProps {
   window: WindowInstance;
@@ -136,6 +137,9 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
         break;
       case "debug":
         content = <DebugViewer />;
+        break;
+      case "conn":
+        content = <ConnViewer />;
         break;
       default:
         content = (

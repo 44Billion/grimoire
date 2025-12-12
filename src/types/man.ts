@@ -406,4 +406,16 @@ export const manPages: Record<string, ManPageEntry> = {
       return parsed;
     },
   },
+  conn: {
+    name: "conn",
+    section: "1",
+    synopsis: "conn",
+    description:
+      "Monitor all relay connections in the pool. Displays real-time connection status, authentication state, pending auth challenges, relay notices, and connection statistics. Manage auth preferences per relay (always/never/ask).",
+    examples: ["conn    View all relay connections and auth status"],
+    seeAlso: ["relay", "req"],
+    appId: "conn",
+    category: "System",
+    defaultProps: {},
+  },
 };

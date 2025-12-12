@@ -1,4 +1,6 @@
+import { Terminal } from "lucide-react";
 import { Button } from "./ui/button";
+import { Kbd, KbdGroup } from "./ui/kbd";
 
 interface GrimoireWelcomeProps {
   onLaunchCommand: () => void;
@@ -45,14 +47,21 @@ export function GrimoireWelcome({ onLaunchCommand }: GrimoireWelcomeProps) {
         {/* Launch button */}
         <div className="flex flex-col items-center gap-3">
           <p className="text-muted-foreground text-sm font-mono mb-2">
-            Press{" "}
-            <kbd className="px-2 py-1 bg-muted border border-border text-xs">
-              Cmd+K
-            </kbd>{" "}
-            or
+            <span>Press </span>
+            <KbdGroup>
+              <Kbd>Cmd</Kbd>
+              <span>+</span>
+              <Kbd>K</Kbd>
+            </KbdGroup>
+            <span> or </span>
+            <KbdGroup>
+              <Kbd>Ctrl</Kbd>
+              <span>+</span>
+              <Kbd>K</Kbd>
+            </KbdGroup>
           </p>
           <Button onClick={onLaunchCommand} variant="outline">
-            <span>⌘</span>
+            <Terminal />
             <span>Launch Command</span>
           </Button>
         </div>

@@ -13,6 +13,7 @@ import {
   Rss,
   Layout,
   Bug,
+  Wifi,
   type LucideIcon,
 } from "lucide-react";
 
@@ -88,6 +89,10 @@ export const COMMAND_ICONS: Record<string, CommandIcon> = {
   debug: {
     icon: Bug,
     description: "Display application state for debugging",
+  },
+  conn: {
+    icon: Wifi,
+    description: "View relay pool connection and authentication status",
   },
 };
 

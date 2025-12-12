@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { WindowInstance } from "@/types/app";
 import { useProfile } from "@/hooks/useProfile";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
+import { useRelayState } from "@/hooks/useRelayState";
 import { getKindName, getKindIcon } from "@/constants/kinds";
 import { getNipTitle } from "@/constants/nips";
 import {
@@ -181,6 +182,9 @@ export function useDynamicWindowTitle(window: WindowInstance): WindowTitleData {
 
 function useDynamicTitle(window: WindowInstance): WindowTitleData {
   const { appId, props, title: staticTitle } = window;
+
+  // Get relay state for conn viewer
+  const { relays } = useRelayState();
 
   // Profile titles
   const profilePubkey = appId === "profile" ? props.pubkey : null;
@@ -381,6 +385,16 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
     return "Debug";
   }, [appId]);
 
+  // Conn viewer title with connection count
+  const connTitle = useMemo(() => {
+    if (appId !== "conn") return null;
+    const relayList = Object.values(relays);
+    const connectedCount = relayList.filter(
+      (r) => r.connectionState === "connected",
+    ).length;
+    return `Relay Pool (${connectedCount}/${relayList.length})`;
+  }, [appId, relays]);
+
   // Generate final title data with icon and tooltip
   return useMemo(() => {
     let title: string;
@@ -450,6 +464,10 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
       title = debugTitle;
       icon = getCommandIcon("debug");
       tooltip = rawCommand;
+    } else if (connTitle) {
+      title = connTitle;
+      icon = getCommandIcon("conn");
+      tooltip = rawCommand;
     } else {
       title = staticTitle;
       tooltip = rawCommand;
@@ -473,6 +491,7 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
     winTitle,
     kindsTitle,
     debugTitle,
+    connTitle,
     staticTitle,
   ]);
 }

@@ -16,6 +16,7 @@ export interface RelayLinkProps {
   className?: string;
   urlClassname?: string;
   iconClassname?: string;
+  variant?: "default" | "prompt";
 }
 
 /**
@@ -31,6 +32,7 @@ export function RelayLink({
   write = false,
   showInboxOutbox = true,
   className,
+  variant = "default",
 }: RelayLinkProps) {
   const { addWindow } = useGrimoire();
   const relayInfo = useRelayInfo(url);
@@ -39,10 +41,16 @@ export function RelayLink({
     addWindow("relay", { url }, `Relay ${url}`);
   };
 
+  const variantStyles = {
+    default: "cursor-crosshair hover:bg-muted/50",
+    prompt: "cursor-crosshair hover:underline hover:decoration-dotted",
+  };
+
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-2 cursor-crosshair hover:bg-muted/50",
+        "flex items-center justify-between gap-2",
+        variantStyles[variant],
         className,
       )}
       onClick={handleClick}

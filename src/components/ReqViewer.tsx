@@ -1,5 +1,4 @@
 import { useState, memo } from "react";
-import { Virtuoso } from "react-virtuoso";
 import {
   ChevronDown,
   ChevronRight,
@@ -9,6 +8,7 @@ import {
   Filter as FilterIcon,
   Circle,
 } from "lucide-react";
+import { Virtuoso } from "react-virtuoso";
 import { useReqTimeline } from "@/hooks/useReqTimeline";
 import { useGrimoire } from "@/core/state";
 import { FeedEvent } from "./nostr/Feed";
@@ -107,6 +107,7 @@ export default function ReqViewer({
             <FileText className="size-3" />
             <span>{events.length}</span>
           </div>
+
           {/* Relay Count (Clickable) */}
           <button
             onClick={() => setShowRelays(!showRelays)}
@@ -120,6 +121,7 @@ export default function ReqViewer({
             <Wifi className="size-3" />
             <span>{defaultRelays.length}</span>
           </button>
+
           {/* Query (Clickable) */}
           <button
             onClick={() => setShowQuery(!showQuery)}
@@ -163,6 +165,7 @@ export default function ReqViewer({
               ))}
             </div>
           )}
+
           {/* Authors with NIP-05 info */}
           {filter.authors && filter.authors.length > 0 && (
             <div className="flex flex-col gap-1">
@@ -178,6 +181,7 @@ export default function ReqViewer({
               )}
             </div>
           )}
+
           {/* #p Tags with NIP-05 info */}
           {filter["#p"] && filter["#p"].length > 0 && (
             <div className="flex flex-col gap-1">
@@ -193,6 +197,7 @@ export default function ReqViewer({
               )}
             </div>
           )}
+
           {/* Limit */}
           {filter.limit && (
             <div className="flex items-center gap-2">
@@ -201,6 +206,7 @@ export default function ReqViewer({
               </span>
             </div>
           )}
+
           {/* Stream Mode */}
           {stream && (
             <div className="flex items-center gap-2">
@@ -209,6 +215,7 @@ export default function ReqViewer({
               </span>
             </div>
           )}
+
           {/* Raw Query */}
           <details className="text-xs">
             <summary className="cursor-crosshair text-muted-foreground hover:text-foreground">
@@ -237,21 +244,24 @@ export default function ReqViewer({
             Loading events...
           </div>
         )}
+
         {!loading && !stream && events.length === 0 && !error && (
           <div className="text-center text-muted-foreground font-mono text-sm p-4">
             No events found matching filter
           </div>
         )}
+
         {stream && events.length === 0 && !loading && (
           <div className="text-center text-muted-foreground font-mono text-sm p-4">
             Waiting for events...
           </div>
         )}
+
         {events.length > 0 && (
           <Virtuoso
             style={{ height: "100%" }}
             data={events}
-            computeItemKey={(_index, event) => event.id}
+            computeItemKey={(_index, item) => item.id}
             itemContent={(_index, event) => <MemoizedFeedEvent event={event} />}
           />
         )}

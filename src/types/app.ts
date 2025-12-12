@@ -1,4 +1,5 @@
-import { MosaicNode } from "react-mosaic-component";
+import type { MosaicNode } from "react-mosaic-component";
+import type { GlobalRelayState } from "./relay-state";
 
 export type AppId =
   | "nip"
@@ -15,7 +16,8 @@ export type AppId =
   | "encode"
   | "decode"
   | "relay"
-  | "debug";
+  | "debug"
+  | "conn";
 
 export interface WindowInstance {
   id: string;
@@ -58,4 +60,5 @@ export interface GrimoireState {
     timezone: string;
     timeFormat: "12h" | "24h";
   };
+  relayState?: GlobalRelayState;
 }

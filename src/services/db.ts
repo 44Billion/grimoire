@@ -24,19 +24,27 @@ export interface RelayInfo {
   fetchedAt: number;
 }
 
+export interface RelayAuthPreference {
+  url: string;
+  preference: "always" | "never" | "ask";
+  updatedAt: number;
+}
+
 class GrimoireDb extends Dexie {
   profiles!: Table<Profile>;
   nip05!: Table<Nip05>;
   nips!: Table<Nip>;
   relayInfo!: Table<RelayInfo>;
+  relayAuthPreferences!: Table<RelayAuthPreference>;
 
   constructor(name: string) {
     super(name);
-    this.version(4).stores({
+    this.version(5).stores({
       profiles: "&pubkey",
       nip05: "&nip05",
       nips: "&id",
       relayInfo: "&url",
+      relayAuthPreferences: "&url",
     });
   }
 }
