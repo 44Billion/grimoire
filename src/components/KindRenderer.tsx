@@ -1,7 +1,6 @@
 import { getKindInfo } from "@/constants/kinds";
-import Command from "./Command";
-import { ExternalLink } from "lucide-react";
 import { kinds } from "nostr-tools";
+import { NIPBadge } from "./NIPBadge";
 
 // NIP-01 Kind ranges
 const REPLACEABLE_START = 10000;
@@ -46,7 +45,7 @@ export default function KindRenderer({ kind }: { kind: number }) {
       </div>
 
       {/* Details Grid */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm items-center">
         <div className="text-muted-foreground">Kind Number</div>
         <code className="font-mono">{kind}</code>
 
@@ -74,35 +73,10 @@ export default function KindRenderer({ kind }: { kind: number }) {
         {kindInfo.nip && (
           <>
             <div className="text-muted-foreground">Defined in</div>
-            <div>
-              <Command
-                name={`NIP-${kindInfo.nip}`}
-                description={`View NIP-${kindInfo.nip} specification`}
-                appId="nip"
-                props={{ number: kindInfo.nip }}
-              />
-            </div>
+            <NIPBadge nipNumber={kindInfo.nip} />
           </>
         )}
       </div>
-
-      {/* GitHub Link */}
-      {kindInfo.nip && (
-        <div className="pt-4 border-t border-border">
-          <a
-            href={`https://github.com/nostr-protocol/nips/blob/master/${kindInfo.nip.padStart(
-              2,
-              "0",
-            )}.md`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ExternalLink className="w-4 h-4" />
-            View on GitHub
-          </a>
-        </div>
-      )}
     </div>
   );
 }

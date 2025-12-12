@@ -2,9 +2,10 @@ import { getNIPInfo } from "../lib/nip-icons";
 import { useGrimoire } from "@/core/state";
 
 export interface NIPBadgeProps {
-  nipNumber: number;
+  nipNumber: string;
   className?: string;
   showName?: boolean;
+  showNIPPrefix?: boolean;
 }
 
 /**
@@ -15,6 +16,7 @@ export function NIPBadge({
   nipNumber,
   className = "",
   showName = true,
+  showNIPPrefix = true,
 }: NIPBadgeProps) {
   const { addWindow } = useGrimoire();
   const nipInfo = getNIPInfo(nipNumber);
@@ -34,12 +36,16 @@ export function NIPBadge({
   return (
     <button
       onClick={openNIP}
-      className={`flex items-center gap-1.5 rounded-md border bg-card px-2.5 py-1.5 text-sm hover:bg-muted/20 cursor-crosshair ${className}`}
+      className={`flex items-center gap-2 border bg-card px-2.5 py-1.5 text-sm hover:underline hover:decoration-dotted cursor-crosshair ${className}`}
       title={description}
     >
-      <span className="font-mono font-medium">{nipNumber}</span>
+      <span className="text-muted-foreground">
+        {`${showNIPPrefix ? "NIP-" : ""}${nipNumber}`}
+      </span>
       {showName && nipInfo && (
-        <span className="text-muted-foreground">· {name}</span>
+        <>
+          <span>{name}</span>
+        </>
       )}
     </button>
   );
