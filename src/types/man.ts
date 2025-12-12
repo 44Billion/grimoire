@@ -157,7 +157,8 @@ export const manPages: Record<string, ManPageEntry> = {
       },
       {
         flag: "-e <id>",
-        description: "Filter by referenced event ID (#e tag). Supports comma-separated values: -e id1,id2,id3",
+        description:
+          "Filter by referenced event ID (#e tag). Supports comma-separated values: -e id1,id2,id3",
       },
       {
         flag: "-p <npub|hex|nip05>",
@@ -166,11 +167,13 @@ export const manPages: Record<string, ManPageEntry> = {
       },
       {
         flag: "-t <hashtag>",
-        description: "Filter by hashtag (#t tag). Supports comma-separated values: -t nostr,bitcoin,lightning",
+        description:
+          "Filter by hashtag (#t tag). Supports comma-separated values: -t nostr,bitcoin,lightning",
       },
       {
         flag: "-d <identifier>",
-        description: "Filter by d-tag identifier (replaceable events). Supports comma-separated values: -d article1,article2",
+        description:
+          "Filter by d-tag identifier (replaceable events). Supports comma-separated values: -d article1,article2",
       },
       {
         flag: "--since <time>",

@@ -50,7 +50,7 @@ export function Kind3DetailView({ event }: { event: any }) {
   const { state } = useGrimoire();
 
   const followedPubkeys = getTagValues(event, "p").filter(
-    (pk) => pk.length === 64
+    (pk) => pk.length === 64,
   );
   const topics = getTagValues(event, "t");
 

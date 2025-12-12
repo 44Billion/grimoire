@@ -47,7 +47,7 @@ export function NipRenderer({ nipId, className = "" }: NipRendererProps) {
           </h3>
           <div className="flex flex-wrap gap-2">
             {kinds.map((kind) => (
-              <KindBadge key={kind} kind={kind} variant="full" />
+              <KindBadge key={kind} kind={kind} variant="full" clickable />
             ))}
           </div>
         </div>

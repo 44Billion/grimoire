@@ -1,5 +1,6 @@
 import { getKindInfo } from "@/constants/kinds";
 import { cn } from "@/lib/utils";
+import { useGrimoire } from "@/core/state";
 
 interface KindBadgeProps {
   kind: number;
@@ -9,6 +10,7 @@ interface KindBadgeProps {
   variant?: "default" | "compact" | "full";
   className?: string;
   iconClassname?: string;
+  clickable?: boolean;
 }
 
 export function KindBadge({
@@ -19,11 +21,20 @@ export function KindBadge({
   variant = "default",
   className = "",
   iconClassname = "text-muted-foreground",
+  clickable = false,
 }: KindBadgeProps) {
+  const { addWindow } = useGrimoire();
   const kindInfo = getKindInfo(kind);
   const Icon = kindInfo?.icon;
 
   const style = "inline-flex items-center gap-2 text-foreground";
+  const interactiveStyle = clickable ? "cursor-pointer" : "";
+
+  const handleClick = () => {
+    if (clickable) {
+      addWindow("kind", { number: String(kind) }, `Kind ${kind}`);
+    }
+  };
 
   // Apply variant presets or use props
   let showIcon = propShowIcon ?? true;
@@ -42,7 +53,10 @@ export function KindBadge({
 
   if (!kindInfo) {
     return (
-      <div className={cn(style, className)}>
+      <div
+        className={cn(style, interactiveStyle, className)}
+        onClick={handleClick}
+      >
         <span>Kind {kind}</span>
       </div>
     );
@@ -50,11 +64,22 @@ export function KindBadge({
 
   return (
     <div
-      className={cn(style, className)}
-      title={`${kindInfo.description} (NIP-${kindInfo.nip})`}
+      className={cn(style, interactiveStyle, className)}
+      title={`${kindInfo.description} (NIP-${kindInfo.nip})${clickable ? " - Click to view" : ""}`}
+      onClick={handleClick}
     >
       {showIcon && Icon && <Icon className={cn("size-4", iconClassname)} />}
-      {showName && <span>{kindInfo.name}</span>}
+      {showName && (
+        <span
+          className={
+            clickable
+              ? "cursor-crosshair hover:underline decoration-dotted"
+              : ""
+          }
+        >
+          {kindInfo.name}
+        </span>
+      )}
       {showKindNumber && <span>({kind})</span>}
     </div>
   );

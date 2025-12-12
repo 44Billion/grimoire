@@ -10,6 +10,7 @@ import { useGrimoire } from "@/core/state";
 import { useCopy } from "../hooks/useCopy";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { KindBadge } from "./KindBadge";
 
 interface DecodeViewerProps {
   args: string[];
@@ -216,20 +217,21 @@ export default function DecodeViewer({ args }: DecodeViewerProps) {
           )}
           {type === "naddr" && (
             <>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">Kind</div>
-                  <div className="bg-muted p-2 rounded font-mono text-xs">
-                    {(data as any).kind}
-                  </div>
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Kind</div>
+                <div className="bg-muted p-3 rounded text-xs">
+                  <KindBadge
+                    kind={(data as any).kind}
+                    variant="full"
+                    iconClassname="size-3 text-muted-foreground"
+                    clickable
+                  />
                 </div>
-                <div className="space-y-1 col-span-2">
-                  <div className="text-xs text-muted-foreground">
-                    Identifier
-                  </div>
-                  <div className="bg-muted p-2 rounded font-mono text-xs truncate">
-                    {(data as any).identifier}
-                  </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Identifier</div>
+                <div className="bg-muted p-3 rounded font-mono text-xs break-all">
+                  {(data as any).identifier}
                 </div>
               </div>
               <div className="space-y-1">

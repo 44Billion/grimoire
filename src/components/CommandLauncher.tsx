@@ -2,11 +2,7 @@ import { useEffect, useState } from "react";
 import { Command } from "cmdk";
 import { useGrimoire } from "@/core/state";
 import { manPages } from "@/types/man";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@/components/ui/visually-hidden";
 import "./command-launcher.css";
 

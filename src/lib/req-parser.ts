@@ -22,9 +22,9 @@ export interface ParsedReqCommand {
 function parseCommaSeparated<T>(
   value: string,
   parser: (v: string) => T | null,
-  target: Set<T>
+  target: Set<T>,
 ): boolean {
-  const values = value.split(',').map(v => v.trim());
+  const values = value.split(",").map((v) => v.trim());
   let addedAny = false;
 
   for (const val of values) {
@@ -102,7 +102,7 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
               const kind = parseInt(v, 10);
               return isNaN(kind) ? null : kind;
             },
-            kinds
+            kinds,
           );
           i += addedAny ? 2 : 1;
           break;
@@ -116,7 +116,7 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
             break;
           }
           let addedAny = false;
-          const values = nextArg.split(',').map(a => a.trim());
+          const values = nextArg.split(",").map((a) => a.trim());
           for (const authorStr of values) {
             if (!authorStr) continue;
             // Check if it's a NIP-05 identifier
@@ -156,7 +156,7 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
           const addedAny = parseCommaSeparated(
             nextArg,
             parseNoteOrHex,
-            eventIds
+            eventIds,
           );
           i += addedAny ? 2 : 1;
           break;
@@ -169,7 +169,7 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
             break;
           }
           let addedAny = false;
-          const values = nextArg.split(',').map(p => p.trim());
+          const values = nextArg.split(",").map((p) => p.trim());
           for (const pubkeyStr of values) {
             if (!pubkeyStr) continue;
             // Check if it's a NIP-05 identifier
@@ -194,7 +194,7 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
             const addedAny = parseCommaSeparated(
               nextArg,
               (v) => v, // hashtags are already strings
-              tTags
+              tTags,
             );
             i += addedAny ? 2 : 1;
           } else {
@@ -209,7 +209,7 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
             const addedAny = parseCommaSeparated(
               nextArg,
               (v) => v, // d-tags are already strings
-              dTags
+              dTags,
             );
             i += addedAny ? 2 : 1;
           } else {

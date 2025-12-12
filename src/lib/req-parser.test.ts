@@ -64,7 +64,10 @@ describe("parseReqCommand", () => {
         "-a",
         "user@domain.com,alice@example.com",
       ]);
-      expect(result.nip05Authors).toEqual(["user@domain.com", "alice@example.com"]);
+      expect(result.nip05Authors).toEqual([
+        "user@domain.com",
+        "alice@example.com",
+      ]);
       expect(result.filter.authors).toBeUndefined();
     });
 
@@ -76,10 +79,7 @@ describe("parseReqCommand", () => {
     });
 
     it("should deduplicate NIP-05 identifiers", () => {
-      const result = parseReqCommand([
-        "-a",
-        "user@domain.com,user@domain.com",
-      ]);
+      const result = parseReqCommand(["-a", "user@domain.com,user@domain.com"]);
       expect(result.nip05Authors).toEqual(["user@domain.com"]);
     });
   });
@@ -120,8 +120,14 @@ describe("parseReqCommand", () => {
     });
 
     it("should accumulate NIP-05 identifiers for #p tags", () => {
-      const result = parseReqCommand(["-p", "user@domain.com,alice@example.com"]);
-      expect(result.nip05PTags).toEqual(["user@domain.com", "alice@example.com"]);
+      const result = parseReqCommand([
+        "-p",
+        "user@domain.com,alice@example.com",
+      ]);
+      expect(result.nip05PTags).toEqual([
+        "user@domain.com",
+        "alice@example.com",
+      ]);
       expect(result.filter["#p"]).toBeUndefined();
     });
 

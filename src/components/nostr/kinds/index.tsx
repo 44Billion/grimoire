@@ -90,7 +90,11 @@ export {
 } from "./BaseEventRenderer";
 export type { BaseEventProps } from "./BaseEventRenderer";
 export { Kind1Renderer } from "./Kind1Renderer";
-export { RepostRenderer, Kind6Renderer, Kind16Renderer } from "./RepostRenderer";
+export {
+  RepostRenderer,
+  Kind6Renderer,
+  Kind16Renderer,
+} from "./RepostRenderer";
 export { Kind7Renderer } from "./Kind7Renderer";
 export { Kind20Renderer } from "./Kind20Renderer";
 export { Kind21Renderer } from "./Kind21Renderer";
