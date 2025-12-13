@@ -20,9 +20,7 @@ export function reconstructCommand(window: WindowInstance): string {
         return "kinds";
 
       case "man":
-        return props.cmd && props.cmd !== "help"
-          ? `man ${props.cmd}`
-          : "help";
+        return props.cmd && props.cmd !== "help" ? `man ${props.cmd}` : "help";
 
       case "profile": {
         // Try to encode pubkey as npub for readability
@@ -73,14 +71,8 @@ export function reconstructCommand(window: WindowInstance): string {
         return reconstructReqCommand(props);
       }
 
-      case "feed":
-        return reconstructFeedCommand(props);
-
       case "debug":
         return "debug";
-
-      case "win":
-        return "win";
 
       default:
         return appId; // Fallback to just the command name
@@ -150,7 +142,11 @@ function reconstructReqCommand(props: any): string {
 
   // Generic tags
   for (const [key, value] of Object.entries(filter)) {
-    if (key.startsWith("#") && key.length === 2 && !["#e", "#p", "#t", "#d"].includes(key)) {
+    if (
+      key.startsWith("#") &&
+      key.length === 2 &&
+      !["#e", "#p", "#t", "#d"].includes(key)
+    ) {
       const letter = key[1];
       const values = value as string[];
       if (values.length > 0) {
@@ -184,13 +180,4 @@ function reconstructReqCommand(props: any): string {
   }
 
   return parts.join(" ");
-}
-
-/**
- * Reconstructs a feed command from its props.
- */
-function reconstructFeedCommand(props: any): string {
-  // Feed command structure depends on implementation
-  // This is a best-effort reconstruction
-  return "feed";
 }

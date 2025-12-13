@@ -12,8 +12,6 @@ import DecodeViewer from "./DecodeViewer";
 import { RelayViewer } from "./RelayViewer";
 import KindRenderer from "./KindRenderer";
 import KindsViewer from "./KindsViewer";
-import Feed from "./nostr/Feed";
-import { WinViewer } from "./WinViewer";
 import { DebugViewer } from "./DebugViewer";
 import ConnViewer from "./ConnViewer";
 
@@ -93,12 +91,6 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
     switch (window.appId) {
       case "nip":
         content = <NipRenderer nipId={window.props.number} />;
-        break;
-      case "feed":
-        content = <Feed className="h-full w-full overflow-auto" />;
-        break;
-      case "win":
-        content = <WinViewer />;
         break;
       case "kind":
         content = <KindRenderer kind={parseInt(window.props.number)} />;

@@ -361,18 +361,6 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
     return getCommandDescription(props.cmd) || `${props.cmd} manual`;
   }, [appId, props]);
 
-  // Feed title
-  const feedTitle = useMemo(() => {
-    if (appId !== "feed") return null;
-    return "Feed";
-  }, [appId]);
-
-  // Win viewer title
-  const winTitle = useMemo(() => {
-    if (appId !== "win") return null;
-    return "Windows";
-  }, [appId]);
-
   // Kinds viewer title
   const kindsTitle = useMemo(() => {
     if (appId !== "kinds") return null;
@@ -448,14 +436,6 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
       // Use the specific command's icon, not the generic "man" icon
       icon = getCommandIcon(props.cmd);
       tooltip = rawCommand;
-    } else if (feedTitle) {
-      title = feedTitle;
-      icon = getCommandIcon("feed");
-      tooltip = rawCommand;
-    } else if (winTitle) {
-      title = winTitle;
-      icon = getCommandIcon("win");
-      tooltip = rawCommand;
     } else if (kindsTitle) {
       title = kindsTitle;
       icon = getCommandIcon("kinds");
@@ -487,8 +467,6 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
     decodeTitle,
     nipTitle,
     manTitle,
-    feedTitle,
-    winTitle,
     kindsTitle,
     debugTitle,
     connTitle,
