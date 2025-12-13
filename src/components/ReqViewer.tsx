@@ -5,16 +5,33 @@ import {
   Radio,
   FileText,
   Wifi,
+  WifiOff,
+  Loader2,
+  XCircle,
+  ShieldCheck,
+  ShieldAlert,
+  ShieldX,
+  ShieldQuestion,
+  Shield,
   Filter as FilterIcon,
-  Circle,
 } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import { useReqTimeline } from "@/hooks/useReqTimeline";
 import { useGrimoire } from "@/core/state";
 import { useProfile } from "@/hooks/useProfile";
+import { useRelayState } from "@/hooks/useRelayState";
 import { FeedEvent } from "./nostr/Feed";
 import { KindBadge } from "./KindBadge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
+import { RelayLink } from "./nostr/RelayLink";
 import type { NostrFilter } from "@/types/nostr";
+import type { RelayState } from "@/types/relay-state";
 import {
   formatEventIds,
   formatDTags,
@@ -29,6 +46,70 @@ const MemoizedFeedEvent = memo(
   FeedEvent,
   (prev, next) => prev.event.id === next.event.id,
 );
+
+// Helper functions for relay status icons
+function getConnectionIcon(relay: RelayState | undefined) {
+  if (!relay) {
+    return {
+      icon: <WifiOff className="size-3 text-muted-foreground" />,
+      label: "Unknown",
+    };
+  }
+
+  const iconMap = {
+    connected: {
+      icon: <Wifi className="size-3 text-green-500" />,
+      label: "Connected",
+    },
+    connecting: {
+      icon: <Loader2 className="size-3 text-yellow-500 animate-spin" />,
+      label: "Connecting",
+    },
+    disconnected: {
+      icon: <WifiOff className="size-3 text-muted-foreground" />,
+      label: "Disconnected",
+    },
+    error: {
+      icon: <XCircle className="size-3 text-red-500" />,
+      label: "Connection Error",
+    },
+  };
+  return iconMap[relay.connectionState];
+}
+
+function getAuthIcon(relay: RelayState | undefined) {
+  if (!relay || relay.authStatus === "none") {
+    return null;
+  }
+
+  const iconMap = {
+    authenticated: {
+      icon: <ShieldCheck className="size-3 text-green-500" />,
+      label: "Authenticated",
+    },
+    challenge_received: {
+      icon: <ShieldQuestion className="size-3 text-yellow-500" />,
+      label: "Challenge Received",
+    },
+    authenticating: {
+      icon: <Loader2 className="size-3 text-yellow-500 animate-spin" />,
+      label: "Authenticating",
+    },
+    failed: {
+      icon: <ShieldX className="size-3 text-red-500" />,
+      label: "Authentication Failed",
+    },
+    rejected: {
+      icon: <ShieldAlert className="size-3 text-muted-foreground" />,
+      label: "Authentication Rejected",
+    },
+    none: {
+      icon: <Shield className="size-3 text-muted-foreground" />,
+      label: "No Authentication",
+    },
+  };
+  return iconMap[relay.authStatus] || iconMap.none;
+}
 
 interface ReqViewerProps {
   filter: NostrFilter;
@@ -220,6 +301,7 @@ export default function ReqViewer({
   nip05PTags,
 }: ReqViewerProps) {
   const { state } = useGrimoire();
+  const { relays: relayStates } = useRelayState();
 
   // NIP-05 resolution already happened in argParser before window creation
   // The filter prop already contains resolved pubkeys
@@ -232,6 +314,15 @@ export default function ReqViewer({
       ? state.activeAccount.relays.inbox.map((r) => r.url)
       : ["wss://theforest.nostr1.com"]);
 
+  // Get relay state for each relay and calculate connected count
+  const relayStatesForReq = defaultRelays.map((url) => ({
+    url,
+    state: relayStates[url],
+  }));
+  const connectedCount = relayStatesForReq.filter(
+    (r) => r.state?.connectionState === "connected",
+  ).length;
+
   // Streaming is the default behavior, closeOnEose inverts it
   const stream = !closeOnEose;
 
@@ -242,7 +333,6 @@ export default function ReqViewer({
     { limit: filter.limit || 50, stream },
   );
 
-  const [showRelays, setShowRelays] = useState(false);
   const [showQuery, setShowQuery] = useState(false);
 
   return (
@@ -291,19 +381,62 @@ export default function ReqViewer({
             <span>{events.length}</span>
           </div>
 
-          {/* Relay Count (Clickable) */}
-          <button
-            onClick={() => setShowRelays(!showRelays)}
-            className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {showRelays ? (
-              <ChevronDown className="size-3" />
-            ) : (
-              <ChevronRight className="size-3" />
-            )}
-            <Wifi className="size-3" />
-            <span>{defaultRelays.length}</span>
-          </button>
+          {/* Relay Count (Dropdown) */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors">
+                <Wifi className="size-3" />
+                <span>
+                  {connectedCount}/{defaultRelays.length}
+                </span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80">
+              {relayStatesForReq.map(({ url, state }) => {
+                const connIcon = getConnectionIcon(state);
+                const authIcon = getAuthIcon(state);
+
+                return (
+                  <DropdownMenuItem
+                    key={url}
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <RelayLink
+                      url={url}
+                      showInboxOutbox={false}
+                      className="flex-1 min-w-0 hover:bg-transparent"
+                      iconClassname="size-3"
+                      urlClassname="text-xs"
+                    />
+                    <div
+                      className="flex items-center gap-1.5 flex-shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {authIcon && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="cursor-help">{authIcon.icon}</div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{authIcon.label}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="cursor-help">{connIcon.icon}</div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{connIcon.label}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* Query (Clickable) */}
           <button
@@ -319,22 +452,6 @@ export default function ReqViewer({
           </button>
         </div>
       </div>
-
-      {/* Expandable Relays */}
-      {showRelays && (
-        <div className="border-b border-border px-4 py-2 bg-muted">
-          <div className="flex flex-col gap-2">
-            {defaultRelays.map((relay) => (
-              <div key={relay} className="flex items-center gap-2">
-                <Circle className="size-2 fill-green-500 text-green-500" />
-                <span className="text-xs font-mono text-muted-foreground">
-                  {relay}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Expandable Query */}
       {showQuery && (
