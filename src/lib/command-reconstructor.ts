@@ -37,19 +37,41 @@ export function reconstructCommand(window: WindowInstance): string {
       }
 
       case "open": {
-        // Try to encode event ID as note or use hex
-        if (props.id) {
-          try {
-            const note = nip19.noteEncode(props.id);
-            return `open ${note}`;
-          } catch {
-            return `open ${props.id}`;
+        // Handle pointer structure from parseOpenCommand
+        if (!props.pointer) return "open";
+
+        const pointer = props.pointer;
+
+        try {
+          // EventPointer (has id field)
+          if ("id" in pointer) {
+            const nevent = nip19.neventEncode({
+              id: pointer.id,
+              relays: pointer.relays,
+              author: pointer.author,
+              kind: pointer.kind,
+            });
+            return `open ${nevent}`;
+          }
+
+          // AddressPointer (has kind, pubkey, identifier)
+          if ("kind" in pointer) {
+            const naddr = nip19.naddrEncode({
+              kind: pointer.kind,
+              pubkey: pointer.pubkey,
+              identifier: pointer.identifier,
+              relays: pointer.relays,
+            });
+            return `open ${naddr}`;
+          }
+        } catch (error) {
+          console.error("Failed to encode open command:", error);
+          // Fallback to raw pointer display
+          if ("id" in pointer) {
+            return `open ${pointer.id}`;
           }
         }
-        // Address pointer format: kind:pubkey:d-tag
-        if (props.address) {
-          return `open ${props.address}`;
-        }
+
         return "open";
       }
 
