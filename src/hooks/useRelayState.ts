@@ -12,6 +12,16 @@ export function useRelayState() {
 
   // Subscribe to relay state manager updates
   useEffect(() => {
+    // Initialize state immediately if not set (before subscription)
+    setState((prev) => {
+      if (prev.relayState) return prev;
+      return {
+        ...prev,
+        relayState: relayStateManager.getState(),
+      };
+    });
+
+    // Subscribe to updates
     const unsubscribe = relayStateManager.subscribe((relayState) => {
       setState((prev) => ({
         ...prev,
@@ -19,16 +29,10 @@ export function useRelayState() {
       }));
     });
 
-    // Initialize state if not set
-    if (!state.relayState) {
-      setState((prev) => ({
-        ...prev,
-        relayState: relayStateManager.getState(),
-      }));
-    }
-
     return unsubscribe;
-  }, [setState, state.relayState]);
+    // Only depend on setState - it's stable from Jotai
+    // Don't include state.relayState to avoid re-subscription loops
+  }, [setState]);
 
   const relayState = state.relayState;
 

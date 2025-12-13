@@ -311,6 +311,167 @@ describe("parseReqCommand", () => {
     });
   });
 
+  describe("generic tag flag (--tag, -T)", () => {
+    it("should parse single generic tag", () => {
+      const result = parseReqCommand(["--tag", "a", "30023:abc:article"]);
+      expect(result.filter["#a"]).toEqual(["30023:abc:article"]);
+    });
+
+    it("should parse short form -T", () => {
+      const result = parseReqCommand(["-T", "a", "30023:abc:article"]);
+      expect(result.filter["#a"]).toEqual(["30023:abc:article"]);
+    });
+
+    it("should parse comma-separated values", () => {
+      const result = parseReqCommand([
+        "--tag",
+        "a",
+        "30023:abc:article1,30023:abc:article2,30023:abc:article3",
+      ]);
+      expect(result.filter["#a"]).toEqual([
+        "30023:abc:article1",
+        "30023:abc:article2",
+        "30023:abc:article3",
+      ]);
+    });
+
+    it("should parse comma-separated values with spaces", () => {
+      const result = parseReqCommand([
+        "--tag",
+        "a",
+        "value1, value2, value3",
+      ]);
+      expect(result.filter["#a"]).toEqual(["value1", "value2", "value3"]);
+    });
+
+    it("should deduplicate values within single tag", () => {
+      const result = parseReqCommand([
+        "--tag",
+        "a",
+        "value1,value2,value1,value2",
+      ]);
+      expect(result.filter["#a"]).toEqual(["value1", "value2"]);
+    });
+
+    it("should accumulate values across multiple --tag flags for same letter", () => {
+      const result = parseReqCommand([
+        "--tag",
+        "a",
+        "value1",
+        "--tag",
+        "a",
+        "value2",
+        "--tag",
+        "a",
+        "value3",
+      ]);
+      expect(result.filter["#a"]).toEqual(["value1", "value2", "value3"]);
+    });
+
+    it("should deduplicate across multiple --tag flags", () => {
+      const result = parseReqCommand([
+        "--tag",
+        "a",
+        "value1,value2",
+        "--tag",
+        "a",
+        "value2,value3",
+      ]);
+      expect(result.filter["#a"]).toEqual(["value1", "value2", "value3"]);
+    });
+
+    it("should handle multiple different generic tags", () => {
+      const result = parseReqCommand([
+        "--tag",
+        "a",
+        "address1",
+        "--tag",
+        "r",
+        "https://example.com",
+        "--tag",
+        "g",
+        "geohash123",
+      ]);
+      expect(result.filter["#a"]).toEqual(["address1"]);
+      expect(result.filter["#r"]).toEqual(["https://example.com"]);
+      expect(result.filter["#g"]).toEqual(["geohash123"]);
+    });
+
+    it("should work alongside specific tag flags", () => {
+      const result = parseReqCommand([
+        "-t",
+        "nostr",
+        "--tag",
+        "a",
+        "30023:abc:article",
+        "-d",
+        "article1",
+      ]);
+      expect(result.filter["#t"]).toEqual(["nostr"]);
+      expect(result.filter["#a"]).toEqual(["30023:abc:article"]);
+      expect(result.filter["#d"]).toEqual(["article1"]);
+    });
+
+    it("should not conflict with -a author flag", () => {
+      const hex = "a".repeat(64);
+      const result = parseReqCommand([
+        "-a",
+        hex,
+        "--tag",
+        "a",
+        "30023:abc:article",
+      ]);
+      expect(result.filter.authors).toEqual([hex]);
+      expect(result.filter["#a"]).toEqual(["30023:abc:article"]);
+    });
+
+    it("should ignore --tag without letter argument", () => {
+      const result = parseReqCommand(["--tag"]);
+      expect(result.filter["#a"]).toBeUndefined();
+    });
+
+    it("should ignore --tag without value argument", () => {
+      const result = parseReqCommand(["--tag", "a"]);
+      expect(result.filter["#a"]).toBeUndefined();
+    });
+
+    it("should ignore --tag with multi-character letter", () => {
+      const result = parseReqCommand(["--tag", "abc", "value"]);
+      expect(result.filter["#abc"]).toBeUndefined();
+    });
+
+    it("should handle empty values in comma-separated list", () => {
+      const result = parseReqCommand(["--tag", "a", "value1,,value2,,"]);
+      expect(result.filter["#a"]).toEqual(["value1", "value2"]);
+    });
+
+    it("should handle whitespace in comma-separated values", () => {
+      const result = parseReqCommand([
+        "--tag",
+        "a",
+        " value1 , value2 , value3 ",
+      ]);
+      expect(result.filter["#a"]).toEqual(["value1", "value2", "value3"]);
+    });
+
+    it("should support any single-letter tag", () => {
+      const result = parseReqCommand([
+        "--tag",
+        "x",
+        "xval",
+        "--tag",
+        "y",
+        "yval",
+        "--tag",
+        "z",
+        "zval",
+      ]);
+      expect(result.filter["#x"]).toEqual(["xval"]);
+      expect(result.filter["#y"]).toEqual(["yval"]);
+      expect(result.filter["#z"]).toEqual(["zval"]);
+    });
+  });
+
   describe("edge cases", () => {
     it("should handle empty args", () => {
       const result = parseReqCommand([]);

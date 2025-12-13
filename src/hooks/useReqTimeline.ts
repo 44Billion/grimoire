@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import pool from "@/services/relay-pool";
 import type { NostrEvent, Filter } from "nostr-tools";
 import { useEventStore } from "applesauce-react/hooks";
+import { isNostrEvent } from "@/lib/type-guards";
 
 interface UseReqTimelineOptions {
   limit?: number;
@@ -84,15 +85,16 @@ export function useReqTimeline(
           if (!stream) {
             setLoading(false);
           }
-        } else {
+        } else if (isNostrEvent(response)) {
           // It's an event - store in memory, deduplicate by ID
-          const event = response as NostrEvent;
-          eventStore.add(event);
+          eventStore.add(response);
           setEventsMap((prev) => {
             const next = new Map(prev);
-            next.set(event.id, event);
+            next.set(response.id, response);
             return next;
           });
+        } else {
+          console.warn("REQ: Unexpected response type:", response);
         }
       },
       (err: Error) => {

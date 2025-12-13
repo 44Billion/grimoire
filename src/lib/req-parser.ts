@@ -42,7 +42,7 @@ function parseCommaSeparated<T>(
 /**
  * Parse REQ command arguments into a Nostr filter
  * Supports:
- * - Filters: -k (kinds), -a (authors), -l (limit), -e (#e), -p (#p), -t (#t), -d (#d)
+ * - Filters: -k (kinds), -a (authors), -l (limit), -e (#e), -p (#p), -t (#t), -d (#d), --tag/-T (any #tag)
  * - Time: --since, --until
  * - Search: --search
  * - Relays: wss://relay.com or relay.com (auto-adds wss://)
@@ -61,6 +61,9 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
   const pTags = new Set<string>();
   const tTags = new Set<string>();
   const dTags = new Set<string>();
+
+  // Map for arbitrary single-letter tags: letter -> Set<value>
+  const genericTags = new Map<string, Set<string>>();
 
   let closeOnEose = false;
 
@@ -256,6 +259,43 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
           break;
         }
 
+        case "-T":
+        case "--tag": {
+          // Generic tag filter: --tag <letter> <value>
+          // Supports comma-separated values: --tag a val1,val2
+          if (!nextArg) {
+            i++;
+            break;
+          }
+
+          // Next arg should be the single letter
+          const letter = nextArg;
+          const valueArg = args[i + 2];
+
+          // Validate: must be single letter
+          if (letter.length !== 1 || !valueArg) {
+            i++;
+            break;
+          }
+
+          // Get or create Set for this tag letter
+          let tagSet = genericTags.get(letter);
+          if (!tagSet) {
+            tagSet = new Set<string>();
+            genericTags.set(letter, tagSet);
+          }
+
+          // Parse comma-separated values
+          const addedAny = parseCommaSeparated(
+            valueArg,
+            (v) => v, // tag values are already strings
+            tagSet,
+          );
+
+          i += addedAny ? 3 : 1;
+          break;
+        }
+
         default:
           i++;
           break;
@@ -272,6 +312,13 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
   if (pTags.size > 0) filter["#p"] = Array.from(pTags);
   if (tTags.size > 0) filter["#t"] = Array.from(tTags);
   if (dTags.size > 0) filter["#d"] = Array.from(dTags);
+
+  // Convert generic tags to filter
+  for (const [letter, tagSet] of genericTags.entries()) {
+    if (tagSet.size > 0) {
+      (filter as any)[`#${letter}`] = Array.from(tagSet);
+    }
+  }
 
   return {
     filter,

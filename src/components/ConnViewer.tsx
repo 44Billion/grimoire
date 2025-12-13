@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { toast } from "sonner";
 import {
   Wifi,
   WifiOff,
@@ -23,11 +25,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import { isAuthPreference } from "@/lib/type-guards";
 
 /**
  * CONN viewer - displays connection and auth status for all relays in the pool
  */
-export default function ConnViewer() {
+function ConnViewer() {
   const { relays } = useRelayState();
 
   const relayList = Object.values(relays);
@@ -85,6 +88,7 @@ interface RelayCardProps {
 
 function RelayCard({ relay }: RelayCardProps) {
   const { setAuthPreference } = useRelayState();
+  const [isSavingPreference, setIsSavingPreference] = useState(false);
 
   const connectionIcon = () => {
     const iconMap = {
@@ -178,8 +182,15 @@ function RelayCard({ relay }: RelayCardProps) {
             {/* Auth Settings Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="text-muted-foreground hover:text-foreground transition-colors">
-                  <Settings className="size-4" />
+                <button
+                  disabled={isSavingPreference}
+                  className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSavingPreference ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Settings className="size-4" />
+                  )}
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -207,10 +218,22 @@ function RelayCard({ relay }: RelayCardProps) {
                 <DropdownMenuRadioGroup
                   value={currentPreference}
                   onValueChange={async (value) => {
-                    await setAuthPreference(
-                      relay.url,
-                      value as "always" | "never" | "ask",
-                    );
+                    if (!isAuthPreference(value)) {
+                      console.error("Invalid auth preference:", value);
+                      return;
+                    }
+
+                    setIsSavingPreference(true);
+                    try {
+                      await setAuthPreference(relay.url, value);
+                      toast.success("Preference saved");
+                    } catch (error) {
+                      toast.error(
+                        `Failed to save preference: ${error instanceof Error ? error.message : "Unknown error"}`,
+                      );
+                    } finally {
+                      setIsSavingPreference(false);
+                    }
                   }}
                 >
                   <DropdownMenuRadioItem value="ask">Ask</DropdownMenuRadioItem>
@@ -229,3 +252,5 @@ function RelayCard({ relay }: RelayCardProps) {
     </div>
   );
 }
+
+export default ConnViewer;

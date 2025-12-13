@@ -176,6 +176,11 @@ export const manPages: Record<string, ManPageEntry> = {
           "Filter by d-tag identifier (replaceable events). Supports comma-separated values: -d article1,article2",
       },
       {
+        flag: "-T, --tag <letter> <value>",
+        description:
+          "Filter by any single-letter tag (#<letter>). Supports comma-separated values: --tag a val1,val2. Works with any tag (a, r, g, L, etc.)",
+      },
+      {
         flag: "--since <time>",
         description:
           "Events after timestamp (unix timestamp or relative: 1h, 30m, 7d)",
@@ -211,6 +216,10 @@ export const manPages: Record<string, ManPageEntry> = {
       "req -k 1 --since 1h relay.damus.io   Get notes from last hour",
       "req -k 1 --close-on-eose             Get recent notes and close after EOSE",
       "req -t nostr,bitcoin -l 50           Get 50 events tagged #nostr or #bitcoin",
+      "req --tag a 30023:abc...:article     Get events referencing addressable event (#a tag)",
+      "req -T r https://example.com         Get events referencing URL (#r tag)",
+      "req -k 30023 --tag d article1,article2  Get specific replaceable events by d-tag",
+      "req --tag g geohash123 -l 20         Get 20 events with geolocation tag",
       "req --search bitcoin -k 1            Search notes for 'bitcoin'",
       "req -k 1 relay1.com relay2.com       Query multiple relays",
     ],

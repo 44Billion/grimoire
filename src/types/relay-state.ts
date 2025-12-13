@@ -26,9 +26,13 @@ export interface RelayNotice {
   timestamp: number;
 }
 
+export type ErrorType = "network" | "authentication" | "protocol" | "unknown";
+
 export interface RelayError {
   message: string;
   timestamp: number;
+  type: ErrorType;
+  dismissed?: boolean;
 }
 
 export interface RelayStats {
