@@ -41,7 +41,7 @@ export function Kind1Renderer({ event, depth = 0 }: BaseEventProps) {
               pubkey={parentEvent.pubkey}
               className="flex-shrink-0 text-accent"
             />
-            <span className="truncate">
+            <span className="truncate line-clamp-1">
               <RichText event={parentEvent} options={{ showMedia: false }} />
             </span>
           </div>
