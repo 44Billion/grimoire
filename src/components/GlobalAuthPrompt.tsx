@@ -25,7 +25,7 @@ function AuthToast({
   const [loading, setLoading] = useState(false);
 
   return (
-    <div className="bg-background border border-border rounded-lg shadow-lg p-4 min-w-[350px] max-w-[500px]">
+    <div className="bg-background border border-border shadow-lg p-4 min-w-[350px] max-w-[500px]">
       <div className="flex items-start gap-3">
         <Key className="size-5 text-yellow-500 flex-shrink-0 mt-0.5" />
         <div className="flex-1 space-y-3">
