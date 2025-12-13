@@ -1,6 +1,9 @@
 import { getKindInfo } from "@/constants/kinds";
 import { kinds } from "nostr-tools";
 import { NIPBadge } from "./NIPBadge";
+import { Copy, CopyCheck } from "lucide-react";
+import { Button } from "./ui/button";
+import { useCopy } from "@/hooks/useCopy";
 
 // NIP-01 Kind ranges
 const REPLACEABLE_START = 10000;
@@ -15,6 +18,11 @@ export default function KindRenderer({ kind }: { kind: number }) {
   const Icon = kindInfo?.icon;
   const category = getKindCategory(kind);
   const eventType = getEventType(kind);
+  const { copy, copied } = useCopy();
+
+  function copyKind() {
+    copy(String(kind));
+  }
 
   if (!kindInfo) {
     return (
@@ -47,21 +55,31 @@ export default function KindRenderer({ kind }: { kind: number }) {
       {/* Details Grid */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm items-center">
         <div className="text-muted-foreground">Kind Number</div>
-        <code className="font-mono">{kind}</code>
-
+        <div className="flex items-center">
+          <code className="font-mono">{kind}</code>
+          <Button
+            variant="copy"
+            className="h-4 w-4"
+            disabled={copied}
+            onClick={copyKind}
+          >
+            {copied ? (
+              <CopyCheck className="size-3" />
+            ) : (
+              <Copy className="size-3" />
+            )}
+          </Button>
+        </div>
         <div className="text-muted-foreground">Category</div>
         <div>{category}</div>
-
         <div className="text-muted-foreground">Event Type</div>
         <div>{eventType}</div>
-
         <div className="text-muted-foreground">Storage</div>
         <div>
           {kind >= EPHEMERAL_START && kind < EPHEMERAL_END
             ? "Not stored (ephemeral)"
             : "Stored by relays"}
         </div>
-
         {kind >= PARAMETERIZED_REPLACEABLE_START &&
           kind < PARAMETERIZED_REPLACEABLE_END && (
             <>
@@ -69,7 +87,6 @@ export default function KindRenderer({ kind }: { kind: number }) {
               <code className="font-mono text-xs">d-tag</code>
             </>
           )}
-
         {kindInfo.nip && (
           <>
             <div className="text-muted-foreground">Defined in</div>
