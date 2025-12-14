@@ -140,7 +140,9 @@ export function migrateState(state: any): GrimoireState {
   for (let version = startVersion; version < CURRENT_VERSION; version++) {
     const migration = migrations[version];
     if (migration) {
-      console.log(`[Migrations] Applying migration v${version} -> v${version + 1}`);
+      console.log(
+        `[Migrations] Applying migration v${version} -> v${version + 1}`,
+      );
       try {
         currentState = migration(currentState);
       } catch (error) {

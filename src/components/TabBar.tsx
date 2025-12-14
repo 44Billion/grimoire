@@ -30,7 +30,9 @@ export function TabBar() {
                 : "text-muted-foreground hover:text-foreground hover:bg-muted",
             )}
           >
-            {ws.label && ws.label.trim() ? `${ws.number} ${ws.label}` : ws.number}
+            {ws.label && ws.label.trim()
+              ? `${ws.number} ${ws.label}`
+              : ws.number}
           </button>
         ))}
         <Button

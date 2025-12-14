@@ -4,11 +4,7 @@ import { atomWithStorage, createJSONStorage } from "jotai/utils";
 import { GrimoireState, AppId, WindowInstance } from "@/types/app";
 import { useLocale } from "@/hooks/useLocale";
 import * as Logic from "./logic";
-import {
-  CURRENT_VERSION,
-  validateState,
-  migrateState,
-} from "@/lib/migrations";
+import { CURRENT_VERSION, validateState, migrateState } from "@/lib/migrations";
 import { toast } from "sonner";
 
 // Initial State Definition - Empty canvas on first load
