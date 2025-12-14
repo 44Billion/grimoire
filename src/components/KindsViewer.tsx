@@ -1,6 +1,6 @@
 import { getKindInfo } from "@/constants/kinds";
 import { kindRenderers } from "./nostr/kinds";
-import Command from "./Command";
+import { NIPBadge } from "./NIPBadge";
 
 // Dynamically derive supported kinds from renderer registry
 const SUPPORTED_KINDS = Object.keys(kindRenderers).map(Number);
@@ -63,14 +63,7 @@ export default function KindsViewer() {
                     <p className="text-sm text-muted-foreground mb-2">
                       {kindInfo?.description || "No description available"}
                     </p>
-                    {kindInfo?.nip && (
-                      <Command
-                        name={`NIP-${kindInfo.nip}`}
-                        description={`View specification`}
-                        appId="nip"
-                        props={{ number: kindInfo.nip }}
-                      />
-                    )}
+                    {kindInfo?.nip && <NIPBadge nipNumber={kindInfo.nip} />}
                   </div>
                 </div>
               </div>
