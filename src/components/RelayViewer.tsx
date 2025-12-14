@@ -73,7 +73,11 @@ export function RelayViewer({ url }: RelayViewerProps) {
           <h3 className="mb-3 font-semibold text-sm">Supported NIPs</h3>
           <div className="flex flex-wrap gap-2">
             {info.supported_nips.map((num: number) => (
-              <NIPBadge key={num} nipNumber={String(num)} showName={true} />
+              <NIPBadge
+                key={num}
+                nipNumber={String(num).padStart(2, "0")}
+                showName={true}
+              />
             ))}
           </div>
         </div>
