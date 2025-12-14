@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm:*)",
+      "Bash(git:*)",
+      "Bash(gh:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(tree:*)",
+      "Bash(awk:*)",
+      "Bash(sed:* -n *)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(tee:*)",
+      "Bash(source ~/.zshrc)",
+      "Bash(nvm use:*)",
+      "Bash(nvm install:*)",
+      "Bash(node --version:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
