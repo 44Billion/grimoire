@@ -100,6 +100,18 @@ export const manPages: Record<string, ManPageEntry> = {
     category: "System",
     defaultProps: {},
   },
+  nips: {
+    name: "nips",
+    section: "1",
+    synopsis: "nips",
+    description:
+      "Display all Nostr Implementation Possibilities (NIPs). Shows NIP numbers and titles, with links to view each specification document.",
+    examples: ["nips    View all NIPs"],
+    seeAlso: ["nip", "kinds", "man"],
+    appId: "nips",
+    category: "Documentation",
+    defaultProps: {},
+  },
   // debug: {
   //   name: "debug",
   //   section: "1",

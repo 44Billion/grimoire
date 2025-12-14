@@ -3,7 +3,7 @@ import type { GlobalRelayState } from "./relay-state";
 
 export type AppId =
   | "nip"
-  //| "nips"
+  | "nips"
   | "kind"
   | "kinds"
   | "man"

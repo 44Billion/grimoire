@@ -12,6 +12,7 @@ import DecodeViewer from "./DecodeViewer";
 import { RelayViewer } from "./RelayViewer";
 import KindRenderer from "./KindRenderer";
 import KindsViewer from "./KindsViewer";
+import NipsViewer from "./NipsViewer";
 import { DebugViewer } from "./DebugViewer";
 import ConnViewer from "./ConnViewer";
 
@@ -97,6 +98,9 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
         break;
       case "kinds":
         content = <KindsViewer />;
+        break;
+      case "nips":
+        content = <NipsViewer />;
         break;
       case "man":
         content = <ManPage cmd={window.props.cmd} />;

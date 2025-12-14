@@ -1,5 +1,6 @@
 import { getNIPInfo } from "../lib/nip-icons";
 import { useGrimoire } from "@/core/state";
+import { isNipDeprecated } from "@/constants/nips";
 
 export interface NIPBadgeProps {
   nipNumber: string;
@@ -23,6 +24,7 @@ export function NIPBadge({
   const name = nipInfo?.name || `NIP-${nipNumber}`;
   const description =
     nipInfo?.description || `Nostr Implementation Possibility ${nipNumber}`;
+  const isDeprecated = isNipDeprecated(nipNumber);
 
   const openNIP = () => {
     const paddedNum = nipNumber.toString().padStart(2, "0");
@@ -36,8 +38,10 @@ export function NIPBadge({
   return (
     <button
       onClick={openNIP}
-      className={`flex items-center gap-2 border bg-card px-2.5 py-1.5 text-sm hover:underline hover:decoration-dotted cursor-crosshair ${className}`}
-      title={description}
+      className={`flex items-center gap-2 border bg-card px-2.5 py-1.5 text-sm hover:underline hover:decoration-dotted cursor-crosshair ${
+        isDeprecated ? "opacity-50" : ""
+      } ${className}`}
+      title={isDeprecated ? `${description} (DEPRECATED)` : description}
     >
       <span className="text-muted-foreground">
         {`${showNIPPrefix ? "NIP-" : ""}${nipNumber}`}

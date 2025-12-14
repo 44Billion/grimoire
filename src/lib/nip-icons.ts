@@ -42,6 +42,7 @@ import {
   Compass,
   Gamepad2,
   type LucideIcon,
+  Signature,
 } from "lucide-react";
 
 export interface NIPInfo {
@@ -54,51 +55,57 @@ export interface NIPInfo {
 
 export const NIP_METADATA: Record<number | string, NIPInfo> = {
   // Core Protocol
-  1: {
+  "01": {
     number: 1,
     name: "Basic Protocol",
     description: "Basic protocol flow description",
     icon: FileText,
   },
-  2: {
+  "02": {
     number: 2,
     name: "Follow List",
     description: "Contact list and petnames",
     icon: Users,
   },
-  4: {
+  "03": {
+    number: 3,
+    name: "OpenTimestamps Attestations for Events",
+    description: "A proof of any event",
+    icon: Signature,
+  },
+  "04": {
     number: 4,
     name: "Encrypted DMs",
     description: "Encrypted direct messages",
     icon: Mail,
     deprecated: true,
   },
-  5: {
+  "05": {
     number: 5,
     name: "Mapping Nostr keys to DNS",
     description: "Mapping Nostr keys to DNS-based internet identifiers",
     icon: Globe,
   },
-  6: {
+  "06": {
     number: 6,
     name: "Key Derivation",
     description: "Basic key derivation from mnemonic seed phrase",
     icon: Key,
   },
-  7: {
+  "07": {
     number: 7,
     name: "window.nostr",
     description: "window.nostr capability for web browsers",
     icon: Globe,
   },
-  8: {
+  "08": {
     number: 8,
     name: "Mentions",
     description: "Handling mentions",
     icon: Tag,
     deprecated: true,
   },
-  9: {
+  "09": {
     number: 9,
     name: "Event Deletion",
     description: "Event deletion",

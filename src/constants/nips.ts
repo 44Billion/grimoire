@@ -2,6 +2,11 @@
  * List of valid NIPs from https://github.com/nostr-protocol/nips
  * Includes both numeric (01-99) and hexadecimal (7D, A0, etc.) identifiers
  */
+/**
+ * Deprecated NIPs that are no longer recommended for use
+ */
+export const DEPRECATED_NIPS = ["04", "08", "26", "96"] as const;
+
 export const VALID_NIPS = [
   // Numeric NIPs
   "01",
@@ -200,4 +205,8 @@ export function getNipUrl(nipId: string): string {
 
 export function getNipTitle(nipId: string): string {
   return NIP_TITLES[nipId] || `NIP-${nipId}`;
+}
+
+export function isNipDeprecated(nipId: string): boolean {
+  return DEPRECATED_NIPS.includes(nipId as any);
 }
