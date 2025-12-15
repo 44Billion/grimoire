@@ -35,6 +35,7 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   7: Kind7Renderer, // Reaction
   9: Kind9Renderer, // Chat Message (NIP-C7)
   16: RepostRenderer, // Generic Repost
+  17: Kind7Renderer, // Reaction (NIP-25)
   20: Kind20Renderer, // Picture (NIP-68)
   21: Kind21Renderer, // Video Event (NIP-71)
   22: Kind22Renderer, // Short Video (NIP-71)

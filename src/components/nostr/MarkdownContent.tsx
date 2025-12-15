@@ -154,6 +154,8 @@ export function MarkdownContent({
   content,
   canonicalUrl = null,
 }: MarkdownContentProps) {
+  const { addWindow } = useGrimoire();
+
   // Helper to resolve relative URLs using canonical URL as base
   const resolveUrl = useMemo(
     () =>
@@ -214,7 +216,7 @@ export function MarkdownContent({
               />
             );
           },
-          // Handle nostr: links
+          // Handle links: nostr mentions, NIP links, and regular URLs
           a: ({ href, children, ...props }) => {
             if (!href) return null;
 
@@ -223,11 +225,42 @@ export function MarkdownContent({
               return <NostrMention href={href} />;
             }
 
-            // Regular links
+            // Check if it's a relative NIP link (e.g., "./01.md" or "01.md")
+            const isRelativeLink =
+              !href.startsWith("http://") && !href.startsWith("https://");
+            if (
+              isRelativeLink &&
+              (href.endsWith(".md") || href.includes(".md#"))
+            ) {
+              // Extract NIP number from various formats (numeric 1-3 digits or hex A0-FF)
+              const nipMatch = href.match(/([0-9A-F]{1,3})\.md/i);
+              if (nipMatch) {
+                const nipNumber = nipMatch[1].toUpperCase();
+                return (
+                  <a
+                    href={`#nip-${nipNumber}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      addWindow(
+                        "nip",
+                        { number: nipNumber },
+                        `NIP ${nipNumber}`,
+                      );
+                    }}
+                    className="text-accent underline decoration-dotted cursor-crosshair hover:text-accent/80"
+                  >
+                    {children}
+                  </a>
+                );
+              }
+            }
+
+            // Regular links with break-all for long URLs
             return (
               <a
                 href={href}
-                className="text-accent underline decoration-dotted"
+                className="text-accent underline decoration-dotted break-all"
                 target="_blank"
                 rel="noopener noreferrer"
                 {...props}
