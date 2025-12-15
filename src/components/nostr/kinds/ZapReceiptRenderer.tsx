@@ -27,13 +27,13 @@ export function Kind9735Renderer({ event }: BaseEventProps) {
   const zapAmount = useMemo(() => getZapAmount(event), [event]);
   const zapRequest = useMemo(() => getZapRequest(event), [event]);
 
-  // Get zapped content pointer (e tag or a tag)
+  // Get zapped content pointers (e tag and/or a tag)
   const eventPointer = useMemo(() => getZapEventPointer(event), [event]);
   const addressPointer = useMemo(() => getZapAddressPointer(event), [event]);
-  const pointer = eventPointer || addressPointer;
 
-  // Fetch the zapped event
-  const zappedEvent = useNostrEvent(pointer || undefined);
+  // Fetch both events separately
+  const zappedEvent = useNostrEvent(eventPointer || undefined);
+  const zappedAddress = useNostrEvent(addressPointer || undefined);
 
   // Get zap comment from request
   const zapComment = useMemo(() => {
@@ -92,10 +92,24 @@ export function Kind9735Renderer({ event }: BaseEventProps) {
           </div>
         )}
 
-        {/* Loading state */}
-        {pointer && !zappedEvent && (
+        {/* Embedded zapped address (if loaded and different from event) */}
+        {zappedAddress && (
+          <div className="border border-muted">
+            <EmbeddedEvent event={zappedAddress} />
+          </div>
+        )}
+
+        {/* Loading state for event pointer */}
+        {eventPointer && !zappedEvent && (
           <div className="border border-muted p-2 text-xs text-muted-foreground">
             Loading zapped event...
+          </div>
+        )}
+
+        {/* Loading state for address pointer */}
+        {addressPointer && !zappedAddress && (
+          <div className="border border-muted p-2 text-xs text-muted-foreground">
+            Loading zapped address...
           </div>
         )}
       </div>
