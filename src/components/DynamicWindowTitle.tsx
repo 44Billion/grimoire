@@ -3,6 +3,7 @@ import { WindowInstance } from "@/types/app";
 import { useProfile } from "@/hooks/useProfile";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
 import { useRelayState } from "@/hooks/useRelayState";
+import { useGrimoire } from "@/core/state";
 import { getKindName, getKindIcon } from "@/constants/kinds";
 import { getNipTitle } from "@/constants/nips";
 import {
@@ -21,6 +22,7 @@ import {
 } from "@/lib/filter-formatters";
 import { getEventDisplayTitle } from "@/lib/event-title";
 import { UserName } from "./nostr/UserName";
+import { getTagValues } from "@/lib/nostr-utils";
 
 export interface WindowTitleData {
   title: string | ReactElement;
@@ -29,45 +31,64 @@ export interface WindowTitleData {
 }
 
 /**
- * Format profile names with prefix
+ * Format profile names with prefix, handling $me and $contacts aliases
  * @param prefix - Prefix to use (e.g., 'by ', '@ ')
- * @param pubkeys - Array of pubkeys to format
+ * @param pubkeys - Array of pubkeys to format (may include $me or $contacts)
  * @param profiles - Array of corresponding profile metadata
+ * @param accountProfile - Profile of active account for $me resolution
+ * @param contactsCount - Number of contacts for $contacts display
  * @returns Formatted string like "by Alice, Bob & 3 others" or null if no pubkeys
  */
 function formatProfileNames(
   prefix: string,
   pubkeys: string[],
   profiles: (ProfileContent | undefined)[],
+  accountProfile?: ProfileContent,
+  contactsCount?: number,
 ): string | null {
   if (!pubkeys.length) return null;
 
   const names: string[] = [];
-  const [pubkey1, pubkey2] = pubkeys;
-  const [profile1, profile2] = profiles;
+  let processedCount = 0;
 
-  // Add first profile
-  if (profile1) {
-    const name = profile1.display_name || profile1.name;
-    names.push(name || `${pubkey1.slice(0, 8)}...`);
-  } else if (pubkey1) {
-    names.push(`${pubkey1.slice(0, 8)}...`);
-  }
+  // Process first two pubkeys (may be aliases or real pubkeys)
+  for (let i = 0; i < Math.min(2, pubkeys.length); i++) {
+    const pubkey = pubkeys[i];
+    const profile = profiles[i];
 
-  // Add second profile if exists
-  if (pubkeys.length > 1) {
-    if (profile2) {
-      const name = profile2.display_name || profile2.name;
-      names.push(name || `${pubkey2.slice(0, 8)}...`);
-    } else if (pubkey2) {
-      names.push(`${pubkey2.slice(0, 8)}...`);
+    if (pubkey === "$me") {
+      // Show account's name or "You"
+      if (accountProfile) {
+        const name = accountProfile.display_name || accountProfile.name || "You";
+        names.push(name);
+      } else {
+        names.push("You");
+      }
+      processedCount++;
+    } else if (pubkey === "$contacts") {
+      // Show "Your Contacts" with count
+      if (contactsCount !== undefined && contactsCount > 0) {
+        names.push(`Your Contacts (${contactsCount})`);
+      } else {
+        names.push("Your Contacts");
+      }
+      processedCount++;
+    } else {
+      // Regular pubkey
+      if (profile) {
+        const name = profile.display_name || profile.name;
+        names.push(name || `${pubkey.slice(0, 8)}...`);
+      } else {
+        names.push(`${pubkey.slice(0, 8)}...`);
+      }
+      processedCount++;
     }
   }
 
-  // Add "& X other(s)" if more than 2
+  // Add "& X more" if more than 2
   if (pubkeys.length > 2) {
     const othersCount = pubkeys.length - 2;
-    names.push(`& ${othersCount} other${othersCount > 1 ? "s" : ""}`);
+    names.push(`& ${othersCount} more`);
   }
 
   return names.length > 0 ? `${prefix}${names.join(", ")}` : null;
@@ -166,7 +187,25 @@ function generateRawCommand(appId: string, props: any): string {
           parts.push(`-t ${props.filter["#t"].slice(0, 2).join(",")}`);
         }
         if (props.filter.authors?.length) {
-          parts.push(`-a ${props.filter.authors.slice(0, 2).join(",")}`);
+          // Keep original aliases in tooltip for clarity
+          const authorDisplay = props.filter.authors
+            .slice(0, 2)
+            .join(",");
+          parts.push(`-a ${authorDisplay}`);
+        }
+        if (props.filter["#p"]?.length) {
+          // Keep original aliases in tooltip for clarity
+          const pTagDisplay = props.filter["#p"]
+            .slice(0, 2)
+            .join(",");
+          parts.push(`-p ${pTagDisplay}`);
+        }
+        if (props.filter["#P"]?.length) {
+          // Keep original aliases in tooltip for clarity
+          const pTagUpperDisplay = props.filter["#P"]
+            .slice(0, 2)
+            .join(",");
+          parts.push(`-P ${pTagUpperDisplay}`);
         }
         return parts.join(" ");
       }
@@ -193,6 +232,24 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
 
   // Get relay state for conn viewer
   const { relays } = useRelayState();
+
+  // Get account state for alias resolution
+  const { state } = useGrimoire();
+  const activeAccount = state.activeAccount;
+  const accountPubkey = activeAccount?.pubkey;
+
+  // Fetch account profile for $me display
+  const accountProfile = useProfile(accountPubkey || "");
+
+  // Fetch contact list for $contacts display
+  const contactListEvent = useNostrEvent(
+    accountPubkey ? { kind: 3, pubkey: accountPubkey, identifier: "" } : undefined,
+  );
+
+  // Extract contacts count from kind 3 event
+  const contactsCount = contactListEvent
+    ? getTagValues(contactListEvent, "p").filter((pk) => pk.length === 64).length
+    : 0;
 
   // Profile titles
   const profilePubkey = appId === "profile" ? props.pubkey : null;
@@ -258,6 +315,12 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
   const tagged1Profile = useProfile(tagged1Pubkey);
   const tagged2Profile = useProfile(tagged2Pubkey);
 
+  const reqTaggedUppercase =
+    appId === "req" && props.filter?.["#P"] ? props.filter["#P"] : [];
+  const [taggedUpper1Pubkey, taggedUpper2Pubkey] = reqTaggedUppercase;
+  const taggedUpper1Profile = useProfile(taggedUpper1Pubkey);
+  const taggedUpper2Profile = useProfile(taggedUpper2Pubkey);
+
   const reqHashtags =
     appId === "req" && props.filter?.["#t"] ? props.filter["#t"] : [];
 
@@ -289,11 +352,26 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
 
     // 3. Mentions (#p)
     if (filter["#p"] && filter["#p"].length > 0) {
-      const taggedText = formatProfileNames("@", reqTagged, [
-        tagged1Profile,
-        tagged2Profile,
-      ]);
+      const taggedText = formatProfileNames(
+        "@",
+        reqTagged,
+        [tagged1Profile, tagged2Profile],
+        accountProfile,
+        contactsCount,
+      );
       if (taggedText) parts.push(taggedText);
+    }
+
+    // 3b. Zap Senders (#P)
+    if (filter["#P"] && filter["#P"].length > 0) {
+      const zapSendersText = formatProfileNames(
+        "⚡ from ",
+        reqTaggedUppercase,
+        [taggedUpper1Profile, taggedUpper2Profile],
+        accountProfile,
+        contactsCount,
+      );
+      if (zapSendersText) parts.push(zapSendersText);
     }
 
     // 4. Event References (#e) - NEW
@@ -310,10 +388,13 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
 
     // 6. Authors
     if (filter.authors && filter.authors.length > 0) {
-      const authorsText = formatProfileNames("by ", reqAuthors, [
-        author1Profile,
-        author2Profile,
-      ]);
+      const authorsText = formatProfileNames(
+        "by ",
+        reqAuthors,
+        [author1Profile, author2Profile],
+        accountProfile,
+        contactsCount,
+      );
       if (authorsText) parts.push(authorsText);
     }
 
@@ -323,13 +404,13 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
       if (timeRangeText) parts.push(`📅 ${timeRangeText}`);
     }
 
-    // 8. Generic Tags - NEW (a-z, A-Z filters excluding e, p, t, d)
+    // 8. Generic Tags - NEW (a-z, A-Z filters excluding e, p, P, t, d)
     const genericTags = Object.entries(filter)
       .filter(
         ([key]) =>
           key.startsWith("#") &&
           key.length === 2 &&
-          !["#e", "#p", "#t", "#d"].includes(key),
+          !["#e", "#p", "#P", "#t", "#d"].includes(key),
       )
       .map(([key, values]) => ({ letter: key[1], values: values as string[] }));
 
@@ -349,11 +430,16 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
     props,
     reqAuthors,
     reqTagged,
+    reqTaggedUppercase,
     reqHashtags,
     author1Profile,
     author2Profile,
     tagged1Profile,
     tagged2Profile,
+    taggedUpper1Profile,
+    taggedUpper2Profile,
+    accountProfile,
+    contactsCount,
   ]);
 
   // Encode/Decode titles

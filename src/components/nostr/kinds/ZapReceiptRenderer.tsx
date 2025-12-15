@@ -13,6 +13,7 @@ import {
 import { useNostrEvent } from "@/hooks/useNostrEvent";
 import { KindRenderer } from "./index";
 import { RichText } from "../RichText";
+import { EventCardSkeleton } from "@/components/ui/skeleton";
 
 /**
  * Renderer for Kind 9735 - Zap Receipts
@@ -85,31 +86,25 @@ export function Kind9735Renderer({ event }: BaseEventProps) {
           </div>
         )}
 
-        {/* Embedded zapped event (if loaded) */}
-        {zappedEvent && (
-          <div className="border border-muted">
-            <EmbeddedEvent event={zappedEvent} />
+        {/* Zapped content with loading states */}
+        {addressPointer && !zappedAddress && (
+          <div className="border border-muted p-2">
+            <EventCardSkeleton variant="compact" showActions={false} />
           </div>
         )}
-
-        {/* Embedded zapped address (if loaded and different from event) */}
-        {zappedAddress && (
+        {addressPointer && zappedAddress && (
           <div className="border border-muted">
             <EmbeddedEvent event={zappedAddress} />
           </div>
         )}
-
-        {/* Loading state for event pointer */}
-        {eventPointer && !zappedEvent && (
-          <div className="border border-muted p-2 text-xs text-muted-foreground">
-            Loading zapped event...
+        {!addressPointer && eventPointer && !zappedEvent && (
+          <div className="border border-muted p-2">
+            <EventCardSkeleton variant="compact" showActions={false} />
           </div>
         )}
-
-        {/* Loading state for address pointer */}
-        {addressPointer && !zappedAddress && (
-          <div className="border border-muted p-2 text-xs text-muted-foreground">
-            Loading zapped address...
+        {!addressPointer && eventPointer && zappedEvent && (
+          <div className="border border-muted">
+            <EmbeddedEvent event={zappedEvent} />
           </div>
         )}
       </div>

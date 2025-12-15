@@ -151,7 +151,7 @@ export const manPages: Record<string, ManPageEntry> = {
     section: "1",
     synopsis: "req [options] [relay...]",
     description:
-      "Query Nostr relays using filters. Constructs and executes Nostr REQ messages to fetch events matching specified criteria. Supports filtering by kind, author, tags, time ranges, and content search.",
+      "Query Nostr relays using filters. Constructs and executes Nostr REQ messages to fetch events matching specified criteria. Supports filtering by kind, author, tags, time ranges, and content search. Use $me and $contacts aliases for queries based on your active account.",
     options: [
       {
         flag: "-k, --kind <number>",
@@ -159,9 +159,9 @@ export const manPages: Record<string, ManPageEntry> = {
           "Filter by event kind (e.g., 0=metadata, 1=note, 7=reaction). Supports comma-separated values: -k 1,3,7",
       },
       {
-        flag: "-a, --author <npub|hex|nip05>",
+        flag: "-a, --author <npub|hex|nip05|$me|$contacts>",
         description:
-          "Filter by author pubkey (supports npub, hex, NIP-05 identifier, or bare domain). Supports comma-separated values: -a npub1...,user@domain.com",
+          "Filter by author pubkey (supports npub, hex, NIP-05 identifier, bare domain, $me, or $contacts). Supports comma-separated values: -a npub1...,user@domain.com,$me",
       },
       {
         flag: "-l, --limit <number>",
@@ -173,9 +173,14 @@ export const manPages: Record<string, ManPageEntry> = {
           "Filter by referenced event ID (#e tag). Supports comma-separated values: -e id1,id2,id3",
       },
       {
-        flag: "-p <npub|hex|nip05>",
+        flag: "-p <npub|hex|nip05|$me|$contacts>",
         description:
-          "Filter by mentioned pubkey (#p tag, supports npub, hex, NIP-05, or bare domain). Supports comma-separated values: -p npub1...,npub2...",
+          "Filter by mentioned pubkey (#p tag, supports npub, hex, NIP-05, bare domain, $me, or $contacts). Supports comma-separated values: -p npub1...,npub2...,$contacts",
+      },
+      {
+        flag: "-P <npub|hex|nip05|$me|$contacts>",
+        description:
+          "Filter by zap sender (#P tag, supports npub, hex, NIP-05, bare domain, $me, or $contacts). Supports comma-separated values: -P npub1...,npub2...,$me. Useful for finding zaps sent by specific users.",
       },
       {
         flag: "-t <hashtag>",
@@ -224,6 +229,13 @@ export const manPages: Record<string, ManPageEntry> = {
       "req -k 1 -a user@domain.com          Get notes from NIP-05 identifier",
       "req -k 1 -a dergigi.com              Get notes from bare domain (resolves to _@dergigi.com)",
       "req -k 1 -a npub1...,npub2...        Get notes from multiple authors",
+      "req -a $me                           Get all events authored by you",
+      "req -k 1 -a $contacts --since 24h    Get notes from your contacts in last 24h",
+      "req -p $me -k 1,7                    Get replies and reactions to your posts",
+      "req -k 1 -a $me -a $contacts         Get notes from you and your contacts",
+      "req -k 9735 -p $me --since 7d        Get zaps you received in last 7 days",
+      "req -k 9735 -P $me --since 7d        Get zaps you sent in last 7 days",
+      "req -k 9735 -P $contacts             Get zaps sent by your contacts",
       "req -k 1 -p verbiricha@habla.news    Get notes mentioning NIP-05 user",
       "req -k 1 --since 1h relay.damus.io   Get notes from last hour",
       "req -k 1 --close-on-eose             Get recent notes and close after EOSE",
@@ -250,6 +262,7 @@ export const manPages: Record<string, ManPageEntry> = {
       const allNip05 = [
         ...(parsed.nip05Authors || []),
         ...(parsed.nip05PTags || []),
+        ...(parsed.nip05PTagsUppercase || []),
       ];
 
       if (allNip05.length > 0) {
@@ -273,6 +286,17 @@ export const manPages: Record<string, ManPageEntry> = {
             if (pubkey) {
               if (!parsed.filter["#p"]) parsed.filter["#p"] = [];
               parsed.filter["#p"].push(pubkey);
+            }
+          }
+        }
+
+        // Add resolved #P tags to filter
+        if (parsed.nip05PTagsUppercase) {
+          for (const nip05 of parsed.nip05PTagsUppercase) {
+            const pubkey = resolved.get(nip05);
+            if (pubkey) {
+              if (!parsed.filter["#P"]) parsed.filter["#P"] = [];
+              parsed.filter["#P"].push(pubkey);
             }
           }
         }

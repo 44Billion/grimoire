@@ -32,7 +32,9 @@ export function Kind1Renderer({ event, depth = 0 }: BaseEventProps) {
   return (
     <BaseEventContainer event={event}>
       {/* Show parent message loading state */}
-      {pointer && !parentEvent && <InlineReplySkeleton icon={<Reply />} />}
+      {pointer && !parentEvent && (
+        <InlineReplySkeleton icon={<Reply className="size-3" />} />
+      )}
 
       {/* Show parent message once loaded */}
       {pointer && parentEvent && (

@@ -39,7 +39,7 @@ export function Kind9Renderer({ event, depth = 0 }: BaseEventProps) {
     <BaseEventContainer event={event}>
       {/* Show quoted message loading state */}
       {quotedEventId && !parentEvent && (
-        <InlineReplySkeleton icon={<MessageCircle />} />
+        <InlineReplySkeleton icon={<MessageCircle className="size-3" />} />
       )}
 
       {/* Show quoted parent message once loaded (only if it's a chat message) */}

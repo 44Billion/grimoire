@@ -137,6 +137,7 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
             closeOnEose={window.props.closeOnEose}
             nip05Authors={window.props.nip05Authors}
             nip05PTags={window.props.nip05PTags}
+            needsAccount={window.props.needsAccount}
           />
         );
         break;

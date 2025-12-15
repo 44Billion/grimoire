@@ -21,12 +21,16 @@ export function Kind1063Renderer({ event }: BaseEventProps) {
   const isImage = isImageMime(metadata.m);
   const isVideo = isVideoMime(metadata.m);
   const isAudio = isAudioMime(metadata.m);
+  const isAPK = metadata.m === "application/vnd.android.package-archive";
 
   // Get additional metadata
-  const fileName =
-    event.tags.find((t) => t[0] === "name")?.[1] || "Unknown file";
-  const summary =
-    event.tags.find((t) => t[0] === "summary")?.[1] || event.content;
+  // For APKs, use: name tag -> content (package identifier) -> fallback
+  // For others, use: name tag -> fallback
+  const nameTag = event.tags.find((t) => t[0] === "name")?.[1];
+  const summaryTag = event.tags.find((t) => t[0] === "summary")?.[1];
+
+  const fileName = nameTag || (isAPK ? event.content : null) || "Unknown file";
+  const summary = summaryTag || (!nameTag && !isAPK ? event.content : null);
 
   return (
     <BaseEventContainer event={event}>
@@ -58,24 +62,15 @@ export function Kind1063Renderer({ event }: BaseEventProps) {
         ) : (
           /* Non-media file preview */
           <div className="flex items-center gap-3 p-4 border border-border rounded-lg bg-muted/20">
-            <FileText className="w-8 h-8 text-muted-foreground" />
+            <FileText className="w-8 h-8 text-muted-foreground flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="font-medium truncate">{fileName}</p>
               {metadata.m && (
-                <p className="text-xs text-muted-foreground">{metadata.m}</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {metadata.m}
+                </p>
               )}
             </div>
-            {metadata.url && (
-              <a
-                href={metadata.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-sm text-primary hover:underline"
-              >
-                <Download className="w-4 h-4" />
-                Download
-              </a>
-            )}
           </div>
         )}
 
@@ -84,7 +79,7 @@ export function Kind1063Renderer({ event }: BaseEventProps) {
           {metadata.m && (
             <>
               <span className="text-muted-foreground">Type</span>
-              <code className="font-mono text-xs">{metadata.m}</code>
+              <code className="font-mono text-xs truncate">{metadata.m}</code>
             </>
           )}
           {metadata.size && (
@@ -109,6 +104,19 @@ export function Kind1063Renderer({ event }: BaseEventProps) {
 
         {/* Description/Summary */}
         {summary && <RichText content={summary} className="text-sm" />}
+
+        {/* Download button */}
+        {metadata.url && (
+          <a
+            href={metadata.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-primary border border-primary/20 rounded-lg hover:bg-primary/10 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Download
+          </a>
+        )}
       </div>
     </BaseEventContainer>
   );

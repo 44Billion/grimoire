@@ -14,6 +14,8 @@ export interface ParsedReqCommand {
   closeOnEose?: boolean;
   nip05Authors?: string[]; // NIP-05 identifiers that need async resolution
   nip05PTags?: string[]; // NIP-05 identifiers for #p tags that need async resolution
+  nip05PTagsUppercase?: string[]; // NIP-05 identifiers for #P tags that need async resolution
+  needsAccount?: boolean; // True if filter contains $me or $contacts aliases
 }
 
 /**
@@ -43,7 +45,7 @@ function parseCommaSeparated<T>(
 /**
  * Parse REQ command arguments into a Nostr filter
  * Supports:
- * - Filters: -k (kinds), -a (authors: hex/npub/nprofile/NIP-05), -l (limit), -e (#e), -p (#p: hex/npub/nprofile/NIP-05), -t (#t), -d (#d), --tag/-T (any #tag)
+ * - Filters: -k (kinds), -a (authors: hex/npub/nprofile/NIP-05), -l (limit), -e (#e), -p (#p: hex/npub/nprofile/NIP-05), -P (#P: hex/npub/nprofile/NIP-05), -t (#t), -d (#d), --tag/-T (any #tag)
  * - Time: --since, --until
  * - Search: --search
  * - Relays: wss://relay.com or relay.com (auto-adds wss://), nprofile relay hints are automatically extracted
@@ -54,12 +56,14 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
   const relays: string[] = [];
   const nip05Authors = new Set<string>();
   const nip05PTags = new Set<string>();
+  const nip05PTagsUppercase = new Set<string>();
 
   // Use sets for deduplication during accumulation
   const kinds = new Set<number>();
   const authors = new Set<string>();
   const eventIds = new Set<string>();
   const pTags = new Set<string>();
+  const pTagsUppercase = new Set<string>();
   const tTags = new Set<string>();
   const dTags = new Set<string>();
 
@@ -114,7 +118,7 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
 
         case "-a":
         case "--author": {
-          // Support comma-separated authors: -a npub1...,npub2...,user@domain.com
+          // Support comma-separated authors: -a npub1...,npub2...,user@domain.com,$me,$contacts
           if (!nextArg) {
             i++;
             break;
@@ -123,8 +127,12 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
           const values = nextArg.split(",").map((a) => a.trim());
           for (const authorStr of values) {
             if (!authorStr) continue;
-            // Check if it's a NIP-05 identifier
-            if (isNip05(authorStr)) {
+            // Check for $me and $contacts aliases
+            if (authorStr === "$me" || authorStr === "$contacts") {
+              authors.add(authorStr);
+              addedAny = true;
+            } else if (isNip05(authorStr)) {
+              // Check if it's a NIP-05 identifier
               nip05Authors.add(authorStr);
               addedAny = true;
             } else {
@@ -171,7 +179,7 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
         }
 
         case "-p": {
-          // Support comma-separated pubkeys: -p npub1...,npub2...,user@domain.com
+          // Support comma-separated pubkeys: -p npub1...,npub2...,user@domain.com,$me,$contacts
           if (!nextArg) {
             i++;
             break;
@@ -180,14 +188,53 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
           const values = nextArg.split(",").map((p) => p.trim());
           for (const pubkeyStr of values) {
             if (!pubkeyStr) continue;
-            // Check if it's a NIP-05 identifier
-            if (isNip05(pubkeyStr)) {
+            // Check for $me and $contacts aliases
+            if (pubkeyStr === "$me" || pubkeyStr === "$contacts") {
+              pTags.add(pubkeyStr);
+              addedAny = true;
+            } else if (isNip05(pubkeyStr)) {
+              // Check if it's a NIP-05 identifier
               nip05PTags.add(pubkeyStr);
               addedAny = true;
             } else {
               const result = parseNpubOrHex(pubkeyStr);
               if (result.pubkey) {
                 pTags.add(result.pubkey);
+                addedAny = true;
+                // Add relay hints from nprofile (normalized)
+                if (result.relays) {
+                  relays.push(...result.relays.map(normalizeRelayURL));
+                }
+              }
+            }
+          }
+          i += addedAny ? 2 : 1;
+          break;
+        }
+
+        case "-P": {
+          // Uppercase P tag (e.g., zap sender in kind 9735)
+          // Support comma-separated pubkeys: -P npub1...,npub2...,$me,$contacts
+          if (!nextArg) {
+            i++;
+            break;
+          }
+          let addedAny = false;
+          const values = nextArg.split(",").map((p) => p.trim());
+          for (const pubkeyStr of values) {
+            if (!pubkeyStr) continue;
+            // Check for $me and $contacts aliases
+            if (pubkeyStr === "$me" || pubkeyStr === "$contacts") {
+              pTagsUppercase.add(pubkeyStr);
+              addedAny = true;
+            } else if (isNip05(pubkeyStr)) {
+              // Check if it's a NIP-05 identifier
+              nip05PTagsUppercase.add(pubkeyStr);
+              addedAny = true;
+            } else {
+              const result = parseNpubOrHex(pubkeyStr);
+              if (result.pubkey) {
+                pTagsUppercase.add(result.pubkey);
                 addedAny = true;
                 // Add relay hints from nprofile (normalized)
                 if (result.relays) {
@@ -319,6 +366,7 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
   if (authors.size > 0) filter.authors = Array.from(authors);
   if (eventIds.size > 0) filter["#e"] = Array.from(eventIds);
   if (pTags.size > 0) filter["#p"] = Array.from(pTags);
+  if (pTagsUppercase.size > 0) filter["#P"] = Array.from(pTagsUppercase);
   if (tTags.size > 0) filter["#t"] = Array.from(tTags);
   if (dTags.size > 0) filter["#d"] = Array.from(dTags);
 
@@ -329,12 +377,22 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
     }
   }
 
+  // Check if filter contains $me or $contacts aliases
+  const needsAccount =
+    filter.authors?.some((a) => a === "$me" || a === "$contacts") ||
+    filter["#p"]?.some((p) => p === "$me" || p === "$contacts") ||
+    filter["#P"]?.some((p) => p === "$me" || p === "$contacts") ||
+    false;
+
   return {
     filter,
     relays: relays.length > 0 ? relays : undefined,
     closeOnEose,
     nip05Authors: nip05Authors.size > 0 ? Array.from(nip05Authors) : undefined,
     nip05PTags: nip05PTags.size > 0 ? Array.from(nip05PTags) : undefined,
+    nip05PTagsUppercase:
+      nip05PTagsUppercase.size > 0 ? Array.from(nip05PTagsUppercase) : undefined,
+    needsAccount,
   };
 }
 

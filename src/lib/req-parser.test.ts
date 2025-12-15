@@ -247,6 +247,98 @@ describe("parseReqCommand", () => {
     });
   });
 
+  describe("uppercase P tag flag (-P)", () => {
+    it("should parse hex pubkey for #P tag", () => {
+      const hex = "a".repeat(64);
+      const result = parseReqCommand(["-P", hex]);
+      expect(result.filter["#P"]).toEqual([hex]);
+    });
+
+    it("should parse npub for #P tag", () => {
+      const npub =
+        "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6";
+      const result = parseReqCommand(["-P", npub]);
+      expect(result.filter["#P"]).toEqual([
+        "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+      ]);
+    });
+
+    it("should parse nprofile for #P tag", () => {
+      const nprofile =
+        "nprofile1qqsrhuxx8l9ex335q7he0f09aej04zpazpl0ne2cgukyawd24mayt8gpp4mhxue69uhhytnc9e3k7mgpz4mhxue69uhkg6nzv9ejuumpv34kytnrdaksjlyr9p";
+      const result = parseReqCommand(["-P", nprofile]);
+      expect(result.filter["#P"]).toEqual([
+        "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+      ]);
+    });
+
+    it("should parse comma-separated pubkeys for #P", () => {
+      const hex1 = "a".repeat(64);
+      const hex2 = "b".repeat(64);
+      const result = parseReqCommand(["-P", `${hex1},${hex2}`]);
+      expect(result.filter["#P"]).toEqual([hex1, hex2]);
+    });
+
+    it("should accumulate NIP-05 identifiers for #P tags", () => {
+      const result = parseReqCommand([
+        "-P",
+        "user@domain.com,alice@example.com",
+      ]);
+      expect(result.nip05PTagsUppercase).toEqual([
+        "user@domain.com",
+        "alice@example.com",
+      ]);
+      expect(result.filter["#P"]).toBeUndefined();
+    });
+
+    it("should handle mixed hex, npub, and NIP-05 for #P tags", () => {
+      const hex = "a".repeat(64);
+      const npub =
+        "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6";
+      const result = parseReqCommand(["-P", `${hex},${npub},user@domain.com`]);
+      expect(result.filter["#P"]).toEqual([
+        hex,
+        "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+      ]);
+      expect(result.nip05PTagsUppercase).toEqual(["user@domain.com"]);
+    });
+
+    it("should deduplicate #P tags", () => {
+      const hex = "a".repeat(64);
+      const result = parseReqCommand(["-P", `${hex},${hex}`]);
+      expect(result.filter["#P"]).toEqual([hex]);
+    });
+
+    it("should handle $me alias in #P tags", () => {
+      const result = parseReqCommand(["-P", "$me"]);
+      expect(result.filter["#P"]).toContain("$me");
+      expect(result.needsAccount).toBe(true);
+    });
+
+    it("should handle $contacts alias in #P tags", () => {
+      const result = parseReqCommand(["-P", "$contacts"]);
+      expect(result.filter["#P"]).toContain("$contacts");
+      expect(result.needsAccount).toBe(true);
+    });
+
+    it("should handle mixed aliases and pubkeys in #P", () => {
+      const hex = "a".repeat(64);
+      const result = parseReqCommand(["-P", `$me,${hex},$contacts`]);
+      expect(result.filter["#P"]).toContain("$me");
+      expect(result.filter["#P"]).toContain(hex);
+      expect(result.filter["#P"]).toContain("$contacts");
+      expect(result.needsAccount).toBe(true);
+    });
+
+    it("should differentiate between -p and -P flags", () => {
+      const hex1 = "a".repeat(64);
+      const hex2 = "b".repeat(64);
+      const result = parseReqCommand(["-p", hex1, "-P", hex2]);
+      expect(result.filter["#p"]).toEqual([hex1]);
+      expect(result.filter["#P"]).toEqual([hex2]);
+    });
+  });
+
   describe("hashtag flag (-t)", () => {
     it("should parse single hashtag", () => {
       const result = parseReqCommand(["-t", "nostr"]);
@@ -585,6 +677,147 @@ describe("parseReqCommand", () => {
       expect(result.filter["#x"]).toEqual(["xval"]);
       expect(result.filter["#y"]).toEqual(["yval"]);
       expect(result.filter["#z"]).toEqual(["zval"]);
+    });
+  });
+
+  describe("$me and $contacts aliases", () => {
+    describe("$me alias in authors (-a)", () => {
+      it("should detect $me in authors", () => {
+        const result = parseReqCommand(["-a", "$me"]);
+        expect(result.filter.authors).toContain("$me");
+        expect(result.needsAccount).toBe(true);
+      });
+
+      it("should handle $me with other pubkeys", () => {
+        const hex = "a".repeat(64);
+        const result = parseReqCommand(["-a", `$me,${hex}`]);
+        expect(result.filter.authors).toContain("$me");
+        expect(result.filter.authors).toContain(hex);
+        expect(result.needsAccount).toBe(true);
+      });
+
+      it("should deduplicate $me", () => {
+        const result = parseReqCommand(["-a", "$me,$me"]);
+        expect(result.filter.authors).toEqual(["$me"]);
+      });
+    });
+
+    describe("$contacts alias in authors (-a)", () => {
+      it("should detect $contacts in authors", () => {
+        const result = parseReqCommand(["-a", "$contacts"]);
+        expect(result.filter.authors).toContain("$contacts");
+        expect(result.needsAccount).toBe(true);
+      });
+
+      it("should handle $contacts with other pubkeys", () => {
+        const hex = "a".repeat(64);
+        const result = parseReqCommand(["-a", `$contacts,${hex}`]);
+        expect(result.filter.authors).toContain("$contacts");
+        expect(result.filter.authors).toContain(hex);
+        expect(result.needsAccount).toBe(true);
+      });
+
+      it("should handle $me and $contacts together", () => {
+        const result = parseReqCommand(["-a", "$me,$contacts"]);
+        expect(result.filter.authors).toContain("$me");
+        expect(result.filter.authors).toContain("$contacts");
+        expect(result.needsAccount).toBe(true);
+      });
+    });
+
+    describe("$me alias in #p tags (-p)", () => {
+      it("should detect $me in #p tags", () => {
+        const result = parseReqCommand(["-p", "$me"]);
+        expect(result.filter["#p"]).toContain("$me");
+        expect(result.needsAccount).toBe(true);
+      });
+
+      it("should handle $me with other pubkeys in #p", () => {
+        const hex = "a".repeat(64);
+        const result = parseReqCommand(["-p", `$me,${hex}`]);
+        expect(result.filter["#p"]).toContain("$me");
+        expect(result.filter["#p"]).toContain(hex);
+        expect(result.needsAccount).toBe(true);
+      });
+    });
+
+    describe("$contacts alias in #p tags (-p)", () => {
+      it("should detect $contacts in #p tags", () => {
+        const result = parseReqCommand(["-p", "$contacts"]);
+        expect(result.filter["#p"]).toContain("$contacts");
+        expect(result.needsAccount).toBe(true);
+      });
+
+      it("should handle $contacts with other pubkeys in #p", () => {
+        const hex = "a".repeat(64);
+        const result = parseReqCommand(["-p", `$contacts,${hex}`]);
+        expect(result.filter["#p"]).toContain("$contacts");
+        expect(result.filter["#p"]).toContain(hex);
+        expect(result.needsAccount).toBe(true);
+      });
+
+      it("should handle $me and $contacts together in #p", () => {
+        const result = parseReqCommand(["-p", "$me,$contacts"]);
+        expect(result.filter["#p"]).toContain("$me");
+        expect(result.filter["#p"]).toContain("$contacts");
+        expect(result.needsAccount).toBe(true);
+      });
+    });
+
+    describe("mixed aliases across -a and -p", () => {
+      it("should set needsAccount if alias in authors only", () => {
+        const result = parseReqCommand(["-a", "$me", "-k", "1"]);
+        expect(result.needsAccount).toBe(true);
+      });
+
+      it("should set needsAccount if alias in #p only", () => {
+        const result = parseReqCommand(["-p", "$contacts", "-k", "1"]);
+        expect(result.needsAccount).toBe(true);
+      });
+
+      it("should set needsAccount if aliases in both", () => {
+        const result = parseReqCommand(["-a", "$me", "-p", "$contacts"]);
+        expect(result.needsAccount).toBe(true);
+      });
+
+      it("should not set needsAccount without aliases", () => {
+        const hex = "a".repeat(64);
+        const result = parseReqCommand(["-a", hex, "-k", "1"]);
+        expect(result.needsAccount).toBe(false);
+      });
+    });
+
+    describe("complex scenarios with aliases", () => {
+      it("should handle aliases with other filter types", () => {
+        const result = parseReqCommand([
+          "-k",
+          "1",
+          "-a",
+          "$contacts",
+          "--since",
+          "24h",
+          "-l",
+          "50",
+        ]);
+        expect(result.filter.kinds).toEqual([1]);
+        expect(result.filter.authors).toContain("$contacts");
+        expect(result.filter.since).toBeDefined();
+        expect(result.filter.limit).toBe(50);
+        expect(result.needsAccount).toBe(true);
+      });
+
+      it("should handle mixed pubkeys, NIP-05, and aliases", () => {
+        const hex = "a".repeat(64);
+        const result = parseReqCommand([
+          "-a",
+          `${hex},$me,user@domain.com,$contacts`,
+        ]);
+        expect(result.filter.authors).toContain(hex);
+        expect(result.filter.authors).toContain("$me");
+        expect(result.filter.authors).toContain("$contacts");
+        expect(result.nip05Authors).toEqual(["user@domain.com"]);
+        expect(result.needsAccount).toBe(true);
+      });
     });
   });
 

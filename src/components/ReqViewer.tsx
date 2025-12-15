@@ -64,6 +64,8 @@ import { useCopy } from "@/hooks/useCopy";
 import { CodeCopyButton } from "@/components/CodeCopyButton";
 import { SyntaxHighlight } from "@/components/SyntaxHighlight";
 import { getConnectionIcon, getAuthIcon } from "@/lib/relay-status-utils";
+import { resolveFilterAliases, getTagValues } from "@/lib/nostr-utils";
+import { useNostrEvent } from "@/hooks/useNostrEvent";
 
 // Memoized FeedEvent to prevent unnecessary re-renders during scroll
 const MemoizedFeedEvent = memo(
@@ -77,6 +79,7 @@ interface ReqViewerProps {
   closeOnEose?: boolean;
   nip05Authors?: string[];
   nip05PTags?: string[];
+  needsAccount?: boolean;
   title?: string;
 }
 
@@ -114,13 +117,14 @@ function QueryDropdown({ filter, nip05Authors }: QueryDropdownProps) {
     )
     .map(([key, values]) => ({ letter: key[1], values: values as string[] }));
 
-  // Calculate summary counts
+  // Calculate summary counts (excluding #p which is shown separately as mentions)
   const tagCount =
     (eTags?.length || 0) +
-    (pTagPubkeys.length || 0) +
     (tTags?.length || 0) +
     (dTags?.length || 0) +
     genericTags.reduce((sum, tag) => sum + tag.values.length, 0);
+
+  const mentionCount = pTagPubkeys.length;
 
   // Determine if we should use accordion for complex queries
   const isComplexQuery =
@@ -147,6 +151,12 @@ function QueryDropdown({ filter, nip05Authors }: QueryDropdownProps) {
             {authorPubkeys.length !== 1 ? "s" : ""}
           </span>
         )}
+        {mentionCount > 0 && (
+          <span className="flex items-center gap-1.5">
+            <User className="size-3.5" />
+            {mentionCount} mention{mentionCount !== 1 ? "s" : ""}
+          </span>
+        )}
         {(filter.since || filter.until) && (
           <span className="flex items-center gap-1.5">
             <Clock className="size-3.5" />
@@ -171,7 +181,7 @@ function QueryDropdown({ filter, nip05Authors }: QueryDropdownProps) {
         /* Accordion for complex queries */
         <Accordion
           type="multiple"
-          defaultValue={["kinds", "authors", "time", "search", "tags"]}
+          defaultValue={["kinds", "authors", "mentions", "time", "search", "tags"]}
           className="space-y-2"
         >
           {/* Kinds Section */}
@@ -281,6 +291,46 @@ function QueryDropdown({ filter, nip05Authors }: QueryDropdownProps) {
             </AccordionItem>
           )}
 
+          {/* Mentions Section */}
+          {pTagPubkeys.length > 0 && (
+            <AccordionItem value="mentions" className="border-0">
+              <AccordionTrigger className="py-2 hover:no-underline">
+                <div className="flex items-center gap-2 text-xs font-semibold">
+                  <User className="size-3.5 text-muted-foreground" />
+                  Mentions ({pTagPubkeys.length})
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-2 ml-5">
+                  <div className="flex flex-wrap gap-2">
+                    {pTagPubkeys
+                      .slice(0, showAllPTags ? undefined : 3)
+                      .map((pubkey) => {
+                        return (
+                          <UserName
+                            key={pubkey}
+                            pubkey={pubkey}
+                            isMention
+                            className="text-xs"
+                          />
+                        );
+                      })}
+                  </div>
+                  {pTagPubkeys.length > 3 && (
+                    <button
+                      onClick={() => setShowAllPTags(!showAllPTags)}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      {showAllPTags
+                        ? "Show less"
+                        : `Show all ${pTagPubkeys.length}`}
+                    </button>
+                  )}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          )}
+
           {/* Tags Section */}
           {tagCount > 0 && (
             <AccordionItem value="tags" className="border-0">
@@ -320,39 +370,6 @@ function QueryDropdown({ filter, nip05Authors }: QueryDropdownProps) {
                           {showAllETags
                             ? "Show less"
                             : `Show all ${eTags.length}`}
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Mentions (#p) */}
-                  {pTagPubkeys.length > 0 && (
-                    <div className="space-y-1">
-                      <div className="text-xs font-medium">
-                        Mentions ({pTagPubkeys.length})
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {pTagPubkeys
-                          .slice(0, showAllPTags ? undefined : 3)
-                          .map((pubkey) => {
-                            return (
-                              <UserName
-                                key={pubkey}
-                                pubkey={pubkey}
-                                isMention
-                                className="text-xs"
-                              />
-                            );
-                          })}
-                      </div>
-                      {pTagPubkeys.length > 3 && (
-                        <button
-                          onClick={() => setShowAllPTags(!showAllPTags)}
-                          className="text-xs text-primary hover:underline"
-                        >
-                          {showAllPTags
-                            ? "Show less"
-                            : `Show all ${pTagPubkeys.length}`}
                         </button>
                       )}
                     </div>
@@ -507,6 +524,42 @@ function QueryDropdown({ filter, nip05Authors }: QueryDropdownProps) {
             </div>
           )}
 
+          {/* Mentions */}
+          {pTagPubkeys.length > 0 && (
+            <div className="">
+              <div className="flex items-center gap-2 text-xs font-semibold mb-1.5">
+                <User className="size-3.5 text-muted-foreground" />
+                Mentions ({pTagPubkeys.length})
+              </div>
+              <div className="ml-5 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {pTagPubkeys
+                    .slice(0, showAllPTags ? undefined : 3)
+                    .map((pubkey) => {
+                      return (
+                        <UserName
+                          key={pubkey}
+                          pubkey={pubkey}
+                          isMention
+                          className="text-xs"
+                        />
+                      );
+                    })}
+                </div>
+                {pTagPubkeys.length > 3 && (
+                  <button
+                    onClick={() => setShowAllPTags(!showAllPTags)}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    {showAllPTags
+                      ? "Show less"
+                      : `Show all ${pTagPubkeys.length}`}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Tags (simplified for simple queries) */}
           {tagCount > 0 && (
             <div className="">
@@ -517,27 +570,6 @@ function QueryDropdown({ filter, nip05Authors }: QueryDropdownProps) {
               <div className="ml-5 text-xs text-muted-foreground space-y-1">
                 {eTags && eTags.length > 0 && (
                   <div>Event refs: {formatEventIds(eTags, 3)}</div>
-                )}
-                {pTagPubkeys.length > 0 && (
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span>Mentions:</span>
-                    {pTagPubkeys.slice(0, 3).map((pubkey, idx) => (
-                      <span
-                        key={pubkey}
-                        className="inline-flex items-center gap-1"
-                      >
-                        <UserName
-                          pubkey={pubkey}
-                          isMention
-                          className="text-xs"
-                        />
-                        {idx < Math.min(2, pTagPubkeys.length - 1) && ","}
-                      </span>
-                    ))}
-                    {pTagPubkeys.length > 3 && (
-                      <span>...+{pTagPubkeys.length - 3} more</span>
-                    )}
-                  </div>
                 )}
                 {tTags && tTags.length > 0 && (
                   <div>Hashtags: {formatHashtags(tTags, 3)}</div>
@@ -592,10 +624,32 @@ export default function ReqViewer({
   closeOnEose = false,
   nip05Authors,
   nip05PTags,
+  needsAccount = false,
   title = "nostr-events",
 }: ReqViewerProps) {
   const { state } = useGrimoire();
   const { relays: relayStates } = useRelayState();
+
+  // Get active account for alias resolution
+  const activeAccount = state.activeAccount;
+  const accountPubkey = activeAccount?.pubkey;
+
+  // Fetch contact list (kind 3) if needed for $contacts resolution
+  const contactListEvent = useNostrEvent(
+    needsAccount && accountPubkey
+      ? { kind: 3, pubkey: accountPubkey, identifier: "" }
+      : undefined,
+  );
+
+  // Extract contacts from kind 3 event
+  const contacts = contactListEvent
+    ? getTagValues(contactListEvent, "p").filter((pk) => pk.length === 64)
+    : [];
+
+  // Resolve $me and $contacts aliases
+  const resolvedFilter = needsAccount
+    ? resolveFilterAliases(filter, accountPubkey, contacts)
+    : filter;
 
   // NIP-05 resolution already happened in argParser before window creation
   // The filter prop already contains resolved pubkeys
@@ -622,9 +676,9 @@ export default function ReqViewer({
 
   const { events, loading, error, eoseReceived } = useReqTimeline(
     `req-${JSON.stringify(filter)}-${closeOnEose}`,
-    filter,
+    resolvedFilter,
     defaultRelays,
-    { limit: filter.limit || 50, stream },
+    { limit: resolvedFilter.limit || 50, stream },
   );
 
   const [showQuery, setShowQuery] = useState(false);
@@ -883,7 +937,7 @@ export default function ReqViewer({
       {/* Expandable Query */}
       {showQuery && (
         <QueryDropdown
-          filter={filter}
+          filter={resolvedFilter}
           nip05Authors={nip05Authors}
           nip05PTags={nip05PTags}
         />
@@ -898,38 +952,55 @@ export default function ReqViewer({
         </div>
       )}
 
+      {/* Account Required Error */}
+      {needsAccount && !accountPubkey && (
+        <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
+          <div className="text-muted-foreground">
+            <User className="size-12 mx-auto mb-3" />
+            <h3 className="text-lg font-semibold mb-2">Account Required</h3>
+            <p className="text-sm max-w-md">
+              This query uses <code className="bg-muted px-1.5 py-0.5">$me</code>{" "}
+              or <code className="bg-muted px-1.5 py-0.5">$contacts</code>{" "}
+              aliases and requires an active account.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Results */}
-      <div className="flex-1 overflow-y-auto">
-        {/* Loading: Before EOSE received */}
-        {loading && events.length === 0 && !eoseReceived && (
-          <div className="p-4">
-            <TimelineSkeleton count={5} />
-          </div>
-        )}
+      {(!needsAccount || accountPubkey) && (
+        <div className="flex-1 overflow-y-auto">
+          {/* Loading: Before EOSE received */}
+          {loading && events.length === 0 && !eoseReceived && (
+            <div className="p-4">
+              <TimelineSkeleton count={5} />
+            </div>
+          )}
 
-        {/* EOSE received, no events, not streaming */}
-        {eoseReceived && events.length === 0 && !stream && !error && (
-          <div className="text-center text-muted-foreground font-mono text-sm p-4">
-            No events found matching filter
-          </div>
-        )}
+          {/* EOSE received, no events, not streaming */}
+          {eoseReceived && events.length === 0 && !stream && !error && (
+            <div className="text-center text-muted-foreground font-mono text-sm p-4">
+              No events found matching filter
+            </div>
+          )}
 
-        {/* EOSE received, no events, streaming (live mode) */}
-        {eoseReceived && events.length === 0 && stream && (
-          <div className="text-center text-muted-foreground font-mono text-sm p-4">
-            Listening for new events...
-          </div>
-        )}
+          {/* EOSE received, no events, streaming (live mode) */}
+          {eoseReceived && events.length === 0 && stream && (
+            <div className="text-center text-muted-foreground font-mono text-sm p-4">
+              Listening for new events...
+            </div>
+          )}
 
-        {events.length > 0 && (
-          <Virtuoso
-            style={{ height: "100%" }}
-            data={events}
-            computeItemKey={(_index, item) => item.id}
-            itemContent={(_index, event) => <MemoizedFeedEvent event={event} />}
-          />
-        )}
-      </div>
+          {events.length > 0 && (
+            <Virtuoso
+              style={{ height: "100%" }}
+              data={events}
+              computeItemKey={(_index, item) => item.id}
+              itemContent={(_index, event) => <MemoizedFeedEvent event={event} />}
+            />
+          )}
+        </div>
+      )}
 
       {/* Export Dialog */}
       <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
