@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { profileLoader } from "@/services/loaders";
-import { ProfileContent } from "applesauce-core/helpers";
+import { ProfileContent, getProfileContent } from "applesauce-core/helpers";
 import { kinds } from "nostr-tools";
 import db from "@/services/db";
 
@@ -23,23 +23,22 @@ export function useProfile(pubkey?: string): ProfileContent | undefined {
       next: async (fetchedEvent) => {
         if (!fetchedEvent || !fetchedEvent.content) return;
 
-        try {
-          const profileData = JSON.parse(
-            fetchedEvent.content,
-          ) as ProfileContent;
+        // Use applesauce helper for safe profile parsing
+        const profileData = getProfileContent(fetchedEvent);
+        if (!profileData) {
+          console.error("[useProfile] Failed to parse profile for:", pubkey);
+          return;
+        }
 
-          // Save to IndexedDB
-          await db.profiles.put({
-            ...profileData,
-            pubkey,
-            created_at: fetchedEvent.created_at,
-          });
+        // Save to IndexedDB
+        await db.profiles.put({
+          ...profileData,
+          pubkey,
+          created_at: fetchedEvent.created_at,
+        });
 
-          if (mounted) {
-            setProfile(profileData);
-          }
-        } catch (e) {
-          console.error("[useProfile] Failed to parse profile:", e);
+        if (mounted) {
+          setProfile(profileData);
         }
       },
       error: (err) => {
