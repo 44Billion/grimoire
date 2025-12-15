@@ -127,16 +127,23 @@ function CodeBlock({
 }) {
   const { copy, copied } = useCopy();
 
+  // Check if code is a single line (hide copy button for one-liners)
+  const isSingleLine = !code.includes("\n");
+
   return (
-    <div className="relative">
+    <div className="relative my-4">
       {language ? (
         <SyntaxHighlight code={code} language={language as any} />
       ) : (
-        <pre className="bg-muted p-4 pr-12 border border-border rounded overflow-x-auto max-w-full">
+        <pre
+          className={`bg-muted p-4 border border-border rounded overflow-x-auto max-w-full ${isSingleLine ? "" : "pr-12"}`}
+        >
           <code className="text-xs font-mono">{code}</code>
         </pre>
       )}
-      <CodeCopyButton onCopy={() => copy(code)} copied={copied} />
+      {!isSingleLine && (
+        <CodeCopyButton onCopy={() => copy(code)} copied={copied} />
+      )}
     </div>
   );
 }
