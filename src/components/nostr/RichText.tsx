@@ -94,36 +94,24 @@ export function RichText({
       }
     : undefined;
   const renderedContent = useRenderedContent(
-    trimmedEvent as NostrEvent,
+    content
+      ? ({
+          content,
+        } as NostrEvent)
+      : trimmedEvent,
     contentComponents,
   );
 
-  // If plain content is provided, just render it
-  if (content && !event) {
-    const lines = content.trim().split("\n");
-    return (
-      <div className={cn("leading-relaxed break-words", className)}>
-        {lines.map((line, idx) => (
-          <div key={idx} dir="auto">
-            {line || "\u00A0"}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  // Render event content with rich formatting
-  if (event) {
-    return (
-      <DepthContext.Provider value={depth}>
-        <OptionsContext.Provider value={mergedOptions}>
-          <div className={cn("leading-relaxed break-words", className)}>
-            {renderedContent}
-          </div>
-        </OptionsContext.Provider>
-      </DepthContext.Provider>
-    );
-  }
-
-  return null;
+  return (
+    <DepthContext.Provider value={depth}>
+      <OptionsContext.Provider value={mergedOptions}>
+        <div
+          dir="auto"
+          className={cn("leading-relaxed break-words", className)}
+        >
+          {renderedContent}
+        </div>
+      </OptionsContext.Provider>
+    </DepthContext.Provider>
+  );
 }

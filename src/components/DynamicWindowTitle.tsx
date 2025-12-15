@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { ReactElement, useMemo } from "react";
 import { WindowInstance } from "@/types/app";
 import { useProfile } from "@/hooks/useProfile";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
@@ -11,7 +11,7 @@ import {
 } from "@/constants/command-icons";
 import type { EventPointer, AddressPointer } from "nostr-tools/nip19";
 import type { LucideIcon } from "lucide-react";
-import { kinds, nip19 } from "nostr-tools";
+import { nip19 } from "nostr-tools";
 import { ProfileContent } from "applesauce-core/helpers";
 import {
   formatEventIds,
@@ -19,9 +19,11 @@ import {
   formatTimeRangeCompact,
   formatGenericTag,
 } from "@/lib/filter-formatters";
+import { getEventDisplayTitle } from "@/lib/event-title";
+import { UserName } from "./nostr/UserName";
 
 export interface WindowTitleData {
-  title: string;
+  title: string | ReactElement;
   icon?: LucideIcon;
   tooltip?: string;
 }
@@ -205,36 +207,24 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
     return `Profile ${profilePubkey.slice(0, 8)}...`;
   }, [appId, profilePubkey, profile]);
 
-  // Event titles
+  // Event titles - use unified title extraction
   const eventPointer: EventPointer | AddressPointer | undefined =
     appId === "open" ? props.pointer : undefined;
   const event = useNostrEvent(eventPointer);
   const eventTitle = useMemo(() => {
     if (appId !== "open" || !event) return null;
 
-    const kindName = getKindName(event.kind);
-
-    // For text-based events, show a preview
-    if (event.kind === kinds.ShortTextNote && event.content) {
-      const preview = event.content.slice(0, 40).trim();
-      return preview ? `${kindName}: ${preview}...` : kindName;
-    }
-
-    // For articles (kind 30023), show title tag
-    if (event.kind === kinds.LongFormArticle) {
-      const titleTag = event.tags.find((t) => t[0] === "title")?.[1];
-      if (titleTag) {
-        return titleTag.length > 50 ? `${titleTag.slice(0, 50)}...` : titleTag;
-      }
-    }
-
-    // For highlights (kind 9802), show preview
-    if (event.kind === kinds.Highlights && event.content) {
-      const preview = event.content.slice(0, 40).trim();
-      return preview ? `Highlight: ${preview}...` : "Highlight";
-    }
-
-    return kindName;
+    return (
+      <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0">
+          {getKindName(event.kind)}
+          <span>:</span>
+        </div>
+        {getEventDisplayTitle(event, false)}
+        <span> - </span>
+        <UserName pubkey={event.pubkey} />
+      </div>
+    );
   }, [appId, event]);
 
   // Kind titles
@@ -429,7 +419,7 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
 
   // Generate final title data with icon and tooltip
   return useMemo(() => {
-    let title: string;
+    let title: ReactElement | string;
     let icon: LucideIcon | undefined;
     let tooltip: string | undefined;
 

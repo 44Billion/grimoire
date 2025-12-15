@@ -163,7 +163,7 @@ export function Kind30023DetailRenderer({ event }: { event: NostrEvent }) {
     : null;
 
   return (
-    <div className="flex flex-col gap-6 p-6 max-w-3xl mx-auto">
+    <div dir="auto" className="flex flex-col gap-6 p-6 max-w-3xl mx-auto">
       {/* Article Header */}
       <header className="flex flex-col gap-4 border-b border-border pb-6">
         {/* Title */}
@@ -290,7 +290,7 @@ export function Kind30023DetailRenderer({ event }: { event: NostrEvent }) {
             hr: () => <hr className="my-4" />,
           }}
         >
-          {event.content}
+          {event.content.replace(/\\n/g, '\n')}
         </ReactMarkdown>
       </article>
     </div>

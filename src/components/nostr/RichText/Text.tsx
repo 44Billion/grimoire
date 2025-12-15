@@ -1,39 +1,33 @@
+import { CommonData } from "applesauce-content/nast";
+import { useMemo } from "react";
+
 interface TextNodeProps {
   node: {
     type: "text";
     value: string;
+    data?: CommonData;
   };
-}
-
-// Check if text contains RTL characters (Arabic, Hebrew, Persian, etc.)
-function hasRTLCharacters(text: string): boolean {
-  return /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/.test(text);
 }
 
 export function Text({ node }: TextNodeProps) {
   const text = node.value;
-
-  // If no newlines, render as inline span
-  if (!text.includes("\n")) {
-    const isRTL = hasRTLCharacters(text);
-    return <span dir={isRTL ? "rtl" : "auto"}>{text || "\u00A0"}</span>;
+  const lines = useMemo(() => text.split("\n"), [text]);
+  if (text.includes("\n")) {
+    return (
+      <>
+        {lines.map((line, idx) =>
+          line.trim().length === 0 ? (
+            <br />
+          ) : idx === 0 || idx === lines.length - 1 ? (
+            <span dir="auto">{line}</span> // FIXME: this should be span or div depnding on context
+          ) : (
+            <div dir="auto" key={idx}>
+              {line}
+            </div>
+          ),
+        )}
+      </>
+    );
   }
-
-  // If has newlines, use regular inline spans with <br> tags
-  const lines = text.split("\n");
-  return (
-    <>
-      {lines.map((line, idx) => {
-        const isRTL = hasRTLCharacters(line);
-        return (
-          <>
-            {idx > 0 && <br key={`br-${idx}`} />}
-            <span key={idx} dir={isRTL ? "rtl" : "auto"}>
-              {line || "\u00A0"}
-            </span>
-          </>
-        );
-      })}
-    </>
-  );
+  return <span dir="auto">{text}</span>;
 }

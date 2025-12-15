@@ -1,4 +1,8 @@
-import { BaseEventContainer, BaseEventProps } from "./BaseEventRenderer";
+import {
+  BaseEventContainer,
+  BaseEventProps,
+  ClickableEventTitle,
+} from "./BaseEventRenderer";
 import { RichText } from "../RichText";
 import { ExternalLink } from "lucide-react";
 
@@ -22,7 +26,13 @@ export function Kind39701Renderer({ event }: BaseEventProps) {
       <div className="flex flex-col gap-2">
         {/* Title */}
         {title && (
-          <h3 className="text-lg font-bold text-foreground">{title}</h3>
+          <ClickableEventTitle
+            event={event}
+            windowTitle={title}
+            className="text-lg font-bold text-foreground"
+          >
+            {title}
+          </ClickableEventTitle>
         )}
 
         {/* URL with external link icon */}

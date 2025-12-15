@@ -23,6 +23,10 @@ export function WindowTile({
   const { title, icon, tooltip } = useDynamicWindowTitle(window);
   const Icon = icon;
 
+  // Convert title to string for MosaicWindow (which only accepts strings)
+  // The actual title (with React elements) is rendered in the custom toolbar
+  const titleString = typeof title === "string" ? title : tooltip || window.title;
+
   // Custom toolbar renderer to include icon
   const renderToolbar = () => {
     return (
@@ -47,7 +51,7 @@ export function WindowTile({
   };
 
   return (
-    <MosaicWindow path={path} title={title} renderToolbar={renderToolbar}>
+    <MosaicWindow path={path} title={titleString} renderToolbar={renderToolbar}>
       <ErrorBoundary level="window">
         <WindowRenderer window={window} onClose={() => onClose(id)} />
       </ErrorBoundary>

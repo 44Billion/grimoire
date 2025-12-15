@@ -1,5 +1,9 @@
 import { useMemo } from "react";
-import { BaseEventContainer, BaseEventProps } from "./BaseEventRenderer";
+import {
+  BaseEventContainer,
+  BaseEventProps,
+  ClickableEventTitle,
+} from "./BaseEventRenderer";
 import {
   getArticleTitle,
   getArticleSummary,
@@ -15,10 +19,16 @@ export function Kind30023Renderer({ event }: BaseEventProps) {
 
   return (
     <BaseEventContainer event={event}>
-      <div className="flex flex-col gap-2">
+      <div dir="auto" className="flex flex-col gap-2">
         {/* Title */}
         {title && (
-          <h3 className="text-lg font-bold text-foreground">{title}</h3>
+          <ClickableEventTitle
+            event={event}
+            windowTitle={title}
+            className="text-lg font-bold text-foreground"
+          >
+            {title}
+          </ClickableEventTitle>
         )}
 
         {/* Summary */}

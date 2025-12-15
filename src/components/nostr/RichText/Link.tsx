@@ -36,7 +36,7 @@ export function Link({ node }: LinkNodeProps) {
           type="image"
           preset="inline"
           enableZoom
-          className="inline-block"
+          className="my-2 inline-block"
         />
       );
     }
@@ -50,7 +50,7 @@ export function Link({ node }: LinkNodeProps) {
           url={href}
           type="video"
           preset="inline"
-          className="inline-block"
+          className="my-2 inline-block"
         />
       );
     }
@@ -65,7 +65,7 @@ export function Link({ node }: LinkNodeProps) {
             url={href}
             type="audio"
             onAudioClick={handleAudioClick}
-            className="inline-block"
+            className="my-2 inline-block"
           />
           <MediaDialog
             open={dialogOpen}

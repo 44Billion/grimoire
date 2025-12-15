@@ -18,7 +18,7 @@ import {
  * Detail renderer for Kind 30617 - Repository
  * Displays full repository metadata with all URLs and maintainers
  */
-export function Kind30617DetailRenderer({ event }: { event: NostrEvent }) {
+export function RepositoryDetailRenderer({ event }: { event: NostrEvent }) {
   const name = useMemo(() => getRepositoryName(event), [event]);
   const description = useMemo(() => getRepositoryDescription(event), [event]);
   const identifier = useMemo(() => getRepositoryIdentifier(event), [event]);
@@ -35,13 +35,6 @@ export function Kind30617DetailRenderer({ event }: { event: NostrEvent }) {
       <header className="flex flex-col gap-4 border-b border-border pb-4">
         {/* Name */}
         <h1 className="text-3xl font-bold">{displayName}</h1>
-
-        {/* Identifier */}
-        {identifier && (
-          <code className="text-sm text-muted-foreground font-mono bg-muted px-2 py-1 w-fit">
-            <UserName pubkey={event.pubkey} />/{identifier}
-          </code>
-        )}
 
         {/* Description */}
         {description && (

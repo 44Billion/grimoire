@@ -18,6 +18,8 @@ import { formatTimestamp } from "@/hooks/useLocale";
 import { nip19 } from "nostr-tools";
 import { getTagValue } from "applesauce-core/helpers";
 import { EventFooter } from "@/components/EventFooter";
+import { cn } from "@/lib/utils";
+import { getEventDisplayTitle } from "@/lib/event-title";
 
 // NIP-01 Kind ranges
 const REPLACEABLE_START = 10000;
@@ -75,7 +77,9 @@ export function EventMenu({ event }: { event: NostrEvent }) {
       };
     }
 
-    addWindow("open", { pointer }, `Event ${event.id.slice(0, 8)}...`);
+    // Use automatic title extraction for better window titles
+    const title = getEventDisplayTitle(event);
+    addWindow("open", { pointer }, title);
   };
 
   const copyEventId = () => {
@@ -153,6 +157,72 @@ export function EventMenu({ event }: { event: NostrEvent }) {
         title={`Event ${event.id.slice(0, 8)}... - Raw JSON`}
       />
     </DropdownMenu>
+  );
+}
+
+/**
+ * Clickable event title component
+ * Opens the event in a new window when clicked
+ * Supports both regular events and addressable/replaceable events
+ */
+interface ClickableEventTitleProps {
+  event: NostrEvent;
+  children: React.ReactNode;
+  windowTitle?: string;
+  className?: string;
+  as?: "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "span" | "div";
+}
+
+export function ClickableEventTitle({
+  event,
+  children,
+  windowTitle,
+  className,
+  as: Component = "h3",
+}: ClickableEventTitleProps) {
+  const { addWindow } = useGrimoire();
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    // Determine if event is addressable/replaceable
+    const isAddressable =
+      (event.kind >= REPLACEABLE_START && event.kind < REPLACEABLE_END) ||
+      (event.kind >= PARAMETERIZED_REPLACEABLE_START &&
+        event.kind < PARAMETERIZED_REPLACEABLE_END);
+
+    let pointer;
+    // Use provided windowTitle, or fall back to automatic title extraction
+    const title = windowTitle || getEventDisplayTitle(event);
+
+    if (isAddressable) {
+      // For replaceable/parameterized replaceable events, use AddressPointer
+      const dTag = getTagValue(event, "d") || "";
+      pointer = {
+        kind: event.kind,
+        pubkey: event.pubkey,
+        identifier: dTag,
+      };
+    } else {
+      // For regular events, use EventPointer
+      pointer = {
+        id: event.id,
+      };
+    }
+
+    addWindow("open", { pointer }, title);
+  };
+
+  return (
+    <Component
+      className={cn(
+        "cursor-crosshair hover:underline hover:decoration-dotted",
+        className,
+      )}
+      onClick={handleClick}
+    >
+      {children}
+    </Component>
   );
 }
 

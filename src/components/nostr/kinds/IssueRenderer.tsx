@@ -1,5 +1,9 @@
-import { BaseEventContainer, type BaseEventProps } from "./BaseEventRenderer";
-import { GitBranch } from "lucide-react";
+import {
+  BaseEventContainer,
+  type BaseEventProps,
+  ClickableEventTitle,
+} from "./BaseEventRenderer";
+import { FolderGit2 } from "lucide-react";
 import { useGrimoire } from "@/core/state";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
 import {
@@ -17,7 +21,7 @@ import { UserName } from "../UserName";
  * Renderer for Kind 1621 - Issue
  * Displays as a compact issue card in feed view
  */
-export function Kind1621Renderer({ event }: BaseEventProps) {
+export function IssueRenderer({ event }: BaseEventProps) {
   const { addWindow } = useGrimoire();
   const title = getIssueTitle(event);
   const labels = getIssueLabels(event);
@@ -66,9 +70,13 @@ export function Kind1621Renderer({ event }: BaseEventProps) {
     <BaseEventContainer event={event}>
       <div className="flex flex-col gap-2">
         {/* Issue Title */}
-        <h3 className="font-semibold text-foreground">
+        <ClickableEventTitle
+          event={event}
+          windowTitle={title || "Untitled Issue"}
+          className="font-semibold text-foreground"
+        >
           {title || "Untitled Issue"}
-        </h3>
+        </ClickableEventTitle>
 
         {/* Repository Reference */}
         {repoAddress && repoPointer && (
@@ -80,7 +88,7 @@ export function Kind1621Renderer({ event }: BaseEventProps) {
                 cursor-crosshair underline decoration-dotted hover:text-primary
               `}
             >
-              <GitBranch className="size-3" />
+              <FolderGit2 className="size-3" />
               <span>{repoName}</span>
             </div>
             <span>by</span>

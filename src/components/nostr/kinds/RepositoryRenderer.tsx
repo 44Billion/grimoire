@@ -1,4 +1,8 @@
-import { BaseEventContainer, type BaseEventProps } from "./BaseEventRenderer";
+import {
+  BaseEventContainer,
+  type BaseEventProps,
+  ClickableEventTitle,
+} from "./BaseEventRenderer";
 import { GitBranch, Globe } from "lucide-react";
 import {
   getRepositoryName,
@@ -11,7 +15,7 @@ import { getReplaceableIdentifier } from "applesauce-core/helpers";
  * Renderer for Kind 30617 - Repository
  * Displays as a compact repository card in feed view
  */
-export function Kind30617Renderer({ event }: BaseEventProps) {
+export function RepositoryRenderer({ event }: BaseEventProps) {
   const name = getRepositoryName(event);
   const description = getRepositoryDescription(event);
   const identifier = getReplaceableIdentifier(event);
@@ -29,9 +33,14 @@ export function Kind30617Renderer({ event }: BaseEventProps) {
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
               <GitBranch className="size-4 text-muted-foreground flex-shrink-0" />
-              <span className="text-lg font-semibold text-foreground">
+              <ClickableEventTitle
+                event={event}
+                windowTitle={`Repository: ${displayName}`}
+                className="text-lg font-semibold text-foreground"
+                as="span"
+              >
                 {displayName}
-              </span>
+              </ClickableEventTitle>
             </div>
           </div>
 

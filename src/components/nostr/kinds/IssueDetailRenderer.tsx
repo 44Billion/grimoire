@@ -3,7 +3,7 @@ import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { remarkNostrMentions } from "applesauce-content/markdown";
 import { nip19 } from "nostr-tools";
-import { Tag, GitBranch } from "lucide-react";
+import { Tag, FolderGit2 } from "lucide-react";
 import { UserName } from "../UserName";
 import { EmbeddedEvent } from "../EmbeddedEvent";
 import { MediaEmbed } from "../MediaEmbed";
@@ -127,7 +127,7 @@ function NostrMention({ href }: { href: string }) {
  * Detail renderer for Kind 1621 - Issue
  * Displays full issue content with markdown rendering
  */
-export function Kind1621DetailRenderer({ event }: { event: NostrEvent }) {
+export function IssueDetailRenderer({ event }: { event: NostrEvent }) {
   const { addWindow } = useGrimoire();
   const title = useMemo(() => getIssueTitle(event), [event]);
   const labels = useMemo(() => getIssueLabels(event), [event]);
@@ -193,7 +193,7 @@ export function Kind1621DetailRenderer({ event }: { event: NostrEvent }) {
                   : "text-muted-foreground cursor-not-allowed"
               }`}
             >
-              <GitBranch className="size-4" />
+              <FolderGit2 className="size-4" />
               {repoName}
             </button>
           </div>
@@ -309,7 +309,7 @@ export function Kind1621DetailRenderer({ event }: { event: NostrEvent }) {
               hr: () => <hr className="my-4" />,
             }}
           >
-            {event.content}
+            {event.content.replace(/\\n/g, '\n')}
           </ReactMarkdown>
         </article>
       ) : (

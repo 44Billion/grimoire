@@ -4,11 +4,13 @@ import { useNostrEvent } from "@/hooks/useNostrEvent";
 import { KindRenderer } from "./nostr/kinds";
 import { Kind0DetailRenderer } from "./nostr/kinds/Kind0DetailRenderer";
 import { Kind3DetailView } from "./nostr/kinds/Kind3Renderer";
-import { Kind1621DetailRenderer } from "./nostr/kinds/Kind1621DetailRenderer";
+import { IssueDetailRenderer } from "./nostr/kinds/IssueDetailRenderer";
+import { PatchDetailRenderer } from "./nostr/kinds/PatchDetailRenderer";
+import { PullRequestDetailRenderer } from "./nostr/kinds/PullRequestDetailRenderer";
 import { Kind9802DetailRenderer } from "./nostr/kinds/Kind9802DetailRenderer";
 import { Kind10002DetailRenderer } from "./nostr/kinds/Kind10002DetailRenderer";
 import { Kind30023DetailRenderer } from "./nostr/kinds/Kind30023DetailRenderer";
-import { Kind30617DetailRenderer } from "./nostr/kinds/Kind30617DetailRenderer";
+import { RepositoryDetailRenderer } from "./nostr/kinds/RepositoryDetailRenderer";
 import { JsonViewer } from "./JsonViewer";
 import { RelayLink } from "./nostr/RelayLink";
 import {
@@ -267,8 +269,12 @@ export function EventDetailViewer({ pointer }: EventDetailViewerProps) {
           <Kind0DetailRenderer event={event} />
         ) : event.kind === kinds.Contacts ? (
           <Kind3DetailView event={event} />
+        ) : event.kind === 1617 ? (
+          <PatchDetailRenderer event={event} />
+        ) : event.kind === 1618 ? (
+          <PullRequestDetailRenderer event={event} />
         ) : event.kind === 1621 ? (
-          <Kind1621DetailRenderer event={event} />
+          <IssueDetailRenderer event={event} />
         ) : event.kind === kinds.Highlights ? (
           <Kind9802DetailRenderer event={event} />
         ) : event.kind === kinds.RelayList ? (
@@ -276,7 +282,7 @@ export function EventDetailViewer({ pointer }: EventDetailViewerProps) {
         ) : event.kind === kinds.LongFormArticle ? (
           <Kind30023DetailRenderer event={event} />
         ) : event.kind === 30617 ? (
-          <Kind30617DetailRenderer event={event} />
+          <RepositoryDetailRenderer event={event} />
         ) : (
           <KindRenderer event={event} />
         )}

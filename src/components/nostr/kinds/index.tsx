@@ -8,12 +8,14 @@ import { Kind20Renderer } from "./Kind20Renderer";
 import { Kind21Renderer } from "./Kind21Renderer";
 import { Kind22Renderer } from "./Kind22Renderer";
 import { Kind1063Renderer } from "./Kind1063Renderer";
-import { Kind1621Renderer } from "./Kind1621Renderer";
+import { IssueRenderer } from "./IssueRenderer";
+import { PatchRenderer } from "./PatchRenderer";
+import { PullRequestRenderer } from "./PullRequestRenderer";
 import { Kind9735Renderer } from "./Kind9735Renderer";
 import { Kind9802Renderer } from "./Kind9802Renderer";
 import { Kind10002Renderer } from "./Kind10002Renderer";
 import { Kind30023Renderer } from "./Kind30023Renderer";
-import { Kind30617Renderer } from "./Kind30617Renderer";
+import { RepositoryRenderer } from "./RepositoryRenderer";
 import { Kind39701Renderer } from "./Kind39701Renderer";
 import { GenericRelayListRenderer } from "./GenericRelayListRenderer";
 import { NostrEvent } from "@/types/nostr";
@@ -36,7 +38,9 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   22: Kind22Renderer, // Short Video (NIP-71)
   1063: Kind1063Renderer, // File Metadata (NIP-94)
   1111: Kind1Renderer, // Post
-  1621: Kind1621Renderer, // Issue (NIP-34)
+  1617: PatchRenderer, // Patch (NIP-34)
+  1618: PullRequestRenderer, // Pull Request (NIP-34)
+  1621: IssueRenderer, // Issue (NIP-34)
   9735: Kind9735Renderer, // Zap Receipt
   9802: Kind9802Renderer, // Highlight
   10002: Kind10002Renderer, // Relay List Metadata (NIP-65)
@@ -46,7 +50,7 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   10050: GenericRelayListRenderer, // DM Relay List (NIP-51)
   30002: GenericRelayListRenderer, // Relay Sets (NIP-51)
   30023: Kind30023Renderer, // Long-form Article
-  30617: Kind30617Renderer, // Repository (NIP-34)
+  30617: RepositoryRenderer, // Repository (NIP-34)
   39701: Kind39701Renderer, // Web Bookmarks (NIP-B0)
 };
 
