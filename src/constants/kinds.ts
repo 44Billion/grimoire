@@ -29,7 +29,6 @@ import {
   Heart,
   Highlighter,
   Image,
-  Info,
   Key,
   List,
   ListChecks,
@@ -1307,10 +1306,10 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
   },
   31990: {
     kind: 31990,
-    name: "Handler Info",
-    description: "Handler information",
+    name: "Application",
+    description: "Application Definition",
     nip: "89",
-    icon: Info,
+    icon: Package,
   },
   // 32267: {
   //   kind: 32267,
