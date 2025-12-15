@@ -7,6 +7,7 @@ import {
   getArticleTitle,
   getArticleSummary,
   getArticlePublished,
+  getArticleImage,
 } from "applesauce-core/helpers/article";
 import { UserName } from "../UserName";
 import { EmbeddedEvent } from "../EmbeddedEvent";
@@ -126,6 +127,7 @@ export function Kind30023DetailRenderer({ event }: { event: NostrEvent }) {
   const title = useMemo(() => getArticleTitle(event), [event]);
   const summary = useMemo(() => getArticleSummary(event), [event]);
   const published = useMemo(() => getArticlePublished(event), [event]);
+  const imageUrl = useMemo(() => getArticleImage(event), [event]);
 
   // Get canonical URL from "r" tag to resolve relative URLs
   const canonicalUrl = useMemo(() => {
@@ -163,12 +165,25 @@ export function Kind30023DetailRenderer({ event }: { event: NostrEvent }) {
       })
     : null;
 
+  // Resolve article image URL
+  const resolvedImageUrl = imageUrl ? resolveUrl(imageUrl) : null;
+
   return (
     <div dir="auto" className="flex flex-col gap-6 p-6 max-w-3xl mx-auto">
       {/* Article Header */}
       <header className="flex flex-col gap-4 border-b border-border pb-6">
         {/* Title */}
         {title && <h1 className="text-3xl font-bold">{title}</h1>}
+
+        {/* Featured Image */}
+        {resolvedImageUrl && (
+          <MediaEmbed
+            url={resolvedImageUrl}
+            preset="preview"
+            enableZoom
+            className="w-full rounded-lg overflow-hidden"
+          />
+        )}
 
         {/* Summary */}
         {summary && <p className="text-lg text-muted-foreground">{summary}</p>}
