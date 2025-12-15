@@ -63,7 +63,7 @@ export function SyntaxHighlight({
 
   return (
     <pre
-      className={`language-${normalizedLanguage} ${showLineNumbers ? "line-numbers" : ""} ${className}`.trim()}
+      className={`language-${normalizedLanguage} ${showLineNumbers ? "line-numbers" : ""} overflow-x-auto max-w-full ${className}`.trim()}
     >
       <code ref={codeRef} className={`language-${normalizedLanguage}`}>
         {code}

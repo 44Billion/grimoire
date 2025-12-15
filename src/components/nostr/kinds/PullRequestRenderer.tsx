@@ -3,7 +3,7 @@ import {
   type BaseEventProps,
   ClickableEventTitle,
 } from "./BaseEventRenderer";
-import { FolderGit2 } from "lucide-react";
+import { FolderGit2, GitBranch } from "lucide-react";
 import { useGrimoire } from "@/core/state";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
 import {
@@ -73,38 +73,31 @@ export function PullRequestRenderer({ event }: BaseEventProps) {
     <BaseEventContainer event={event}>
       <div className="flex flex-col gap-2">
         {/* PR Title */}
-        <div className="flex-1 min-w-0">
-          <ClickableEventTitle
-            event={event}
-            windowTitle={subject || "Untitled Pull Request"}
-            className="font-semibold text-foreground"
-          >
-            {subject || "Untitled Pull Request"}
-          </ClickableEventTitle>
-        </div>
+        <ClickableEventTitle
+          event={event}
+          windowTitle={subject || "Untitled Pull Request"}
+          className="font-semibold text-foreground"
+        >
+          {subject || "Untitled Pull Request"}
+        </ClickableEventTitle>
 
-        {/* Metadata */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-          <span>in</span>
+        <div className="flex flex-col gap-1">
           {/* Repository */}
           {repoAddress && repoPointer && (
             <div
               onClick={handleRepoClick}
-              className="flex items-center gap-1 text-muted-foreground cursor-crosshair underline decoration-dotted hover:text-primary"
+              className="flex items-center gap-1 text-muted-foreground cursor-crosshair underline decoration-dotted hover:text-primary truncate line-clamp-1 text-xs"
             >
-              <FolderGit2 className="size-3" />
+              <FolderGit2 className="size-3 flex-shrink-0" />
               <span>{repoName}</span>
             </div>
           )}
-
           {/* Branch Name */}
           {branchName && (
-            <>
-              <span className="text-muted-foreground">•</span>
-              <code className="text-muted-foreground font-mono text-xs">
-                {branchName}
-              </code>
-            </>
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <GitBranch className="size-3" />
+              <span>{branchName}</span>
+            </div>
           )}
         </div>
 

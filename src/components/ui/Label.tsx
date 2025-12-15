@@ -19,7 +19,7 @@ export function Label({ children, className, size = "sm" }: LabelProps) {
   return (
     <span
       className={cn(
-        "border border-muted border-dotted text-muted-foreground text-xs",
+        "truncate line-clamp-1 border border-muted border-dotted text-muted-foreground text-xs",
         size === "sm" && "px-2 py-0.5",
         size === "md" && "px-3 py-1",
         className,

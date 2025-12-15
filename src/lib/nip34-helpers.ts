@@ -256,7 +256,9 @@ export function getPullRequestCloneUrls(event: NostrEvent): string[] {
  * @param event PR event (kind 1618)
  * @returns Branch name or undefined
  */
-export function getPullRequestBranchName(event: NostrEvent): string | undefined {
+export function getPullRequestBranchName(
+  event: NostrEvent,
+): string | undefined {
   return getTagValue(event, "branch-name");
 }
 

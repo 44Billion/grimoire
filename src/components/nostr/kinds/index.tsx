@@ -16,6 +16,7 @@ import { Kind9735Renderer } from "./ZapReceiptRenderer";
 import { Kind9802Renderer } from "./HighlightRenderer";
 import { Kind10002Renderer } from "./RelayListRenderer";
 import { Kind30023Renderer } from "./ArticleRenderer";
+import { CommunityNIPRenderer } from "./CommunityNIPRenderer";
 import { RepositoryRenderer } from "./RepositoryRenderer";
 import { Kind39701Renderer } from "./BookmarkRenderer";
 import { GenericRelayListRenderer } from "./GenericRelayListRenderer";
@@ -52,6 +53,7 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   10050: GenericRelayListRenderer, // DM Relay List (NIP-51)
   30002: GenericRelayListRenderer, // Relay Sets (NIP-51)
   30023: Kind30023Renderer, // Long-form Article
+  30817: CommunityNIPRenderer, // Community NIP
   30617: RepositoryRenderer, // Repository (NIP-34)
   39701: Kind39701Renderer, // Web Bookmarks (NIP-B0)
 };

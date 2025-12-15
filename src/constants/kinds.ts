@@ -1234,6 +1234,13 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     nip: "34",
     icon: FolderGit2,
   },
+  30817: {
+    kind: 30817,
+    name: "Community NIP",
+    description: "Community-published NIP document",
+    nip: "",
+    icon: FileText,
+  },
   30818: {
     kind: 30818,
     name: "Wiki",

@@ -11,6 +11,7 @@ import { Kind1337DetailRenderer } from "./nostr/kinds/CodeSnippetDetailRenderer"
 import { Kind9802DetailRenderer } from "./nostr/kinds/HighlightDetailRenderer";
 import { Kind10002DetailRenderer } from "./nostr/kinds/RelayListDetailRenderer";
 import { Kind30023DetailRenderer } from "./nostr/kinds/ArticleDetailRenderer";
+import { CommunityNIPDetailRenderer } from "./nostr/kinds/CommunityNIPDetailRenderer";
 import { RepositoryDetailRenderer } from "./nostr/kinds/RepositoryDetailRenderer";
 import { JsonViewer } from "./JsonViewer";
 import { RelayLink } from "./nostr/RelayLink";
@@ -284,6 +285,8 @@ export function EventDetailViewer({ pointer }: EventDetailViewerProps) {
           <Kind10002DetailRenderer event={event} />
         ) : event.kind === kinds.LongFormArticle ? (
           <Kind30023DetailRenderer event={event} />
+        ) : event.kind === 30817 ? (
+          <CommunityNIPDetailRenderer event={event} />
         ) : event.kind === 30617 ? (
           <RepositoryDetailRenderer event={event} />
         ) : (

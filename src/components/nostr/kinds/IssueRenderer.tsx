@@ -15,7 +15,6 @@ import {
   getRepositoryName,
   getRepositoryIdentifier,
 } from "@/lib/nip34-helpers";
-import { UserName } from "../UserName";
 import { Label } from "@/components/ui/Label";
 
 /**
@@ -70,37 +69,38 @@ export function IssueRenderer({ event }: BaseEventProps) {
   return (
     <BaseEventContainer event={event}>
       <div className="flex flex-col gap-2">
-        {/* Issue Title */}
-        <ClickableEventTitle
-          event={event}
-          windowTitle={title || "Untitled Issue"}
-          className="font-semibold text-foreground"
-        >
-          {title || "Untitled Issue"}
-        </ClickableEventTitle>
+        <div className="flex flex-col gap-1">
+          {/* Issue Title */}
+          <ClickableEventTitle
+            event={event}
+            windowTitle={title || "Untitled Issue"}
+            className="font-semibold text-foreground"
+          >
+            {title || "Untitled Issue"}
+          </ClickableEventTitle>
 
-        {/* Repository Reference */}
-        {repoAddress && repoPointer && (
-          <div className="flex items-center gap-1 text-xs line-clamp-1">
-            <span>in </span>
-            <div
-              onClick={handleRepoClick}
-              className={`flex items-center gap-1 text-muted-foreground
+          {/* Repository Reference */}
+          {repoAddress && repoPointer && (
+            <div className="text-xs line-clamp-1">
+              <div
+                onClick={handleRepoClick}
+                className={`flex items-center gap-1 text-muted-foreground
                 cursor-crosshair underline decoration-dotted hover:text-primary
               `}
-            >
-              <FolderGit2 className="size-3" />
-              <span>{repoName}</span>
+              >
+                <FolderGit2 className="size-3" />
+                <span>{repoName}</span>
+              </div>
             </div>
-            <span>by</span>
-            <UserName pubkey={repoPointer.pubkey} />
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Labels */}
         {labels.length > 0 && (
           <div
             className="flex
+            flex-wrap
+            line-clamp-2
             items-center gap-1 overflow-x-scroll my-1"
           >
             {labels.map((label, idx) => (
