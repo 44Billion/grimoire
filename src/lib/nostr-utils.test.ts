@@ -237,16 +237,86 @@ describe("resolveFilterAliases", () => {
       expect(result.authors?.length).toBe(5000);
     });
 
-    it("should handle mixed case aliases (should not match)", () => {
-      // Aliases are case-sensitive and should be lowercase
+    it("should handle mixed case aliases (case-insensitive)", () => {
+      // Aliases are case-insensitive for user convenience
+      const accountPubkey = "a".repeat(64);
+      const contacts = ["b".repeat(64), "c".repeat(64)];
       const filter: NostrFilter = { authors: ["$Me", "$CONTACTS"] };
-      const result = resolveFilterAliases(filter, "a".repeat(64), [
-        "b".repeat(64),
-      ]);
+      const result = resolveFilterAliases(filter, accountPubkey, contacts);
 
-      // These should NOT be resolved (case mismatch)
-      expect(result.authors).toContain("$Me");
-      expect(result.authors).toContain("$CONTACTS");
+      // These should be resolved despite case differences
+      expect(result.authors).toContain(accountPubkey);
+      expect(result.authors).toContain(contacts[0]);
+      expect(result.authors).toContain(contacts[1]);
+      expect(result.authors).not.toContain("$Me");
+      expect(result.authors).not.toContain("$CONTACTS");
+    });
+  });
+
+  describe("case-insensitive alias resolution", () => {
+    it("should resolve $ME (uppercase) in authors", () => {
+      const filter: NostrFilter = { authors: ["$ME"] };
+      const accountPubkey = "a".repeat(64);
+      const result = resolveFilterAliases(filter, accountPubkey, []);
+
+      expect(result.authors).toEqual([accountPubkey]);
+      expect(result.authors).not.toContain("$ME");
+    });
+
+    it("should resolve $Me (mixed case) in #p tags", () => {
+      const filter: NostrFilter = { "#p": ["$Me"] };
+      const accountPubkey = "a".repeat(64);
+      const result = resolveFilterAliases(filter, accountPubkey, []);
+
+      expect(result["#p"]).toEqual([accountPubkey]);
+      expect(result["#p"]).not.toContain("$Me");
+    });
+
+    it("should resolve $CONTACTS (uppercase) in authors", () => {
+      const filter: NostrFilter = { authors: ["$CONTACTS"] };
+      const contacts = ["a".repeat(64), "b".repeat(64)];
+      const result = resolveFilterAliases(filter, undefined, contacts);
+
+      expect(result.authors).toEqual(contacts);
+      expect(result.authors).not.toContain("$CONTACTS");
+    });
+
+    it("should resolve $Contacts (mixed case) in #P tags", () => {
+      const filter: NostrFilter = { "#P": ["$Contacts"] };
+      const contacts = ["a".repeat(64), "b".repeat(64)];
+      const result = resolveFilterAliases(filter, undefined, contacts);
+
+      expect(result["#P"]).toEqual(contacts);
+      expect(result["#P"]).not.toContain("$Contacts");
+    });
+
+    it("should handle multiple case variations in same filter", () => {
+      const filter: NostrFilter = {
+        authors: ["$me", "$ME", "$Me"],
+        "#p": ["$contacts", "$CONTACTS", "$Contacts"],
+      };
+      const accountPubkey = "a".repeat(64);
+      const contacts = ["b".repeat(64), "c".repeat(64)];
+      const result = resolveFilterAliases(filter, accountPubkey, contacts);
+
+      // Should deduplicate all variants of $me to single pubkey
+      expect(result.authors).toEqual([accountPubkey]);
+      // Should deduplicate all variants of $contacts
+      expect(result["#p"]).toEqual(contacts);
+    });
+
+    it("should handle sloppy typing with whitespace-like patterns", () => {
+      const filter: NostrFilter = {
+        authors: ["$ME", "$me", "$Me"],
+        "#P": ["$CONTACTS", "$contacts", "$Contacts"],
+      };
+      const accountPubkey = "a".repeat(64);
+      const contacts = ["b".repeat(64), "c".repeat(64)];
+      const result = resolveFilterAliases(filter, accountPubkey, contacts);
+
+      expect(result.authors?.length).toBe(1);
+      expect(result.authors).toContain(accountPubkey);
+      expect(result["#P"]).toEqual(contacts);
     });
   });
 

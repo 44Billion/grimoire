@@ -127,9 +127,10 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
           const values = nextArg.split(",").map((a) => a.trim());
           for (const authorStr of values) {
             if (!authorStr) continue;
-            // Check for $me and $contacts aliases
-            if (authorStr === "$me" || authorStr === "$contacts") {
-              authors.add(authorStr);
+            // Check for $me and $contacts aliases (case-insensitive)
+            const normalized = authorStr.toLowerCase();
+            if (normalized === "$me" || normalized === "$contacts") {
+              authors.add(normalized);
               addedAny = true;
             } else if (isNip05(authorStr)) {
               // Check if it's a NIP-05 identifier
@@ -188,9 +189,10 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
           const values = nextArg.split(",").map((p) => p.trim());
           for (const pubkeyStr of values) {
             if (!pubkeyStr) continue;
-            // Check for $me and $contacts aliases
-            if (pubkeyStr === "$me" || pubkeyStr === "$contacts") {
-              pTags.add(pubkeyStr);
+            // Check for $me and $contacts aliases (case-insensitive)
+            const normalized = pubkeyStr.toLowerCase();
+            if (normalized === "$me" || normalized === "$contacts") {
+              pTags.add(normalized);
               addedAny = true;
             } else if (isNip05(pubkeyStr)) {
               // Check if it's a NIP-05 identifier
@@ -223,9 +225,10 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
           const values = nextArg.split(",").map((p) => p.trim());
           for (const pubkeyStr of values) {
             if (!pubkeyStr) continue;
-            // Check for $me and $contacts aliases
-            if (pubkeyStr === "$me" || pubkeyStr === "$contacts") {
-              pTagsUppercase.add(pubkeyStr);
+            // Check for $me and $contacts aliases (case-insensitive)
+            const normalized = pubkeyStr.toLowerCase();
+            if (normalized === "$me" || normalized === "$contacts") {
+              pTagsUppercase.add(normalized);
               addedAny = true;
             } else if (isNip05(pubkeyStr)) {
               // Check if it's a NIP-05 identifier

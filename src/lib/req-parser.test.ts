@@ -725,6 +725,41 @@ describe("parseReqCommand", () => {
       });
     });
 
+    describe("case-insensitive aliases", () => {
+      it("should normalize $ME to $me in authors", () => {
+        const result = parseReqCommand(["-a", "$ME"]);
+        expect(result.filter.authors).toContain("$me");
+        expect(result.needsAccount).toBe(true);
+      });
+
+      it("should normalize $CONTACTS to $contacts in authors", () => {
+        const result = parseReqCommand(["-a", "$CONTACTS"]);
+        expect(result.filter.authors).toContain("$contacts");
+        expect(result.needsAccount).toBe(true);
+      });
+
+      it("should normalize mixed case $Me to $me in #p tags", () => {
+        const result = parseReqCommand(["-p", "$Me"]);
+        expect(result.filter["#p"]).toContain("$me");
+        expect(result.needsAccount).toBe(true);
+      });
+
+      it("should normalize $CONTACTS to $contacts in #P tags", () => {
+        const result = parseReqCommand(["-P", "$CONTACTS"]);
+        expect(result.filter["#P"]).toContain("$contacts");
+        expect(result.needsAccount).toBe(true);
+      });
+
+      it("should handle mixed case aliases with other values", () => {
+        const hex = "a".repeat(64);
+        const result = parseReqCommand(["-a", `$ME,${hex},$Contacts`]);
+        expect(result.filter.authors).toContain("$me");
+        expect(result.filter.authors).toContain("$contacts");
+        expect(result.filter.authors).toContain(hex);
+        expect(result.needsAccount).toBe(true);
+      });
+    });
+
     describe("$me alias in #p tags (-p)", () => {
       it("should detect $me in #p tags", () => {
         const result = parseReqCommand(["-p", "$me"]);

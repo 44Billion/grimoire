@@ -26,7 +26,7 @@ export function getDisplayName(
 }
 
 /**
- * Resolve $me and $contacts aliases in a Nostr filter
+ * Resolve $me and $contacts aliases in a Nostr filter (case-insensitive)
  * @param filter - Filter that may contain $me or $contacts aliases
  * @param accountPubkey - Current user's pubkey (for $me resolution)
  * @param contacts - Array of contact pubkeys (for $contacts resolution)
@@ -44,11 +44,12 @@ export function resolveFilterAliases(
     const resolvedAuthors: string[] = [];
 
     for (const author of resolved.authors) {
-      if (author === "$me") {
+      const normalized = author.toLowerCase();
+      if (normalized === "$me") {
         if (accountPubkey) {
           resolvedAuthors.push(accountPubkey);
         }
-      } else if (author === "$contacts") {
+      } else if (normalized === "$contacts") {
         resolvedAuthors.push(...contacts);
       } else {
         resolvedAuthors.push(author);
@@ -64,11 +65,12 @@ export function resolveFilterAliases(
     const resolvedPTags: string[] = [];
 
     for (const pTag of resolved["#p"]) {
-      if (pTag === "$me") {
+      const normalized = pTag.toLowerCase();
+      if (normalized === "$me") {
         if (accountPubkey) {
           resolvedPTags.push(accountPubkey);
         }
-      } else if (pTag === "$contacts") {
+      } else if (normalized === "$contacts") {
         resolvedPTags.push(...contacts);
       } else {
         resolvedPTags.push(pTag);
@@ -84,11 +86,12 @@ export function resolveFilterAliases(
     const resolvedPTagsUppercase: string[] = [];
 
     for (const pTag of resolved["#P"]) {
-      if (pTag === "$me") {
+      const normalized = pTag.toLowerCase();
+      if (normalized === "$me") {
         if (accountPubkey) {
           resolvedPTagsUppercase.push(accountPubkey);
         }
-      } else if (pTag === "$contacts") {
+      } else if (normalized === "$contacts") {
         resolvedPTagsUppercase.push(...contacts);
       } else {
         resolvedPTagsUppercase.push(pTag);
