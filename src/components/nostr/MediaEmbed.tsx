@@ -33,24 +33,24 @@ interface MediaEmbedProps {
 
 const PRESETS = {
   inline: {
-    maxHeight: "300px",
-    maxWidth: "100%",
-    rounded: "rounded-lg",
+    maxHeightClass: "max-h-[300px]",
+    maxWidthClass: "max-w-full",
+    roundedClass: "rounded-lg",
   },
   thumbnail: {
-    maxWidth: "120px",
-    maxHeight: "120px",
-    rounded: "rounded-md",
+    maxHeightClass: "max-h-[120px]",
+    maxWidthClass: "max-w-[120px]",
+    roundedClass: "rounded-md",
   },
   preview: {
-    maxHeight: "500px",
-    maxWidth: "100%",
-    rounded: "rounded-lg",
+    maxHeightClass: "max-h-[500px]",
+    maxWidthClass: "max-w-full",
+    roundedClass: "rounded-lg",
   },
   banner: {
-    maxHeight: "200px",
-    maxWidth: "100%",
-    rounded: "rounded-xl",
+    maxHeightClass: "max-h-[200px]",
+    maxWidthClass: "max-w-full",
+    roundedClass: "rounded-xl",
   },
 } as const;
 
@@ -67,14 +67,36 @@ const getDefaultAspectRatio = (
 };
 
 /**
+ * Convert aspect ratio string to Tailwind class
+ */
+const getAspectRatioClass = (
+  aspectRatio: string | undefined,
+): string | undefined => {
+  if (!aspectRatio || aspectRatio === "auto") return undefined;
+
+  // Map common ratios to Tailwind utilities
+  switch (aspectRatio) {
+    case "16/9":
+      return "aspect-video";
+    case "1/1":
+      return "aspect-square";
+    case "4/3":
+      return "aspect-[4/3]";
+    case "3/2":
+      return "aspect-[3/2]";
+    default:
+      // For custom ratios, use arbitrary value syntax
+      return `aspect-[${aspectRatio}]`;
+  }
+};
+
+/**
  * Skeleton placeholder component with shimmer effect
  */
 const SkeletonPlaceholder = ({
-  aspectRatio,
   rounded,
   children,
 }: {
-  aspectRatio?: string;
   rounded: string;
   children?: React.ReactNode;
 }) => (
@@ -83,7 +105,6 @@ const SkeletonPlaceholder = ({
       "absolute inset-0 bg-muted/20 animate-pulse flex items-center justify-center",
       rounded,
     )}
-    style={aspectRatio ? { aspectRatio } : undefined}
     aria-busy="true"
     aria-label="Loading media"
   >
@@ -102,7 +123,7 @@ const SkeletonPlaceholder = ({
  * - Aspect ratio preservation to prevent layout shift
  * - Smooth fade-in animations
  * - Error handling with retry mechanism
- * - Performance optimized with CSS containment
+ * - Performance optimized with Tailwind classes
  */
 export function MediaEmbed({
   url,
@@ -141,6 +162,8 @@ export function MediaEmbed({
   // Determine aspect ratio (user override or default based on type/preset)
   const effectiveAspectRatio =
     aspectRatio || getDefaultAspectRatio(mediaType, preset);
+
+  const aspectClass = getAspectRatioClass(effectiveAspectRatio);
 
   // Reset states when URL changes
   useEffect(() => {
@@ -211,29 +234,54 @@ export function MediaEmbed({
 
   // Image rendering with zoom, placeholder, and fade-in
   if (mediaType === "image") {
-    const imageContent = (
+    const imageContent = aspectClass ? (
+      // With aspect ratio: use aspect wrapper
       <div
-        className={cn("relative overflow-hidden", presetStyles.rounded)}
-        style={
-          effectiveAspectRatio
-            ? {
-                aspectRatio: effectiveAspectRatio,
-                maxHeight: presetStyles.maxHeight,
-                maxWidth: presetStyles.maxWidth,
-                contain: "content", // Performance optimization
-              }
-            : {
-                maxHeight: presetStyles.maxHeight,
-                maxWidth: presetStyles.maxWidth,
-              }
-        }
+        className={cn(
+          "relative overflow-hidden contain-content",
+          presetStyles.maxWidthClass,
+          presetStyles.roundedClass,
+        )}
+      >
+        <div className={aspectClass}>
+          {/* Skeleton placeholder */}
+          {showPlaceholder && isLoading && (
+            <SkeletonPlaceholder rounded={presetStyles.roundedClass} />
+          )}
+
+          {/* Image with fade-in */}
+          <img
+            key={retryCount} // Force remount on retry
+            src={url}
+            alt={alt || "Image"}
+            loading="lazy"
+            className={cn(
+              "w-full h-full object-contain",
+              presetStyles.roundedClass,
+              enableZoom && "cursor-zoom-in",
+              fadeIn && "transition-opacity duration-300",
+              isLoaded ? "opacity-100" : "opacity-0",
+              className,
+            )}
+            onLoad={handleLoad}
+            onError={handleError}
+            aria-label={alt || "Image"}
+          />
+        </div>
+      </div>
+    ) : (
+      // Without aspect ratio: direct image with size constraints
+      <div
+        className={cn(
+          "relative overflow-hidden contain-content flex items-center justify-center",
+          presetStyles.maxWidthClass,
+          presetStyles.maxHeightClass,
+          presetStyles.roundedClass,
+        )}
       >
         {/* Skeleton placeholder */}
         {showPlaceholder && isLoading && (
-          <SkeletonPlaceholder
-            aspectRatio={effectiveAspectRatio}
-            rounded={presetStyles.rounded}
-          />
+          <SkeletonPlaceholder rounded={presetStyles.roundedClass} />
         )}
 
         {/* Image with fade-in */}
@@ -243,8 +291,8 @@ export function MediaEmbed({
           alt={alt || "Image"}
           loading="lazy"
           className={cn(
-            "w-full h-full object-contain",
-            presetStyles.rounded,
+            "max-w-full max-h-full object-contain",
+            presetStyles.roundedClass,
             enableZoom && "cursor-zoom-in",
             fadeIn && "transition-opacity duration-300",
             isLoaded ? "opacity-100" : "opacity-0",
@@ -268,41 +316,38 @@ export function MediaEmbed({
   if (mediaType === "video") {
     return (
       <div
-        className={cn("relative overflow-hidden", presetStyles.rounded)}
-        style={{
-          aspectRatio: effectiveAspectRatio,
-          maxHeight: presetStyles.maxHeight,
-          maxWidth: "100%",
-          contain: "content", // Performance optimization
-        }}
-      >
-        {/* Skeleton placeholder with play icon */}
-        {showPlaceholder && isLoading && (
-          <SkeletonPlaceholder
-            aspectRatio={effectiveAspectRatio}
-            rounded={presetStyles.rounded}
-          >
-            <Play className="w-12 h-12 text-muted-foreground/50" />
-          </SkeletonPlaceholder>
+        className={cn(
+          "relative overflow-hidden contain-content",
+          presetStyles.maxWidthClass,
+          presetStyles.roundedClass,
         )}
-
-        {/* Video with fade-in */}
-        <video
-          key={retryCount} // Force remount on retry
-          src={url}
-          className={cn(
-            "w-full h-full",
-            presetStyles.rounded,
-            fadeIn && "transition-opacity duration-300",
-            isLoaded ? "opacity-100" : "opacity-0",
-            className,
+      >
+        <div className={aspectClass || "aspect-video"}>
+          {/* Skeleton placeholder with play icon */}
+          {showPlaceholder && isLoading && (
+            <SkeletonPlaceholder rounded={presetStyles.roundedClass}>
+              <Play className="w-12 h-12 text-muted-foreground/50" />
+            </SkeletonPlaceholder>
           )}
-          preload="metadata"
-          controls={showControls}
-          onLoadedMetadata={handleLoad}
-          onError={handleError}
-          aria-label={alt || "Video"}
-        />
+
+          {/* Video with fade-in */}
+          <video
+            key={retryCount} // Force remount on retry
+            src={url}
+            className={cn(
+              "w-full h-full",
+              presetStyles.roundedClass,
+              fadeIn && "transition-opacity duration-300",
+              isLoaded ? "opacity-100" : "opacity-0",
+              className,
+            )}
+            preload="metadata"
+            controls={showControls}
+            onLoadedMetadata={handleLoad}
+            onError={handleError}
+            aria-label={alt || "Video"}
+          />
+        </div>
       </div>
     );
   }

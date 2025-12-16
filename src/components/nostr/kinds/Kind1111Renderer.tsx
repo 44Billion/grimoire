@@ -1,6 +1,12 @@
 import { RichText } from "../RichText";
 import { BaseEventContainer, type BaseEventProps } from "./BaseEventRenderer";
-import { getNip10References } from "applesauce-core/helpers/threading";
+import {
+  getCommentReplyPointer,
+  getCommentRootPointer,
+  isCommentAddressPointer,
+  isCommentEventPointer,
+  type CommentPointer,
+} from "applesauce-core/helpers/comment";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
 import { UserName } from "../UserName";
 import { Reply, MessageSquare } from "lucide-react";
@@ -15,37 +21,54 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { EventPointer } from "nostr-tools/nip19";
-import type { AddressPointer } from "nostr-tools/nip19";
+
+/**
+ * Convert CommentPointer to pointer format for useNostrEvent
+ */
+function convertCommentPointer(
+  commentPointer: CommentPointer | null,
+):
+  | { id: string }
+  | { kind: number; pubkey: string; identifier: string }
+  | undefined {
+  if (!commentPointer) return undefined;
+
+  if (isCommentEventPointer(commentPointer)) {
+    return { id: commentPointer.id };
+  } else if (isCommentAddressPointer(commentPointer)) {
+    return {
+      kind: commentPointer.kind,
+      pubkey: commentPointer.pubkey,
+      identifier: commentPointer.identifier,
+    };
+  }
+  return undefined;
+}
 
 /**
  * Check if two pointers reference the same event
  */
 function isSamePointer(
   pointer1:
-    | { e: EventPointer; a: undefined }
-    | { e: undefined; a: AddressPointer }
-    | { e: EventPointer; a: AddressPointer }
+    | { id: string }
+    | { kind: number; pubkey: string; identifier: string }
     | undefined,
   pointer2:
-    | { e: EventPointer; a: undefined }
-    | { e: undefined; a: AddressPointer }
-    | { e: EventPointer; a: AddressPointer }
+    | { id: string }
+    | { kind: number; pubkey: string; identifier: string }
     | undefined,
 ): boolean {
   if (!pointer1 || !pointer2) return false;
 
-  // Compare event pointers
-  if (pointer1.e && pointer2.e) {
-    return pointer1.e.id === pointer2.e.id;
+  if ("id" in pointer1 && "id" in pointer2) {
+    return pointer1.id === pointer2.id;
   }
 
-  // Compare address pointers
-  if (pointer1.a && pointer2.a) {
+  if ("kind" in pointer1 && "kind" in pointer2) {
     return (
-      pointer1.a.kind === pointer2.a.kind &&
-      pointer1.a.pubkey === pointer2.a.pubkey &&
-      pointer1.a.identifier === pointer2.a.identifier
+      pointer1.kind === pointer2.kind &&
+      pointer1.pubkey === pointer2.pubkey &&
+      pointer1.identifier === pointer2.identifier
     );
   }
 
@@ -97,19 +120,20 @@ function ParentEventCard({
 }
 
 /**
- * Renderer for Kind 1 - Short Text Note (NIP-10 threading)
+ * Renderer for Kind 1111 - Post (NIP-22)
  * Shows parent event with kind icon, author, and title in reply-style format
  * If both root and reply exist and are different, shows both (root first, then reply)
  */
-export function Kind1Renderer({ event, depth = 0 }: BaseEventProps) {
+export function Kind1111Renderer({ event, depth = 0 }: BaseEventProps) {
   const { addWindow } = useGrimoire();
 
-  // Use NIP-10 threading helpers
-  const refs = getNip10References(event);
+  // Use NIP-22 specific helpers to get reply/root pointers
+  const replyPointerRaw = getCommentReplyPointer(event);
+  const rootPointerRaw = getCommentRootPointer(event);
 
-  // Get pointers for root and reply
-  const rootPointer = refs.root?.e || refs.root?.a;
-  const replyPointer = refs.reply?.e || refs.reply?.a;
+  // Convert to useNostrEvent format
+  const rootPointer = convertCommentPointer(rootPointerRaw);
+  const replyPointer = convertCommentPointer(replyPointerRaw);
 
   // Fetch both events
   const rootEvent = useNostrEvent(rootPointer, event);
@@ -117,15 +141,15 @@ export function Kind1Renderer({ event, depth = 0 }: BaseEventProps) {
 
   // Check if root and reply are different events
   const hasDistinctReply =
-    refs.root &&
-    refs.reply &&
-    !isSamePointer(refs.root, refs.reply) &&
+    rootPointer &&
+    replyPointer &&
+    !isSamePointer(rootPointer, replyPointer) &&
     rootEvent &&
     replyEvent;
 
   const handleRootClick = () => {
     if (!rootEvent || !rootPointer) return;
-    addWindow("open", { pointer: rootPointer }, `Thread root`);
+    addWindow("open", { pointer: rootPointer });
   };
 
   const handleReplyClick = () => {
@@ -133,7 +157,6 @@ export function Kind1Renderer({ event, depth = 0 }: BaseEventProps) {
     addWindow(
       "open",
       { pointer: replyPointer },
-      `Reply to ${replyEvent.pubkey.slice(0, 8)}...`,
     );
   };
 

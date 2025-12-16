@@ -1,5 +1,6 @@
 import { Kind0Renderer } from "./ProfileRenderer";
 import { Kind1Renderer } from "./NoteRenderer";
+import { Kind1111Renderer } from "./Kind1111Renderer";
 import { Kind3Renderer } from "./ContactListRenderer";
 import { RepostRenderer } from "./RepostRenderer";
 import { Kind7Renderer } from "./ReactionRenderer";
@@ -34,13 +35,14 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   6: RepostRenderer, // Repost
   7: Kind7Renderer, // Reaction
   9: Kind9Renderer, // Chat Message (NIP-C7)
+  11: Kind1Renderer, // Public Thread Reply (NIP-10)
   16: RepostRenderer, // Generic Repost
   17: Kind7Renderer, // Reaction (NIP-25)
   20: Kind20Renderer, // Picture (NIP-68)
   21: Kind21Renderer, // Video Event (NIP-71)
   22: Kind22Renderer, // Short Video (NIP-71)
   1063: Kind1063Renderer, // File Metadata (NIP-94)
-  1111: Kind1Renderer, // Post
+  1111: Kind1111Renderer, // Post (NIP-22)
   1337: Kind1337Renderer, // Code Snippet (NIP-C0)
   1617: PatchRenderer, // Patch (NIP-34)
   1618: PullRequestRenderer, // Pull Request (NIP-34)
@@ -105,6 +107,7 @@ export {
 } from "./BaseEventRenderer";
 export type { BaseEventProps } from "./BaseEventRenderer";
 export { Kind1Renderer } from "./NoteRenderer";
+export { Kind1111Renderer } from "./Kind1111Renderer";
 export {
   RepostRenderer,
   Kind6Renderer,
