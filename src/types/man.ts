@@ -200,12 +200,12 @@ export const manPages: Record<string, ManPageEntry> = {
       {
         flag: "--since <time>",
         description:
-          "Events after timestamp (unix timestamp or relative: 1h, 30m, 7d)",
+          "Events after timestamp (unix timestamp, relative: 30s, 1m, 2h, 7d, 2w, 3mo, 1y, or 'now')",
       },
       {
         flag: "--until <time>",
         description:
-          "Events before timestamp (unix timestamp or relative: 1h, 30m, 7d)",
+          "Events before timestamp (unix timestamp, relative: 30s, 1m, 2h, 7d, 2w, 3mo, 1y, or 'now')",
       },
       {
         flag: "--search <text>",
@@ -231,6 +231,9 @@ export const manPages: Record<string, ManPageEntry> = {
       "req -k 1 -a npub1...,npub2...        Get notes from multiple authors (balances across outbox relays)",
       "req -a $me                           Get all your events (queries your outbox relays)",
       "req -k 1 -a $contacts --since 24h    Get notes from contacts (queries their outbox relays)",
+      "req -k 1 -a $contacts --since 7d     Get notes from contacts in last week",
+      "req -k 1 -a $contacts --since 3mo    Get notes from contacts in last 3 months",
+      "req -k 1 -a $contacts --since 1y     Get notes from contacts in last year",
       "req -p $me -k 1,7                    Get replies and reactions to you (queries your inbox relays)",
       "req -k 1 -a $me -a $contacts         Get notes from you and contacts",
       "req -k 9735 -p $me --since 7d        Get zaps you received (queries your inbox)",
@@ -238,6 +241,7 @@ export const manPages: Record<string, ManPageEntry> = {
       "req -k 9735 -P $contacts             Get zaps sent by your contacts",
       "req -k 1 -p verbiricha@habla.news    Get notes mentioning user (queries their inbox)",
       "req -k 1 --since 1h relay.damus.io   Get notes from last hour (manual relay override)",
+      "req -k 1 --since 7d --until now      Get notes from last week up to now",
       "req -k 1 --close-on-eose             Get recent notes and close after EOSE",
       "req -t nostr,bitcoin -l 50           Get 50 events tagged #nostr or #bitcoin",
       "req --tag a 30023:abc...:article     Get events referencing addressable event (#a tag)",

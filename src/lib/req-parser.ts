@@ -410,18 +410,24 @@ function isRelayDomain(value: string): boolean {
 }
 
 /**
- * Parse timestamp - supports unix timestamp, relative time (1h, 30m, 7d)
+ * Parse timestamp - supports unix timestamp, relative time (1s, 30m, 2h, 7d, 2w, 3mo, 1y), or "now"
  */
 function parseTimestamp(value: string): number | null {
   if (!value) return null;
+
+  // Special keyword: "now" - current timestamp
+  if (value.toLowerCase() === "now") {
+    return Math.floor(Date.now() / 1000);
+  }
 
   // Unix timestamp (10 digits)
   if (/^\d{10}$/.test(value)) {
     return parseInt(value, 10);
   }
 
-  // Relative time: 1h, 30m, 7d, 2w
-  const relativeMatch = value.match(/^(\d+)([smhdw])$/);
+  // Relative time: 30s, 1m, 2h, 7d, 2w, 3mo, 1y
+  // Note: Using alternation to support multi-character units like "mo"
+  const relativeMatch = value.match(/^(\d+)(s|m|h|d|w|mo|y)$/);
   if (relativeMatch) {
     const amount = parseInt(relativeMatch[1], 10);
     const unit = relativeMatch[2];
@@ -433,6 +439,8 @@ function parseTimestamp(value: string): number | null {
       h: 3600,
       d: 86400,
       w: 604800,
+      mo: 2592000, // 30 days (approximate month)
+      y: 31536000, // 365 days (approximate year)
     };
 
     return now - amount * multipliers[unit];

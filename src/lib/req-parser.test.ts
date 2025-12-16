@@ -391,26 +391,266 @@ describe("parseReqCommand", () => {
   });
 
   describe("time flags (--since, --until)", () => {
-    it("should parse unix timestamp for --since", () => {
-      const result = parseReqCommand(["--since", "1234567890"]);
-      expect(result.filter.since).toBe(1234567890);
+    describe("unix timestamps", () => {
+      it("should parse unix timestamp for --since", () => {
+        const result = parseReqCommand(["--since", "1234567890"]);
+        expect(result.filter.since).toBe(1234567890);
+      });
+
+      it("should parse unix timestamp for --until", () => {
+        const result = parseReqCommand(["--until", "1234567890"]);
+        expect(result.filter.until).toBe(1234567890);
+      });
     });
 
-    it("should parse relative time for --since (hours)", () => {
-      const result = parseReqCommand(["--since", "2h"]);
-      expect(result.filter.since).toBeDefined();
-      expect(result.filter.since).toBeGreaterThan(0);
+    describe("relative time - seconds (s)", () => {
+      it("should parse seconds for --since", () => {
+        const now = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--since", "30s"]);
+        expect(result.filter.since).toBeDefined();
+        expect(result.filter.since).toBeGreaterThan(now - 35);
+        expect(result.filter.since).toBeLessThan(now - 25);
+      });
+
+      it("should parse 1 second for --since", () => {
+        const now = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--since", "1s"]);
+        expect(result.filter.since).toBeDefined();
+        expect(result.filter.since).toBeGreaterThan(now - 5);
+        expect(result.filter.since).toBeLessThan(now + 1);
+      });
+
+      it("should parse seconds for --until", () => {
+        const now = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--until", "30s"]);
+        expect(result.filter.until).toBeDefined();
+        expect(result.filter.until).toBeGreaterThan(now - 35);
+        expect(result.filter.until).toBeLessThan(now - 25);
+      });
     });
 
-    it("should parse relative time for --since (days)", () => {
-      const result = parseReqCommand(["--since", "7d"]);
-      expect(result.filter.since).toBeDefined();
-      expect(result.filter.since).toBeGreaterThan(0);
+    describe("relative time - minutes (m)", () => {
+      it("should parse minutes for --since", () => {
+        const now = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--since", "30m"]);
+        expect(result.filter.since).toBeDefined();
+        const diff = now - result.filter.since!;
+        expect(diff).toBeGreaterThan(1795); // 30m - 5s
+        expect(diff).toBeLessThan(1805); // 30m + 5s
+      });
+
+      it("should parse 1 minute for --since", () => {
+        const now = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--since", "1m"]);
+        expect(result.filter.since).toBeDefined();
+        const diff = now - result.filter.since!;
+        expect(diff).toBeGreaterThan(55); // 1m - 5s
+        expect(diff).toBeLessThan(65); // 1m + 5s
+      });
     });
 
-    it("should parse unix timestamp for --until", () => {
-      const result = parseReqCommand(["--until", "1234567890"]);
-      expect(result.filter.until).toBe(1234567890);
+    describe("relative time - hours (h)", () => {
+      it("should parse hours for --since", () => {
+        const now = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--since", "2h"]);
+        expect(result.filter.since).toBeDefined();
+        const diff = now - result.filter.since!;
+        expect(diff).toBeGreaterThan(7195); // 2h - 5s
+        expect(diff).toBeLessThan(7205); // 2h + 5s
+      });
+
+      it("should parse 24 hours for --since", () => {
+        const now = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--since", "24h"]);
+        expect(result.filter.since).toBeDefined();
+        const diff = now - result.filter.since!;
+        expect(diff).toBeGreaterThan(86395); // 24h - 5s
+        expect(diff).toBeLessThan(86405); // 24h + 5s
+      });
+    });
+
+    describe("relative time - days (d)", () => {
+      it("should parse days for --since", () => {
+        const now = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--since", "7d"]);
+        expect(result.filter.since).toBeDefined();
+        const diff = now - result.filter.since!;
+        expect(diff).toBeGreaterThan(604795); // 7d - 5s
+        expect(diff).toBeLessThan(604805); // 7d + 5s
+      });
+
+      it("should parse 1 day for --since", () => {
+        const now = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--since", "1d"]);
+        expect(result.filter.since).toBeDefined();
+        const diff = now - result.filter.since!;
+        expect(diff).toBeGreaterThan(86395); // 1d - 5s
+        expect(diff).toBeLessThan(86405); // 1d + 5s
+      });
+    });
+
+    describe("relative time - weeks (w)", () => {
+      it("should parse weeks for --since", () => {
+        const now = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--since", "2w"]);
+        expect(result.filter.since).toBeDefined();
+        const diff = now - result.filter.since!;
+        expect(diff).toBeGreaterThan(1209595); // 2w - 5s
+        expect(diff).toBeLessThan(1209605); // 2w + 5s
+      });
+
+      it("should parse 1 week for --since", () => {
+        const now = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--since", "1w"]);
+        expect(result.filter.since).toBeDefined();
+        const diff = now - result.filter.since!;
+        expect(diff).toBeGreaterThan(604795); // 1w - 5s
+        expect(diff).toBeLessThan(604805); // 1w + 5s
+      });
+    });
+
+    describe("relative time - months (mo)", () => {
+      it("should parse months for --since", () => {
+        const now = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--since", "3mo"]);
+        expect(result.filter.since).toBeDefined();
+        const diff = now - result.filter.since!;
+        // 3 months = 7776000 seconds (90 days)
+        expect(diff).toBeGreaterThan(7775995); // 3mo - 5s
+        expect(diff).toBeLessThan(7776005); // 3mo + 5s
+      });
+
+      it("should parse 1 month for --since", () => {
+        const now = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--since", "1mo"]);
+        expect(result.filter.since).toBeDefined();
+        const diff = now - result.filter.since!;
+        // 1 month = 2592000 seconds (30 days)
+        expect(diff).toBeGreaterThan(2591995); // 1mo - 5s
+        expect(diff).toBeLessThan(2592005); // 1mo + 5s
+      });
+    });
+
+    describe("relative time - years (y)", () => {
+      it("should parse years for --since", () => {
+        const now = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--since", "4y"]);
+        expect(result.filter.since).toBeDefined();
+        const diff = now - result.filter.since!;
+        // 4 years = 126144000 seconds (1460 days)
+        expect(diff).toBeGreaterThan(126143995); // 4y - 5s
+        expect(diff).toBeLessThan(126144005); // 4y + 5s
+      });
+
+      it("should parse 1 year for --since", () => {
+        const now = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--since", "1y"]);
+        expect(result.filter.since).toBeDefined();
+        const diff = now - result.filter.since!;
+        // 1 year = 31536000 seconds (365 days)
+        expect(diff).toBeGreaterThan(31535995); // 1y - 5s
+        expect(diff).toBeLessThan(31536005); // 1y + 5s
+      });
+    });
+
+    describe("special keyword - now", () => {
+      it("should parse 'now' for --since", () => {
+        const before = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--since", "now"]);
+        const after = Math.floor(Date.now() / 1000);
+
+        expect(result.filter.since).toBeDefined();
+        expect(result.filter.since).toBeGreaterThanOrEqual(before);
+        expect(result.filter.since).toBeLessThanOrEqual(after);
+      });
+
+      it("should parse 'now' for --until", () => {
+        const before = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--until", "now"]);
+        const after = Math.floor(Date.now() / 1000);
+
+        expect(result.filter.until).toBeDefined();
+        expect(result.filter.until).toBeGreaterThanOrEqual(before);
+        expect(result.filter.until).toBeLessThanOrEqual(after);
+      });
+
+      it("should be case-insensitive for 'now'", () => {
+        const result1 = parseReqCommand(["--since", "NOW"]);
+        const result2 = parseReqCommand(["--since", "Now"]);
+        const result3 = parseReqCommand(["--since", "now"]);
+
+        expect(result1.filter.since).toBeDefined();
+        expect(result2.filter.since).toBeDefined();
+        expect(result3.filter.since).toBeDefined();
+      });
+
+      it("should work with other filters", () => {
+        const now = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["-k", "1", "--since", "7d", "--until", "now"]);
+
+        expect(result.filter.kinds).toEqual([1]);
+        expect(result.filter.since).toBeLessThan(now);
+        expect(result.filter.until).toBeGreaterThanOrEqual(now - 1);
+        expect(result.filter.until).toBeLessThanOrEqual(now + 1);
+      });
+    });
+
+    describe("invalid time formats", () => {
+      it("should return undefined for invalid time format", () => {
+        const result = parseReqCommand(["--since", "invalid"]);
+        expect(result.filter.since).toBeUndefined();
+      });
+
+      it("should return undefined for time unit without number", () => {
+        const result = parseReqCommand(["--since", "h"]);
+        expect(result.filter.since).toBeUndefined();
+      });
+
+      it("should return undefined for unsupported unit", () => {
+        const result = parseReqCommand(["--since", "5x"]);
+        expect(result.filter.since).toBeUndefined();
+      });
+
+      it("should return undefined for negative time", () => {
+        const result = parseReqCommand(["--since", "-5h"]);
+        expect(result.filter.since).toBeUndefined();
+      });
+    });
+
+    describe("combined time flags", () => {
+      it("should parse both --since and --until", () => {
+        const result = parseReqCommand([
+          "--since",
+          "7d",
+          "--until",
+          "1d",
+          "-k",
+          "1",
+        ]);
+        expect(result.filter.since).toBeDefined();
+        expect(result.filter.until).toBeDefined();
+        expect(result.filter.since).toBeLessThan(result.filter.until!);
+        expect(result.filter.kinds).toEqual([1]);
+      });
+
+      it("should work with unix timestamps for time range", () => {
+        const result = parseReqCommand([
+          "--since",
+          "1600000000",
+          "--until",
+          "1700000000",
+        ]);
+        expect(result.filter.since).toBe(1600000000);
+        expect(result.filter.until).toBe(1700000000);
+      });
+
+      it("should work with mixed relative and unix timestamps", () => {
+        const now = Math.floor(Date.now() / 1000);
+        const result = parseReqCommand(["--since", "7d", "--until", "1234567890"]);
+        expect(result.filter.since).toBeDefined();
+        expect(result.filter.since).toBeLessThan(now);
+        expect(result.filter.until).toBe(1234567890);
+      });
     });
   });
 
