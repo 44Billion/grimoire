@@ -56,6 +56,7 @@ interface RichTextProps {
   className?: string;
   depth?: number;
   options?: RichTextOptions;
+  children?: React.ReactNode;
 }
 
 // Content node component types for rendering
@@ -79,6 +80,7 @@ export function RichText({
   className = "",
   depth = 1,
   options = {},
+  children,
 }: RichTextProps) {
   // Merge provided options with defaults
   const mergedOptions: Required<RichTextOptions> = {
@@ -89,15 +91,15 @@ export function RichText({
   // Call hook unconditionally - it will handle undefined/null
   const trimmedEvent = event
     ? {
-        ...event,
-        content: event.content.trim(),
-      }
+      ...event,
+      content: event.content.trim(),
+    }
     : undefined;
   const renderedContent = useRenderedContent(
     content
       ? ({
-          content,
-        } as NostrEvent)
+        content,
+      } as NostrEvent)
       : trimmedEvent,
     contentComponents,
   );
@@ -109,6 +111,7 @@ export function RichText({
           dir="auto"
           className={cn("leading-relaxed break-words", className)}
         >
+          {children}
           {renderedContent}
         </div>
       </OptionsContext.Provider>

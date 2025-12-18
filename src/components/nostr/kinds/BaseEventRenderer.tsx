@@ -50,7 +50,7 @@ export interface BaseEventProps {
  */
 export function EventAuthor({
   pubkey,
-  label,
+  label: _label,
 }: {
   pubkey: string;
   label?: string;

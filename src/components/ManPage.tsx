@@ -55,13 +55,13 @@ export default function ManPage({ cmd }: ManPageProps) {
       {page.options && page.options.length > 0 && (
         <section>
           <h2 className="font-bold mb-2">OPTIONS</h2>
-          <div className="ml-8 space-y-2">
+          <div className="ml-8 space-y-3">
             {page.options.map((opt, i) => (
-              <div key={i} className="flex gap-4">
-                <span className="text-accent font-semibold min-w-[120px]">
+              <div key={i}>
+                <div className="text-accent font-semibold">
                   {opt.flag}
-                </span>
-                <span className="text-muted-foreground">{opt.description}</span>
+                </div>
+                <div className="ml-8 text-muted-foreground">{opt.description}</div>
               </div>
             ))}
           </div>
@@ -72,12 +72,29 @@ export default function ManPage({ cmd }: ManPageProps) {
       {page.examples && page.examples.length > 0 && (
         <section>
           <h2 className="font-bold mb-2">EXAMPLES</h2>
-          <div className="ml-8 space-y-1">
-            {page.examples.map((example, i) => (
-              <div key={i} className="text-muted-foreground">
-                {example}
-              </div>
-            ))}
+          <div className="ml-8 space-y-3">
+            {page.examples.map((example, i) => {
+              // Split command from description
+              // Pattern: command ends before first capital letter after flags
+              const match = example.match(/^(.*?)(\s+[A-Z].*)$/);
+              if (match) {
+                const [, command, description] = match;
+                return (
+                  <div key={i}>
+                    <div className="text-accent font-medium">{command}</div>
+                    <div className="ml-8 text-muted-foreground text-sm">
+                      {description.trim()}
+                    </div>
+                  </div>
+                );
+              }
+              // Fallback for examples without descriptions
+              return (
+                <div key={i} className="text-accent font-medium">
+                  {example}
+                </div>
+              );
+            })}
           </div>
         </section>
       )}

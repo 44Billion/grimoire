@@ -4,7 +4,6 @@ import {
   parseLiveActivity,
   getLiveStatus,
   getLiveHost,
-  formatStartTime,
 } from "@/lib/live-activity";
 import { BaseEventContainer, ClickableEventTitle } from "./BaseEventRenderer";
 import { Label } from "@/components/ui/Label";
