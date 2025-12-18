@@ -1,5 +1,12 @@
 # TODO
 
+## Support passing nevent,naddr,npub to -T option
+
+**Priority**: Low
+**File**: `src/services/command-parser.ts`
+
+Allow `-T` (target) option to accept not just raw tag values, but also naddr and npub identifiers for more flexible targeting of events, addresses, or public keys.
+
 ## Known Issues
 
 ### RTL Support in Rich Text
