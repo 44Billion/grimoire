@@ -240,6 +240,12 @@ export const useGrimoire = () => {
     [setState],
   );
 
+  const applyPresetLayout = useCallback(
+    (preset: any) =>
+      setState((prev) => Logic.applyPresetLayout(prev, preset)),
+    [setState],
+  );
+
   return {
     state,
     locale: state.locale || browserLocale,
@@ -254,5 +260,6 @@ export const useGrimoire = () => {
     setActiveAccount,
     setActiveAccountRelays,
     updateWorkspaceLayoutConfig,
+    applyPresetLayout,
   };
 };

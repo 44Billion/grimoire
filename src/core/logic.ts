@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { MosaicNode } from "react-mosaic-component";
 import { GrimoireState, WindowInstance, UserRelays } from "@/types/app";
 import { insertWindow } from "@/lib/layout-utils";
+import { applyPresetToLayout, type LayoutPreset } from "@/lib/layout-presets";
 
 /**
  * Finds the lowest available workspace number.
@@ -372,4 +373,36 @@ export const updateWorkspaceLayoutConfig = (
       },
     },
   };
+};
+
+/**
+ * Applies a preset layout to the active workspace.
+ * Reorganizes existing windows according to the preset template.
+ */
+export const applyPresetLayout = (
+  state: GrimoireState,
+  preset: LayoutPreset,
+): GrimoireState => {
+  const activeId = state.activeWorkspaceId;
+  const ws = state.workspaces[activeId];
+
+  try {
+    // Apply preset to current layout
+    const newLayout = applyPresetToLayout(ws.layout, preset);
+
+    return {
+      ...state,
+      workspaces: {
+        ...state.workspaces,
+        [activeId]: {
+          ...ws,
+          layout: newLayout,
+        },
+      },
+    };
+  } catch (error) {
+    // If preset application fails (not enough windows, etc.), return unchanged
+    console.error("[Layout] Failed to apply preset:", error);
+    return state;
+  }
 };
