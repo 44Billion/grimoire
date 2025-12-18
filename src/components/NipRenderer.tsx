@@ -2,6 +2,8 @@ import { useNip } from "@/hooks/useNip";
 import { MarkdownContent } from "./nostr/MarkdownContent";
 import { KindBadge } from "./KindBadge";
 import { getKindsForNip } from "@/lib/nip-kinds";
+import { CenteredContent } from "./ui/CenteredContent";
+import { cn } from "@/lib/utils";
 
 interface NipRendererProps {
   nipId: string;
@@ -14,21 +16,17 @@ export function NipRenderer({ nipId, className = "" }: NipRendererProps) {
 
   if (loading) {
     return (
-      <div className={`p-4 ${className}`}>
-        <div className="text-muted-foreground text-sm">
-          Loading NIP-{nipId}...
-        </div>
-      </div>
+      <CenteredContent className={cn("text-muted-foreground text-sm", className)}>
+        Loading NIP-{nipId}...
+      </CenteredContent>
     );
   }
 
   if (error) {
     return (
-      <div className={`p-4 ${className}`}>
-        <div className="text-destructive text-sm">
-          Error loading NIP-{nipId}: {error.message}
-        </div>
-      </div>
+      <CenteredContent className={cn("text-destructive text-sm", className)}>
+        Error loading NIP-{nipId}: {error.message}
+      </CenteredContent>
     );
   }
 
@@ -37,7 +35,7 @@ export function NipRenderer({ nipId, className = "" }: NipRendererProps) {
   }
 
   return (
-    <div className={`p-4 overflow-x-hidden ${className}`}>
+    <CenteredContent className={cn("overflow-x-hidden", className)}>
       <MarkdownContent content={content} />
 
       {kinds.length > 0 && (
@@ -52,6 +50,6 @@ export function NipRenderer({ nipId, className = "" }: NipRendererProps) {
           </div>
         </div>
       )}
-    </div>
+    </CenteredContent>
   );
 }

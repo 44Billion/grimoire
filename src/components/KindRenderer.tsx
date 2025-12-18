@@ -9,6 +9,7 @@ import {
   parseTagStructure,
   getContentTypeDescription,
 } from "@/lib/nostr-schema";
+import { CenteredContent } from "./ui/CenteredContent";
 
 // NIP-01 Kind ranges
 const REPLACEABLE_START = 10000;
@@ -44,7 +45,7 @@ export default function KindRenderer({ kind }: { kind: number }) {
   }
 
   return (
-    <div className="h-full w-full overflow-y-auto p-6 space-y-6">
+    <CenteredContent>
       {/* Header */}
       <div className="flex items-center gap-4">
         {Icon && (
@@ -180,7 +181,7 @@ export default function KindRenderer({ kind }: { kind: number }) {
           </div>
         </>
       )}
-    </div>
+    </CenteredContent>
   );
 }
 

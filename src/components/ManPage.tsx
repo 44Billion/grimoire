@@ -1,5 +1,6 @@
 import { manPages } from "@/types/man";
 import { useGrimoire } from "@/core/state";
+import { CenteredContent } from "./ui/CenteredContent";
 
 interface ManPageProps {
   cmd: string;
@@ -48,17 +49,17 @@ export default function ManPage({ cmd }: ManPageProps) {
 
   if (!page) {
     return (
-      <div className="p-6 font-mono text-sm">
+      <CenteredContent maxWidth="4xl" spacing="4" className="font-mono text-sm">
         <div className="text-destructive">No manual entry for {cmd}</div>
         <div className="mt-4 text-muted-foreground">
           Use 'help' to see available commands.
         </div>
-      </div>
+      </CenteredContent>
     );
   }
 
   return (
-    <div className="p-6 font-mono text-sm space-y-4 max-w-4xl">
+    <CenteredContent maxWidth="4xl" spacing="4" className="font-mono text-sm">
       {/* Header */}
       <div className="flex justify-between border-b border-border pb-2">
         <span className="font-bold">{page.name.toUpperCase()}</span>
@@ -161,6 +162,6 @@ export default function ManPage({ cmd }: ManPageProps) {
       <div className="border-t border-border pt-2 text-muted-foreground text-xs">
         Grimoire 1.0.0 {new Date().getFullYear()}
       </div>
-    </div>
+    </CenteredContent>
   );
 }

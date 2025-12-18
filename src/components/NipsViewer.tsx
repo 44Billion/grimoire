@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { NIPBadge } from "./NIPBadge";
 import { useGrimoire } from "@/core/state";
+import { CenteredContent } from "./ui/CenteredContent";
 
 /**
  * NipsViewer - Documentation introspection command
@@ -64,10 +65,9 @@ export default function NipsViewer() {
   };
 
   return (
-    <div className="h-full w-full overflow-y-auto p-6">
-      <div className="max-w-3xl mx-auto space-y-6">
-        {/* Header */}
-        <div>
+    <CenteredContent>
+      {/* Header */}
+      <div>
           <h1 className="text-2xl font-bold mb-2">
             {search
               ? `Showing ${filteredNips.length} of ${sortedNips.length} NIPs`
@@ -122,7 +122,6 @@ export default function NipsViewer() {
             <p className="text-sm">Try searching for a different term</p>
           </div>
         )}
-      </div>
-    </div>
+    </CenteredContent>
   );
 }

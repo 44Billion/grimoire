@@ -1,6 +1,7 @@
 import { getKindInfo } from "@/constants/kinds";
 import { kindRenderers } from "./nostr/kinds";
 import { NIPBadge } from "./NIPBadge";
+import { CenteredContent } from "./ui/CenteredContent";
 
 // Dynamically derive supported kinds from renderer registry
 const SUPPORTED_KINDS = Object.keys(kindRenderers).map(Number);
@@ -14,10 +15,9 @@ export default function KindsViewer() {
   const sortedKinds = [...SUPPORTED_KINDS].sort((a, b) => a - b);
 
   return (
-    <div className="h-full w-full overflow-y-auto p-6">
-      <div className="max-w-3xl mx-auto space-y-6">
-        {/* Header */}
-        <div>
+    <CenteredContent>
+      {/* Header */}
+      <div>
           <h1 className="text-2xl font-bold mb-2">
             Supported Event Kinds ({sortedKinds.length})
           </h1>
@@ -70,7 +70,6 @@ export default function KindsViewer() {
             );
           })}
         </div>
-      </div>
-    </div>
+    </CenteredContent>
   );
 }

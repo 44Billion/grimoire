@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import type { MosaicNode } from "react-mosaic-component";
 import {
   analyzeLayoutStats,
-  calculateSmartDirection,
   insertWindow,
   type LayoutStats,
 } from "./layout-utils";
@@ -212,125 +211,6 @@ describe("analyzeLayoutStats", () => {
   });
 });
 
-describe("calculateSmartDirection", () => {
-  describe("null and empty layouts", () => {
-    it("should default to row for null layout", () => {
-      const result = calculateSmartDirection(null);
-      expect(result).toBe("row");
-    });
-
-    it("should default to row for single window", () => {
-      const result = calculateSmartDirection("window-1");
-      expect(result).toBe("row");
-    });
-  });
-
-  describe("balanced layouts", () => {
-    it("should return row when splits are equal", () => {
-      // 1 row split, 1 column split - equal, default to row
-      const layout: MosaicNode<string> = {
-        direction: "row",
-        first: {
-          direction: "column",
-          first: "window-1",
-          second: "window-2",
-          splitPercentage: 50,
-        },
-        second: "window-3",
-        splitPercentage: 50,
-      };
-      const result = calculateSmartDirection(layout);
-      expect(result).toBe("row");
-    });
-
-    it("should return row when no splits exist yet", () => {
-      // Just two windows with one split
-      const layout: MosaicNode<string> = {
-        direction: "row",
-        first: "window-1",
-        second: "window-2",
-        splitPercentage: 50,
-      };
-      const result = calculateSmartDirection(layout);
-      // 1 row split, 0 column splits -> row > column, should favor column
-      expect(result).toBe("column");
-    });
-  });
-
-  describe("unbalanced layouts", () => {
-    it("should return column when more horizontal splits exist", () => {
-      // 2 row splits, 0 column splits
-      const layout: MosaicNode<string> = {
-        direction: "row",
-        first: {
-          direction: "row",
-          first: "window-1",
-          second: "window-2",
-          splitPercentage: 50,
-        },
-        second: "window-3",
-        splitPercentage: 50,
-      };
-      const result = calculateSmartDirection(layout);
-      expect(result).toBe("column");
-    });
-
-    it("should return row when more vertical splits exist", () => {
-      // 0 row splits, 2 column splits
-      const layout: MosaicNode<string> = {
-        direction: "column",
-        first: {
-          direction: "column",
-          first: "window-1",
-          second: "window-2",
-          splitPercentage: 50,
-        },
-        second: "window-3",
-        splitPercentage: 50,
-      };
-      const result = calculateSmartDirection(layout);
-      expect(result).toBe("row");
-    });
-
-    it("should favor column when significantly more horizontal splits", () => {
-      // 5 row splits, 1 column split
-      const layout: MosaicNode<string> = {
-        direction: "row",
-        first: {
-          direction: "row",
-          first: {
-            direction: "row",
-            first: {
-              direction: "row",
-              first: {
-                direction: "row",
-                first: "w1",
-                second: "w2",
-                splitPercentage: 50,
-              },
-              second: "w3",
-              splitPercentage: 50,
-            },
-            second: "w4",
-            splitPercentage: 50,
-          },
-          second: {
-            direction: "column",
-            first: "w5",
-            second: "w6",
-            splitPercentage: 50,
-          },
-          splitPercentage: 50,
-        },
-        second: "w7",
-        splitPercentage: 50,
-      };
-      const result = calculateSmartDirection(layout);
-      expect(result).toBe("column");
-    });
-  });
-});
-
 describe("insertWindow", () => {
   describe("first window insertion", () => {
     it("should return window ID for null layout", () => {
@@ -473,8 +353,16 @@ describe("insertWindow", () => {
         insertionPosition: "second",
       };
       const result = insertWindow(existingLayout, "window-4", config);
-      expect(result).toHaveProperty("direction", "column");
-      expect(result).toHaveProperty("second", "window-4");
+
+      // NEW IMPROVED BEHAVIOR: Splits shallowest leaf (window-3 at depth 1)
+      // Parent direction is row, so rotates to column for the split
+      expect(result).toHaveProperty("direction", "row");
+
+      // window-3 should be replaced with [column: window-3 | window-4]
+      const secondNode = (result as any).second;
+      expect(secondNode).toHaveProperty("direction", "column");
+      expect(secondNode).toHaveProperty("first", "window-3");
+      expect(secondNode).toHaveProperty("second", "window-4");
     });
 
     it("should balance vertical splits by adding horizontal", () => {
@@ -496,8 +384,16 @@ describe("insertWindow", () => {
         insertionPosition: "second",
       };
       const result = insertWindow(existingLayout, "window-4", config);
-      expect(result).toHaveProperty("direction", "row");
-      expect(result).toHaveProperty("second", "window-4");
+
+      // NEW IMPROVED BEHAVIOR: Splits shallowest leaf (window-3 at depth 1)
+      // Parent direction is column, so rotates to row for the split
+      expect(result).toHaveProperty("direction", "column");
+
+      // window-3 should be replaced with [row: window-3 | window-4]
+      const secondNode = (result as any).second;
+      expect(secondNode).toHaveProperty("direction", "row");
+      expect(secondNode).toHaveProperty("first", "window-3");
+      expect(secondNode).toHaveProperty("second", "window-4");
     });
   });
 
@@ -526,10 +422,20 @@ describe("insertWindow", () => {
         insertionPosition: "second",
       };
       const result = insertWindow(quadLayout, "window-5", config);
-      // More column splits than row, should add row
+
+      // NEW IMPROVED BEHAVIOR: All 4 windows at depth 2 (equal depth)
+      // Algorithm picks first shallowest leaf (window-1)
+      // Parent is column, so rotates to row for the split
       expect(result).toHaveProperty("direction", "row");
-      expect(result).toHaveProperty("first", quadLayout);
-      expect(result).toHaveProperty("second", "window-5");
+
+      const firstNode = (result as any).first;
+      expect(firstNode).toHaveProperty("direction", "column");
+
+      // window-1 should be replaced with [row: window-1 | window-5]
+      const window1Split = firstNode.first;
+      expect(window1Split).toHaveProperty("direction", "row");
+      expect(window1Split).toHaveProperty("first", "window-1");
+      expect(window1Split).toHaveProperty("second", "window-5");
     });
   });
 
