@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   collectWindowIds,
   applyPresetToLayout,
+  balanceLayout,
   BUILT_IN_PRESETS,
 } from "./layout-presets";
 import type { MosaicNode } from "react-mosaic-component";
@@ -190,6 +191,84 @@ describe("layout-presets", () => {
       const layout = mainSidebarPreset.generate(windows);
       const windowIds = collectWindowIds(layout);
       expect(windowIds).toEqual(windows);
+    });
+  });
+
+  describe("balanceLayout", () => {
+    it("returns null for null layout", () => {
+      expect(balanceLayout(null)).toBeNull();
+    });
+
+    it("returns single window unchanged", () => {
+      expect(balanceLayout("w1")).toBe("w1");
+    });
+
+    it("balances a simple binary split", () => {
+      const unbalanced: MosaicNode<string> = {
+        direction: "row",
+        first: "w1",
+        second: "w2",
+        splitPercentage: 70,
+      };
+      const balanced = balanceLayout(unbalanced);
+      expect(balanced).toEqual({
+        direction: "row",
+        first: "w1",
+        second: "w2",
+        splitPercentage: 50,
+      });
+    });
+
+    it("balances nested splits recursively", () => {
+      const unbalanced: MosaicNode<string> = {
+        direction: "row",
+        first: {
+          direction: "column",
+          first: "w1",
+          second: "w2",
+          splitPercentage: 30,
+        },
+        second: {
+          direction: "column",
+          first: "w3",
+          second: "w4",
+          splitPercentage: 80,
+        },
+        splitPercentage: 60,
+      };
+      const balanced = balanceLayout(unbalanced);
+
+      // All splits should be 50%
+      expect(balanced).toMatchObject({
+        splitPercentage: 50,
+        first: { splitPercentage: 50 },
+        second: { splitPercentage: 50 },
+      });
+    });
+
+    it("preserves window IDs and directions", () => {
+      const original: MosaicNode<string> = {
+        direction: "column",
+        first: "w1",
+        second: {
+          direction: "row",
+          first: "w2",
+          second: "w3",
+          splitPercentage: 75,
+        },
+        splitPercentage: 25,
+      };
+      const balanced = balanceLayout(original);
+      const windowIds = collectWindowIds(balanced);
+      expect(windowIds).toEqual(["w1", "w2", "w3"]);
+
+      // Check directions preserved
+      if (balanced && typeof balanced !== "string") {
+        expect(balanced.direction).toBe("column");
+        if (typeof balanced.second !== "string") {
+          expect(balanced.second.direction).toBe("row");
+        }
+      }
     });
   });
 

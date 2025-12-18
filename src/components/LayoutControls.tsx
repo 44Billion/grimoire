@@ -6,6 +6,7 @@ import {
   Sparkles,
   SplitSquareHorizontal,
   SplitSquareVertical,
+  Scale,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { useGrimoire } from "@/core/state";
@@ -22,7 +23,8 @@ import { toast } from "sonner";
 import type { LayoutConfig } from "@/types/app";
 
 export function LayoutControls() {
-  const { state, applyPresetLayout, updateLayoutConfig } = useGrimoire();
+  const { state, applyPresetLayout, balanceLayout, updateLayoutConfig } =
+    useGrimoire();
   const { workspaces, activeWorkspaceId, layoutConfig } = state;
 
   const activeWorkspace = workspaces[activeWorkspaceId];
@@ -95,6 +97,26 @@ export function LayoutControls() {
       Math.min(80, layoutConfig.splitPercentage + increment)
     );
     updateLayoutConfig({ splitPercentage: newValue });
+  };
+
+  const handleBalance = () => {
+    try {
+      // Enable animations for smooth transition
+      document.body.classList.add("animating-layout");
+
+      balanceLayout();
+
+      // Remove animation class after transition completes
+      setTimeout(() => {
+        document.body.classList.remove("animating-layout");
+      }, 180);
+    } catch (error) {
+      document.body.classList.remove("animating-layout");
+      toast.error(`Failed to balance layout`, {
+        description:
+          error instanceof Error ? error.message : "Unknown error occurred",
+      });
+    }
   };
 
   return (
@@ -214,6 +236,26 @@ export function LayoutControls() {
             </Button>
           </div>
         </div>
+
+        <DropdownMenuSeparator />
+
+        {/* Actions Section */}
+        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+          Actions
+        </div>
+        <DropdownMenuItem
+          onClick={handleBalance}
+          disabled={windowCount < 2}
+          className="flex items-center gap-2 cursor-pointer"
+        >
+          <Scale className="h-3.5 w-3.5" />
+          <span className="flex-1">Balance Splits</span>
+          {windowCount < 2 && (
+            <span className="text-xs text-muted-foreground">
+              Need 2+ windows
+            </span>
+          )}
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

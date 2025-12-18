@@ -241,6 +241,11 @@ export const useGrimoire = () => {
     [setState],
   );
 
+  const balanceLayout = useCallback(
+    () => setState((prev) => Logic.balanceLayoutInWorkspace(prev)),
+    [setState],
+  );
+
   return {
     state,
     locale: state.locale || browserLocale,
@@ -256,5 +261,6 @@ export const useGrimoire = () => {
     setActiveAccountRelays,
     updateLayoutConfig,
     applyPresetLayout,
+    balanceLayout,
   };
 };

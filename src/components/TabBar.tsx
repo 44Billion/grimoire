@@ -3,6 +3,7 @@ import { Button } from "./ui/button";
 import { useGrimoire } from "@/core/state";
 import { cn } from "@/lib/utils";
 import { LayoutControls } from "./LayoutControls";
+import { useEffect } from "react";
 
 export function TabBar() {
   const { state, setActiveWorkspace, createWorkspace } = useGrimoire();
@@ -12,10 +13,29 @@ export function TabBar() {
     createWorkspace();
   };
 
-  // Sort workspaces by number
+  // Sort workspaces by number (for both rendering and keyboard shortcuts)
   const sortedWorkspaces = Object.values(workspaces).sort(
     (a, b) => a.number - b.number,
   );
+
+  // Keyboard shortcut: Cmd+1-9 to switch workspaces by position
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Cmd/Ctrl + number key (1-9)
+      if ((e.metaKey || e.ctrlKey) && e.key >= "1" && e.key <= "9") {
+        const index = Number.parseInt(e.key, 10) - 1; // Convert key to array index
+        const targetWorkspace = sortedWorkspaces[index];
+
+        if (targetWorkspace) {
+          e.preventDefault(); // Prevent browser default (like Cmd+1 = first tab)
+          setActiveWorkspace(targetWorkspace.id);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [sortedWorkspaces, setActiveWorkspace]);
 
   return (
     <>

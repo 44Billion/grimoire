@@ -114,6 +114,67 @@ All event renderers now protected with error boundaries:
 - Retry button and collapsible details for debugging
 - Auto-resets when event changes
 
+### Layout System Enhancements
+**Completed**: 2024-12-18
+**Files**: `src/lib/layout-presets.ts`, `src/components/LayoutControls.tsx`, `src/components/TabBar.tsx`, `src/core/logic.ts`, `src/core/state.ts`
+
+Quick-win improvements to window management:
+- **Balance Splits**: New action to equalize all split percentages to 50/50 after manual resizing
+  - Recursive tree traversal preserves window IDs and directions
+  - Added to Actions section in LayoutControls dropdown
+  - Smooth animation on balance operation
+- **Keyboard Workspace Switching**: Cmd+1-9 (or Ctrl+1-9) to instantly switch to workspace by number
+  - Browser-safe shortcuts (prevents default browser behavior)
+  - Significantly faster workflow for power users
+- Comprehensive test coverage for balanceLayout function
+
+## Window Management Improvements
+
+### Fullscreen Mode
+**Priority**: High | **Effort**: Medium (2-3 hours)
+**Description**: Toggle window to fill entire workspace with minimal chrome
+**Implementation**:
+- CSS-based approach (hide siblings, expand target)
+- Keep workspace tabs visible for navigation
+- Toolbar button + right-click menu to enter fullscreen
+- ESC or button click to exit
+- Add `fullscreenWindowId` to workspace state
+- Smooth animation on enter/exit
+
+**Use Case**: Reading long-form content, focused analysis of single event/profile
+
+### Move Window to Different Workspace
+**Priority**: Medium | **Effort**: High (3-4 hours)
+**Description**: Reorganize windows by moving them between workspaces
+**Implementation**:
+- Right-click window → "Move to Workspace N" submenu
+- Extract window from current layout tree
+- Insert into target workspace layout
+- Handle edge cases (last window, invalid workspace)
+
+**Use Case**: "This profile is actually relevant to workspace 2's topic"
+
+### Rotate/Mirror Layout
+**Priority**: Low | **Effort**: Medium (2 hours)
+**Description**: Swap all row↔column directions in layout tree
+**Implementation**:
+- Recursive tree traversal
+- Swap `direction: "row"` ↔ `direction: "column"`
+- Keep split percentages unchanged
+- Add to Actions section in LayoutControls
+
+**Use Case**: "This arrangement works better vertically than horizontally"
+
+### Tab Navigation Between Windows
+**Priority**: Low | **Effort**: Low (1 hour)
+**Description**: Keyboard navigation within workspace
+**Implementation**:
+- Tab/Shift+Tab to cycle focus between windows
+- Focus management via mosaic window refs
+- Visual focus indicator (border highlight)
+
+**Use Case**: Keyboard-driven workflow without mouse
+
 ## Planned Improvements
 
 - **App-wide error boundary** - Splash crash screen for unhandled errors (separate from event-level boundaries)

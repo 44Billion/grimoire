@@ -204,6 +204,31 @@ export function applyPresetToLayout(
 }
 
 /**
+ * Balances all split percentages in a layout tree to 50/50
+ * Useful for equalizing splits after manual resizing
+ */
+export function balanceLayout(
+  layout: MosaicNode<string> | null
+): MosaicNode<string> | null {
+  if (layout === null) {
+    return null;
+  }
+
+  // Leaf node (window ID), return as-is
+  if (typeof layout === "string") {
+    return layout;
+  }
+
+  // Branch node, balance this split and recurse
+  return {
+    direction: layout.direction,
+    first: balanceLayout(layout.first),
+    second: balanceLayout(layout.second),
+    splitPercentage: 50,
+  };
+}
+
+/**
  * Get a preset by ID
  */
 export function getPreset(presetId: string): LayoutPreset | undefined {
