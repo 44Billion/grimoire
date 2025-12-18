@@ -164,9 +164,9 @@ export const manPages: Record<string, ManPageEntry> = {
         description: "Maximum number of events to return",
       },
       {
-        flag: "-e <id>",
+        flag: "-e <note|nevent|naddr|hex>",
         description:
-          "Filter by referenced event ID (#e tag). Supports comma-separated values: -e id1,id2,id3",
+          "Filter by event ID or coordinate. Supports note1 (bare event ID), nevent1 (event with relay hints), naddr1 (addressable event coordinate), or raw hex. Comma-separated values supported: -e note1...,nevent1...,naddr1...",
       },
       {
         flag: "-p <npub|hex|nip05|$me|$contacts>",

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseReqCommand } from "./req-parser";
+import { nip19 } from "nostr-tools";
 
 describe("parseReqCommand", () => {
   describe("kind flag (-k, --kind)", () => {
@@ -172,6 +173,319 @@ describe("parseReqCommand", () => {
       const hex = "a".repeat(64);
       const result = parseReqCommand(["-e", `${hex},${hex}`]);
       expect(result.filter["#e"]).toEqual([hex]);
+    });
+  });
+
+  describe("event ID flag (-e) with nevent/naddr support", () => {
+    describe("nevent support", () => {
+      it("should parse nevent and populate filter.ids", () => {
+        const eventId = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        const nevent = nip19.neventEncode({
+          id: eventId,
+        });
+        const result = parseReqCommand(["-e", nevent]);
+
+        expect(result.filter.ids).toBeDefined();
+        expect(result.filter.ids).toHaveLength(1);
+        expect(result.filter.ids).toEqual([eventId]);
+        expect(result.filter["#e"]).toBeUndefined();
+      });
+
+      it("should extract relay hints from nevent", () => {
+        const eventId = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        const nevent = nip19.neventEncode({
+          id: eventId,
+          relays: ["wss://relay.damus.io"],
+        });
+        const result = parseReqCommand(["-e", nevent]);
+
+        expect(result.relays).toBeDefined();
+        expect(result.relays).toContain("wss://relay.damus.io/");
+      });
+
+      it("should normalize relay URLs from nevent", () => {
+        const eventId = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        const nevent = nip19.neventEncode({
+          id: eventId,
+          relays: ["wss://relay.damus.io"],
+        });
+        const result = parseReqCommand(["-e", nevent]);
+
+        result.relays?.forEach((url) => {
+          expect(url).toMatch(/^wss?:\/\//);
+          expect(url).toMatch(/\/$/); // trailing slash
+        });
+      });
+
+      it("should handle nevent without relay hints", () => {
+        const eventId = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        const nevent = nip19.neventEncode({
+          id: eventId,
+        });
+        const result = parseReqCommand(["-e", nevent]);
+
+        expect(result.filter.ids).toHaveLength(1);
+        expect(result.relays).toBeUndefined();
+      });
+    });
+
+    describe("naddr support", () => {
+      it("should parse naddr and populate filter['#a']", () => {
+        const pubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        const naddr = nip19.naddrEncode({
+          kind: 30023,
+          pubkey: pubkey,
+          identifier: "test-article",
+        });
+        const result = parseReqCommand(["-e", naddr]);
+
+        expect(result.filter["#a"]).toBeDefined();
+        expect(result.filter["#a"]).toHaveLength(1);
+        expect(result.filter["#a"]?.[0]).toBe(`30023:${pubkey}:test-article`);
+      });
+
+      it("should extract relay hints from naddr", () => {
+        const pubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        const naddr = nip19.naddrEncode({
+          kind: 30023,
+          pubkey: pubkey,
+          identifier: "test-article",
+          relays: ["wss://relay.damus.io", "wss://nos.lol"],
+        });
+        const result = parseReqCommand(["-e", naddr]);
+
+        expect(result.relays).toBeDefined();
+        expect(result.relays!.length).toBe(2);
+        expect(result.relays).toContain("wss://relay.damus.io/");
+        expect(result.relays).toContain("wss://nos.lol/");
+      });
+
+      it("should format coordinate correctly (kind:pubkey:identifier)", () => {
+        const pubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        const naddr = nip19.naddrEncode({
+          kind: 30023,
+          pubkey: pubkey,
+          identifier: "test-article",
+        });
+        const result = parseReqCommand(["-e", naddr]);
+
+        const coordinate = result.filter["#a"]?.[0];
+        expect(coordinate).toBe(`30023:${pubkey}:test-article`);
+        // Validate format: kind:pubkey:identifier
+        const parts = coordinate?.split(":");
+        expect(parts).toHaveLength(3);
+        expect(parseInt(parts![0])).toBe(30023);
+        expect(parts![1]).toBe(pubkey);
+        expect(parts![2]).toBe("test-article");
+      });
+
+      it("should handle naddr without relay hints", () => {
+        const pubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        const naddr = nip19.naddrEncode({
+          kind: 30023,
+          pubkey: pubkey,
+          identifier: "test-article",
+        });
+        const result = parseReqCommand(["-e", naddr]);
+
+        expect(result.filter["#a"]).toHaveLength(1);
+        expect(result.relays).toBeUndefined();
+      });
+    });
+
+    describe("note/hex support (existing behavior)", () => {
+      it("should parse note and populate filter['#e']", () => {
+        const eventId = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        const note = nip19.noteEncode(eventId);
+        const result = parseReqCommand(["-e", note]);
+
+        expect(result.filter["#e"]).toBeDefined();
+        expect(result.filter["#e"]).toHaveLength(1);
+        expect(result.filter["#e"]).toContain(eventId);
+        expect(result.filter.ids).toBeUndefined();
+        expect(result.filter["#a"]).toBeUndefined();
+      });
+
+      it("should parse hex and populate filter['#e']", () => {
+        const hex = "a".repeat(64);
+        const result = parseReqCommand(["-e", hex]);
+
+        expect(result.filter["#e"]).toContain(hex);
+        expect(result.filter.ids).toBeUndefined();
+      });
+    });
+
+    describe("mixed format support", () => {
+      it("should handle comma-separated mix of all formats", () => {
+        const hex = "a".repeat(64);
+        const eventId = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        const pubkey = "b".repeat(64);
+
+        const note = nip19.noteEncode(eventId);
+        const nevent = nip19.neventEncode({ id: eventId });
+        const naddr = nip19.naddrEncode({
+          kind: 30023,
+          pubkey: pubkey,
+          identifier: "test-article",
+        });
+
+        const result = parseReqCommand([
+          "-e",
+          `${hex},${note},${nevent},${naddr}`,
+        ]);
+
+        // hex and note should go to filter["#e"]
+        expect(result.filter["#e"]).toHaveLength(2);
+        expect(result.filter["#e"]).toContain(hex);
+        expect(result.filter["#e"]).toContain(eventId);
+
+        // nevent should go to filter.ids
+        expect(result.filter.ids).toHaveLength(1);
+        expect(result.filter.ids).toContain(eventId);
+
+        // naddr should go to filter["#a"]
+        expect(result.filter["#a"]).toHaveLength(1);
+        expect(result.filter["#a"]?.[0]).toBe(`30023:${pubkey}:test-article`);
+      });
+
+      it("should deduplicate within each filter field", () => {
+        const eventId = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        const nevent1 = nip19.neventEncode({ id: eventId });
+        const nevent2 = nip19.neventEncode({ id: eventId, relays: ["wss://relay.damus.io"] });
+
+        const result = parseReqCommand(["-e", `${nevent1},${nevent2}`]);
+
+        // Both nevent decode to same event ID, should deduplicate
+        expect(result.filter.ids).toHaveLength(1);
+      });
+
+      it("should collect relay hints from mixed formats", () => {
+        const eventId = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        const pubkey = "b".repeat(64);
+
+        const nevent = nip19.neventEncode({
+          id: eventId,
+          relays: ["wss://relay.damus.io"],
+        });
+        const naddr = nip19.naddrEncode({
+          kind: 30023,
+          pubkey: pubkey,
+          identifier: "test-article",
+          relays: ["wss://nos.lol"],
+        });
+
+        const result = parseReqCommand(["-e", `${nevent},${naddr}`]);
+
+        expect(result.relays).toBeDefined();
+        expect(result.relays!.length).toBe(2);
+        expect(result.relays).toContain("wss://relay.damus.io/");
+        expect(result.relays).toContain("wss://nos.lol/");
+      });
+
+      it("should handle multiple nevents with different relay hints", () => {
+        const eventId = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        const nevent1 = nip19.neventEncode({
+          id: eventId,
+          relays: ["wss://relay.damus.io"],
+        });
+        const hex = "b".repeat(64);
+
+        const result = parseReqCommand(["-e", `${nevent1},${hex}`]);
+
+        // nevent goes to filter.ids
+        expect(result.filter.ids).toHaveLength(1);
+        // hex goes to filter["#e"]
+        expect(result.filter["#e"]).toContain(hex);
+        // relays extracted from nevent
+        expect(result.relays).toBeDefined();
+        expect(result.relays).toContain("wss://relay.damus.io/");
+      });
+    });
+
+    describe("error handling", () => {
+      it("should ignore invalid bech32", () => {
+        const result = parseReqCommand(["-e", "nevent1invalid"]);
+
+        expect(result.filter.ids).toBeUndefined();
+        expect(result.filter["#e"]).toBeUndefined();
+        expect(result.filter["#a"]).toBeUndefined();
+      });
+
+      it("should ignore invalid naddr", () => {
+        const result = parseReqCommand(["-e", "naddr1invalid"]);
+
+        expect(result.filter["#a"]).toBeUndefined();
+      });
+
+      it("should skip empty values in comma-separated list", () => {
+        const hex = "a".repeat(64);
+        const result = parseReqCommand(["-e", `${hex},,`]);
+
+        expect(result.filter["#e"]).toEqual([hex]);
+      });
+
+      it("should continue parsing after encountering invalid values", () => {
+        const hex1 = "a".repeat(64);
+        const hex2 = "b".repeat(64);
+        const result = parseReqCommand([
+          "-e",
+          `${hex1},invalid_bech32,${hex2}`,
+        ]);
+
+        expect(result.filter["#e"]).toEqual([hex1, hex2]);
+      });
+    });
+
+    describe("integration with other flags", () => {
+      it("should work with kind filter", () => {
+        const eventId = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        const nevent = nip19.neventEncode({ id: eventId });
+        const result = parseReqCommand(["-k", "1", "-e", nevent]);
+
+        expect(result.filter.kinds).toEqual([1]);
+        expect(result.filter.ids).toHaveLength(1);
+      });
+
+      it("should work with explicit relays", () => {
+        const pubkey = "b".repeat(64);
+        const naddr = nip19.naddrEncode({
+          kind: 30023,
+          pubkey: pubkey,
+          identifier: "test-article",
+        });
+        const result = parseReqCommand([
+          "-e",
+          naddr,
+          "wss://relay.example.com",
+        ]);
+
+        expect(result.filter["#a"]).toHaveLength(1);
+        expect(result.relays).toContain("wss://relay.example.com/");
+      });
+
+      it("should work with author and time filters", () => {
+        const hex = "c".repeat(64);
+        const eventId = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        const nevent = nip19.neventEncode({ id: eventId });
+        const result = parseReqCommand([
+          "-k",
+          "1",
+          "-a",
+          hex,
+          "-e",
+          nevent,
+          "--since",
+          "24h",
+          "-l",
+          "50",
+        ]);
+
+        expect(result.filter.kinds).toEqual([1]);
+        expect(result.filter.authors).toEqual([hex]);
+        expect(result.filter.ids).toHaveLength(1);
+        expect(result.filter.since).toBeDefined();
+        expect(result.filter.limit).toBe(50);
+      });
     });
   });
 

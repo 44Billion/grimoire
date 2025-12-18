@@ -45,10 +45,10 @@ function parseCommaSeparated<T>(
 /**
  * Parse REQ command arguments into a Nostr filter
  * Supports:
- * - Filters: -k (kinds), -a (authors: hex/npub/nprofile/NIP-05), -l (limit), -e (#e), -p (#p: hex/npub/nprofile/NIP-05), -P (#P: hex/npub/nprofile/NIP-05), -t (#t), -d (#d), --tag/-T (any #tag)
+ * - Filters: -k (kinds), -a (authors: hex/npub/nprofile/NIP-05), -l (limit), -e (note/nevent/naddr/hex), -p (#p: hex/npub/nprofile/NIP-05), -P (#P: hex/npub/nprofile/NIP-05), -t (#t), -d (#d), --tag/-T (any #tag)
  * - Time: --since, --until
  * - Search: --search
- * - Relays: wss://relay.com or relay.com (auto-adds wss://), nprofile relay hints are automatically extracted
+ * - Relays: wss://relay.com or relay.com (auto-adds wss://), relay hints from nprofile/nevent/naddr are automatically extracted
  * - Options: --close-on-eose (close stream after EOSE, default: stream stays open)
  */
 export function parseReqCommand(args: string[]): ParsedReqCommand {
@@ -61,7 +61,9 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
   // Use sets for deduplication during accumulation
   const kinds = new Set<number>();
   const authors = new Set<string>();
-  const eventIds = new Set<string>();
+  const ids = new Set<string>(); // For filter.ids (direct event lookup)
+  const eventIds = new Set<string>(); // For filter["#e"] (tag-based event lookup)
+  const aTags = new Set<string>(); // For filter["#a"] (coordinate-based lookup)
   const pTags = new Set<string>();
   const pTagsUppercase = new Set<string>();
   const tTags = new Set<string>();
@@ -165,16 +167,38 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
         }
 
         case "-e": {
-          // Support comma-separated event IDs: -e id1,id2,id3
+          // Support comma-separated event identifiers: -e note1...,nevent1...,naddr1...,hex
           if (!nextArg) {
             i++;
             break;
           }
-          const addedAny = parseCommaSeparated(
-            nextArg,
-            parseNoteOrHex,
-            eventIds,
-          );
+
+          let addedAny = false;
+          const values = nextArg.split(",").map((v) => v.trim());
+
+          for (const val of values) {
+            if (!val) continue;
+
+            const parsed = parseEventIdentifier(val);
+            if (parsed) {
+              // Route to appropriate filter field based on type
+              if (parsed.type === "direct-event") {
+                ids.add(parsed.value);
+              } else if (parsed.type === "direct-address") {
+                aTags.add(parsed.value);
+              } else if (parsed.type === "tag-event") {
+                eventIds.add(parsed.value);
+              }
+
+              // Collect relay hints
+              if (parsed.relays) {
+                relays.push(...parsed.relays);
+              }
+
+              addedAny = true;
+            }
+          }
+
           i += addedAny ? 2 : 1;
           break;
         }
@@ -367,7 +391,9 @@ export function parseReqCommand(args: string[]): ParsedReqCommand {
   // Convert accumulated sets to filter arrays (with deduplication)
   if (kinds.size > 0) filter.kinds = Array.from(kinds);
   if (authors.size > 0) filter.authors = Array.from(authors);
+  if (ids.size > 0) filter.ids = Array.from(ids);
   if (eventIds.size > 0) filter["#e"] = Array.from(eventIds);
+  if (aTags.size > 0) filter["#a"] = Array.from(aTags);
   if (pTags.size > 0) filter["#p"] = Array.from(pTags);
   if (pTagsUppercase.size > 0) filter["#P"] = Array.from(pTagsUppercase);
   if (tTags.size > 0) filter["#t"] = Array.from(tTags);
@@ -487,27 +513,88 @@ function parseNpubOrHex(value: string): {
   return { pubkey: null };
 }
 
+interface ParsedEventIdentifier {
+  type: "direct-event" | "direct-address" | "tag-event";
+  value: string;
+  relays?: string[];
+}
+
 /**
- * Parse note1 or hex event ID
+ * Parse event identifier - supports note, nevent, naddr, and hex event ID
  */
-function parseNoteOrHex(value: string): string | null {
+function parseEventIdentifier(value: string): ParsedEventIdentifier | null {
   if (!value) return null;
 
-  // Try to decode note1
+  // nevent: direct event lookup with relay hints
+  if (value.startsWith("nevent")) {
+    try {
+      const decoded = nip19.decode(value);
+      if (decoded.type === "nevent") {
+        return {
+          type: "direct-event",
+          value: decoded.data.id,
+          relays: decoded.data.relays
+            ?.map((url) => {
+              try {
+                return normalizeRelayURL(url);
+              } catch {
+                return null;
+              }
+            })
+            .filter((url): url is string => url !== null),
+        };
+      }
+    } catch {
+      // Not valid nevent, continue
+    }
+  }
+
+  // naddr: coordinate-based lookup with relay hints
+  if (value.startsWith("naddr")) {
+    try {
+      const decoded = nip19.decode(value);
+      if (decoded.type === "naddr") {
+        const coordinate = `${decoded.data.kind}:${decoded.data.pubkey}:${decoded.data.identifier}`;
+        return {
+          type: "direct-address",
+          value: coordinate,
+          relays: decoded.data.relays
+            ?.map((url) => {
+              try {
+                return normalizeRelayURL(url);
+              } catch {
+                return null;
+              }
+            })
+            .filter((url): url is string => url !== null),
+        };
+      }
+    } catch {
+      // Not valid naddr, continue
+    }
+  }
+
+  // note1: tag-based filtering (existing behavior)
   if (value.startsWith("note")) {
     try {
       const decoded = nip19.decode(value);
       if (decoded.type === "note") {
-        return decoded.data;
+        return {
+          type: "tag-event",
+          value: decoded.data,
+        };
       }
     } catch {
       // Not valid note, continue
     }
   }
 
-  // Check if it's hex event ID
+  // Hex: tag-based filtering (existing behavior)
   if (isValidHexEventId(value)) {
-    return normalizeHex(value);
+    return {
+      type: "tag-event",
+      value: normalizeHex(value),
+    };
   }
 
   return null;
