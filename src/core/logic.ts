@@ -3,7 +3,7 @@ import type { MosaicNode } from "react-mosaic-component";
 import {
   GrimoireState,
   WindowInstance,
-  UserRelays,
+  RelayInfo,
   LayoutConfig,
 } from "@/types/app";
 import { insertWindow } from "@/lib/layout-utils";
@@ -273,7 +273,7 @@ export const setActiveAccount = (
  */
 export const setActiveAccountRelays = (
   state: GrimoireState,
-  relays: UserRelays,
+  relays: RelayInfo[],
 ): GrimoireState => {
   if (!state.activeAccount) {
     return state;

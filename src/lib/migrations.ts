@@ -8,7 +8,7 @@
 import { GrimoireState } from "@/types/app";
 import { toast } from "sonner";
 
-export const CURRENT_VERSION = 8;
+export const CURRENT_VERSION = 9;
 
 /**
  * Migration function type
@@ -79,6 +79,30 @@ const migrations: Record<number, MigrationFn> = {
         insertionPosition: "second", // New windows on right/bottom
         autoPreset: undefined, // No preset by default
       },
+    };
+  },
+  // Migration from v8 to v9 - simplifies relay structure
+  8: (state: any) => {
+    // Simplify activeAccount.relays from {inbox, outbox, all} to just an array
+    // The 'all' array already has the correct read/write flags per relay
+    if (state.activeAccount?.relays) {
+      const oldRelays = state.activeAccount.relays;
+      // If it has the old structure (with inbox/outbox/all), migrate it
+      if (oldRelays.all && Array.isArray(oldRelays.all)) {
+        return {
+          ...state,
+          __version: 9,
+          activeAccount: {
+            ...state.activeAccount,
+            relays: oldRelays.all,
+          },
+        };
+      }
+    }
+    // No relays to migrate, just bump version
+    return {
+      ...state,
+      __version: 9,
     };
   },
 };

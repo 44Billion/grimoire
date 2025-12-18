@@ -6,6 +6,7 @@ import {
   AppId,
   WindowInstance,
   LayoutConfig,
+  RelayInfo,
 } from "@/types/app";
 import { useLocale } from "@/hooks/useLocale";
 import * as Logic from "./logic";
@@ -255,7 +256,7 @@ export const useGrimoire = () => {
   );
 
   const setActiveAccountRelays = useCallback(
-    (relays: any) =>
+    (relays: RelayInfo[]) =>
       setState((prev) => Logic.setActiveAccountRelays(prev, relays)),
     [setState],
   );

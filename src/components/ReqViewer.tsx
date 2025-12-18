@@ -55,7 +55,7 @@ import {
   AccordionTrigger,
 } from "./ui/accordion";
 import { RelayLink } from "./nostr/RelayLink";
-import type { NostrFilter, NostrEvent } from "@/types/nostr";
+import type { NostrFilter } from "@/types/nostr";
 import {
   formatEventIds,
   formatDTags,
@@ -678,8 +678,10 @@ export default function ReqViewer({
   // Memoize fallbackRelays to prevent re-creation on every render
   const fallbackRelays = useMemo(
     () =>
-      state.activeAccount?.relays?.inbox.map((r) => r.url) || AGGREGATOR_RELAYS,
-    [state.activeAccount?.relays?.inbox],
+      state.activeAccount?.relays
+        ?.filter((r) => r.read)
+        .map((r) => r.url) || AGGREGATOR_RELAYS,
+    [state.activeAccount?.relays],
   );
 
   // Memoize outbox options to prevent object re-creation
@@ -749,34 +751,38 @@ export default function ReqViewer({
   // Virtuoso scroll position preservation for prepending events
   const STARTING_INDEX = 100000;
   const [firstItemIndex, setFirstItemIndex] = useState(STARTING_INDEX);
-  const prevEventsRef = useRef<NostrEvent[]>([]);
+  const seenEventIdsRef = useRef<Set<string>>(new Set());
 
   // Adjust firstItemIndex when new events are prepended to preserve scroll position
+  // Uses Set-based tracking to handle rapid batches correctly
   useEffect(() => {
-    const prevEvents = prevEventsRef.current;
-    const currentEvents = events;
-    const prevLength = prevEvents.length;
-    const currentLength = currentEvents.length;
-
-    // Reset on clear/query change (events array shrunk)
-    if (currentLength < prevLength) {
+    // Reset on query change (events cleared)
+    if (events.length === 0) {
+      seenEventIdsRef.current = new Set();
       setFirstItemIndex(STARTING_INDEX);
-      prevEventsRef.current = currentEvents;
       return;
     }
 
-    // Detect new events prepended (only in streaming mode after EOSE)
-    const newEventsCount = currentLength - prevLength;
-    if (newEventsCount > 0 && prevLength > 0 && stream && eoseReceived) {
-      // Verify first event changed (events were prepended, not inserted in middle)
-      const firstIdChanged = currentEvents[0]?.id !== prevEvents[0]?.id;
-      if (firstIdChanged) {
-        // Decrement firstItemIndex to maintain scroll position
-        setFirstItemIndex((prev) => prev - newEventsCount);
+    // Find new events at the start of the array (prepended)
+    // This approach is immune to rapid updates because we track ALL seen IDs cumulatively
+    let prependCount = 0;
+    for (let i = 0; i < events.length; i++) {
+      const event = events[i];
+      if (!seenEventIdsRef.current.has(event.id)) {
+        // New event found at position i
+        prependCount++;
+        seenEventIdsRef.current.add(event.id);
+      } else {
+        // Found first existing event, stop counting
+        // All events after this are old (already seen)
+        break;
       }
     }
 
-    prevEventsRef.current = currentEvents;
+    // Adjust index only in streaming mode after EOSE
+    if (prependCount > 0 && stream && eoseReceived) {
+      setFirstItemIndex((prev) => prev - prependCount);
+    }
   }, [events, stream, eoseReceived]);
 
   /**

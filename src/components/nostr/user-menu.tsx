@@ -107,14 +107,14 @@ export default function UserMenu() {
               </DropdownMenuLabel>
             </DropdownMenuGroup>
 
-            {relays && relays.all.length > 0 && (
+            {relays && relays.length > 0 && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
                   <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
                     Relays
                   </DropdownMenuLabel>
-                  {relays.all.map((relay) => (
+                  {relays.map((relay) => (
                     <RelayLink
                       className="px-2 py-1"
                       urlClassname="text-sm"

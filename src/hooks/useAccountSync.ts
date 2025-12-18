@@ -2,9 +2,8 @@ import { useEffect } from "react";
 import { useEventStore, useObservableMemo } from "applesauce-react/hooks";
 import accounts from "@/services/accounts";
 import { useGrimoire } from "@/core/state";
-import { getInboxes, getOutboxes } from "applesauce-core/helpers";
 import { addressLoader } from "@/services/loaders";
-import type { RelayInfo, UserRelays } from "@/types/app";
+import type { RelayInfo } from "@/types/app";
 import { normalizeRelayURL } from "@/lib/relay-url";
 
 /**
@@ -48,12 +47,10 @@ export function useAccountSync() {
         if (relayListEvent.id === lastRelayEventId) return;
         lastRelayEventId = relayListEvent.id;
 
-        // Parse inbox and outbox relays
-        const inboxRelays = getInboxes(relayListEvent);
-        const outboxRelays = getOutboxes(relayListEvent);
-
-        // Get all relays from tags
-        const allRelays: RelayInfo[] = [];
+        // Parse relays from tags (NIP-65 format)
+        // Tag format: ["r", "relay-url", "read|write"]
+        // If no marker, relay is used for both read and write
+        const relays: RelayInfo[] = [];
         const seenUrls = new Set<string>();
 
         for (const tag of relayListEvent.tags) {
@@ -63,11 +60,11 @@ export function useAccountSync() {
               if (seenUrls.has(url)) continue;
               seenUrls.add(url);
 
-              const type = tag[2];
-              allRelays.push({
+              const marker = tag[2];
+              relays.push({
                 url,
-                read: !type || type === "read",
-                write: !type || type === "write",
+                read: !marker || marker === "read",
+                write: !marker || marker === "write",
               });
             } catch (error) {
               console.warn(
@@ -77,36 +74,6 @@ export function useAccountSync() {
             }
           }
         }
-
-        const relays: UserRelays = {
-          inbox: inboxRelays
-            .map((url) => {
-              try {
-                return {
-                  url: normalizeRelayURL(url),
-                  read: true,
-                  write: false,
-                };
-              } catch {
-                return null;
-              }
-            })
-            .filter((r): r is RelayInfo => r !== null),
-          outbox: outboxRelays
-            .map((url) => {
-              try {
-                return {
-                  url: normalizeRelayURL(url),
-                  read: false,
-                  write: true,
-                };
-              } catch {
-                return null;
-              }
-            })
-            .filter((r): r is RelayInfo => r !== null),
-          all: allRelays,
-        };
 
         setActiveAccountRelays(relays);
       });

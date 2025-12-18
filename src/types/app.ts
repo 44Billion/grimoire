@@ -72,12 +72,6 @@ export interface RelayInfo {
   write: boolean;
 }
 
-export interface UserRelays {
-  inbox: RelayInfo[];
-  outbox: RelayInfo[];
-  all: RelayInfo[];
-}
-
 export interface GrimoireState {
   __version: number; // Schema version for migrations
   windows: Record<string, WindowInstance>;
@@ -86,7 +80,7 @@ export interface GrimoireState {
   layoutConfig: LayoutConfig; // Global configuration for window insertion behavior
   activeAccount?: {
     pubkey: string;
-    relays?: UserRelays;
+    relays?: RelayInfo[];
   };
   locale?: {
     locale: string;

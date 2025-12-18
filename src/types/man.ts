@@ -108,18 +108,18 @@ export const manPages: Record<string, ManPageEntry> = {
     category: "Documentation",
     defaultProps: {},
   },
-  // debug: {
-  //   name: "debug",
-  //   section: "1",
-  //   synopsis: "debug",
-  //   description:
-  //     "Display the current application state for debugging purposes. Shows windows, workspaces, active account, and other internal state in a formatted view.",
-  //   examples: ["debug    View current application state"],
-  //   seeAlso: ["help"],
-  //   appId: "debug",
-  //   category: "System",
-  //   defaultProps: {},
-  // },
+  debug: {
+    name: "debug",
+    section: "1",
+    synopsis: "debug",
+    description:
+      "Display the current application state for debugging purposes. Shows windows, workspaces, active account, and other internal state in a formatted view.",
+    examples: ["debug    View current application state"],
+    seeAlso: ["help"],
+    appId: "debug",
+    category: "System",
+    defaultProps: {},
+  },
   man: {
     name: "man",
     section: "1",
