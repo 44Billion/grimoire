@@ -1,4 +1,4 @@
-import { useState, memo, useCallback, useMemo } from "react";
+import { useState, memo, useCallback, useMemo, useRef, useEffect } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -55,7 +55,7 @@ import {
   AccordionTrigger,
 } from "./ui/accordion";
 import { RelayLink } from "./nostr/RelayLink";
-import type { NostrFilter } from "@/types/nostr";
+import type { NostrFilter, NostrEvent } from "@/types/nostr";
 import {
   formatEventIds,
   formatDTags,
@@ -746,6 +746,39 @@ export default function ReqViewer({
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
 
+  // Virtuoso scroll position preservation for prepending events
+  const STARTING_INDEX = 100000;
+  const [firstItemIndex, setFirstItemIndex] = useState(STARTING_INDEX);
+  const prevEventsRef = useRef<NostrEvent[]>([]);
+
+  // Adjust firstItemIndex when new events are prepended to preserve scroll position
+  useEffect(() => {
+    const prevEvents = prevEventsRef.current;
+    const currentEvents = events;
+    const prevLength = prevEvents.length;
+    const currentLength = currentEvents.length;
+
+    // Reset on clear/query change (events array shrunk)
+    if (currentLength < prevLength) {
+      setFirstItemIndex(STARTING_INDEX);
+      prevEventsRef.current = currentEvents;
+      return;
+    }
+
+    // Detect new events prepended (only in streaming mode after EOSE)
+    const newEventsCount = currentLength - prevLength;
+    if (newEventsCount > 0 && prevLength > 0 && stream && eoseReceived) {
+      // Verify first event changed (events were prepended, not inserted in middle)
+      const firstIdChanged = currentEvents[0]?.id !== prevEvents[0]?.id;
+      if (firstIdChanged) {
+        // Decrement firstItemIndex to maintain scroll position
+        setFirstItemIndex((prev) => prev - newEventsCount);
+      }
+    }
+
+    prevEventsRef.current = currentEvents;
+  }, [events, stream, eoseReceived]);
+
   /**
    * Export events to JSONL format with chunked processing for large datasets
    * Uses Share API on mobile for reliable file sharing, falls back to download on desktop
@@ -1132,6 +1165,7 @@ export default function ReqViewer({
             <Virtuoso
               style={{ height: "100%" }}
               data={events}
+              firstItemIndex={firstItemIndex}
               computeItemKey={(_index, item) => item.id}
               itemContent={(_index, event) => (
                 <MemoizedFeedEvent event={event} />
