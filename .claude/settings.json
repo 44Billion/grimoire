@@ -10,7 +10,7 @@
       "Bash(ls:*)",
       "Bash(tree:*)",
       "Bash(awk:*)",
-      "Bash(sed:* -n *)",
+      "Bash(sed:*)",
       "Bash(head:*)",
       "Bash(tail:*)",
       "Bash(wc:*)",
