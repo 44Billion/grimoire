@@ -86,8 +86,9 @@ export function findAllLeaves(
 }
 
 /**
- * Finds the shallowest leaf in the tree (closest to root = largest screen space)
- * If multiple leaves at same depth, returns first one encountered
+ * Finds the shallowest leaf in the tree as a heuristic for largest screen space
+ * Accurate for balanced splits (default 50%), may be suboptimal for very unbalanced splits
+ * If multiple leaves at same depth, returns first one encountered (deterministic)
  */
 export function findShallowstLeaf(
   node: MosaicNode<string> | null,
@@ -190,10 +191,14 @@ export function calculateBalancedDirection(
 /**
  * Inserts a new window into the layout tree according to the layout configuration
  *
- * Smart mode uses shallowest-leaf algorithm for balanced trees:
- * - Finds the leaf node at minimum depth (approximates largest visual space)
- * - Splits that leaf with direction rotated from parent (row→column, column→row)
- * - Creates more balanced layouts than root-level wrapping
+ * Smart mode uses shallowest-leaf algorithm for balanced/dwindle-style layouts:
+ * - Finds the leaf node at minimum depth (heuristic for largest visual space)
+ * - Splits that leaf with direction rotated 90° from parent (row→column, column→row)
+ * - Creates checkerboard-like balanced layouts, progressively equalizing space
+ * - Works best with balanced split percentages (default 50%)
+ *
+ * This is NOT a spiral/fibonacci layout (which maintains a main window).
+ * It creates equal-ish space distribution similar to "dwindle" mode in other WMs.
  *
  * @param currentLayout - The current layout tree (null if no windows yet)
  * @param newWindowId - The ID of the new window to insert
