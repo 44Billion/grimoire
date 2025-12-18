@@ -32,7 +32,7 @@ export interface LeafInfo {
  * Used by smart direction algorithm to balance splits
  */
 export function analyzeLayoutStats(
-  node: MosaicNode<string> | null
+  node: MosaicNode<string> | null,
 ): LayoutStats {
   if (node === null) {
     return { rowSplits: 0, columnSplits: 0, depth: 0, windowCount: 0 };
@@ -67,7 +67,7 @@ export function analyzeLayoutStats(
 export function findAllLeaves(
   node: MosaicNode<string> | null,
   depth: number = 0,
-  parentDirection: "row" | "column" | null = null
+  parentDirection: "row" | "column" | null = null,
 ): LeafInfo[] {
   if (node === null) {
     return [];
@@ -90,7 +90,7 @@ export function findAllLeaves(
  * If multiple leaves at same depth, returns first one encountered
  */
 export function findShallowstLeaf(
-  node: MosaicNode<string> | null
+  node: MosaicNode<string> | null,
 ): LeafInfo | null {
   const leaves = findAllLeaves(node);
 
@@ -120,7 +120,7 @@ export function replaceLeafWithSplit(
   newWindowId: string,
   direction: "row" | "column",
   splitPercentage: number,
-  position: "first" | "second" = "second"
+  position: "first" | "second" = "second",
 ): MosaicNode<string> | null {
   if (node === null) return null;
 
@@ -151,7 +151,7 @@ export function replaceLeafWithSplit(
     newWindowId,
     direction,
     splitPercentage,
-    position
+    position,
   );
   const newSecond = replaceLeafWithSplit(
     node.second,
@@ -159,7 +159,7 @@ export function replaceLeafWithSplit(
     newWindowId,
     direction,
     splitPercentage,
-    position
+    position,
   );
 
   // Return new branch with potentially updated children
@@ -177,7 +177,7 @@ export function replaceLeafWithSplit(
  * This creates a checkerboard pattern for more balanced layouts
  */
 export function calculateBalancedDirection(
-  parentDirection: "row" | "column" | null
+  parentDirection: "row" | "column" | null,
 ): "row" | "column" {
   if (parentDirection === null) {
     return "row"; // Default to horizontal for first split
@@ -203,7 +203,7 @@ export function calculateBalancedDirection(
 export function insertWindow(
   currentLayout: MosaicNode<string> | null,
   newWindowId: string,
-  config: LayoutConfig
+  config: LayoutConfig,
 ): MosaicNode<string> {
   // First window - just return the window ID as leaf node
   if (currentLayout === null) {
@@ -236,7 +236,7 @@ export function insertWindow(
       newWindowId,
       direction,
       config.splitPercentage,
-      config.insertionPosition
+      config.insertionPosition,
     );
 
     return newLayout || newWindowId; // Fallback if replacement failed

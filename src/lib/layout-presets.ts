@@ -30,7 +30,7 @@ function buildHorizontalRow(windowIds: string[]): MosaicNode<string> {
   }
 
   // Calculate percentage for first window to make equal splits
-  const splitPercent = (100 / windowIds.length);
+  const splitPercent = 100 / windowIds.length;
 
   return {
     direction: "row",
@@ -52,7 +52,7 @@ function buildVerticalStack(windowIds: string[]): MosaicNode<string> {
   }
 
   // Calculate percentage for first window to make equal splits
-  const splitPercent = (100 / windowIds.length);
+  const splitPercent = 100 / windowIds.length;
 
   return {
     direction: "column",
@@ -63,10 +63,37 @@ function buildVerticalStack(windowIds: string[]): MosaicNode<string> {
 }
 
 /**
+ * Builds a vertical stack of MosaicNodes with equal splits
+ */
+function buildVerticalStackOfNodes(
+  nodes: MosaicNode<string>[],
+): MosaicNode<string> {
+  if (nodes.length === 0) {
+    throw new Error("Cannot build stack with zero nodes");
+  }
+  if (nodes.length === 1) {
+    return nodes[0];
+  }
+
+  // Calculate percentage for first node to make equal splits
+  const splitPercent = 100 / nodes.length;
+
+  return {
+    direction: "column",
+    first: nodes[0],
+    second: buildVerticalStackOfNodes(nodes.slice(1)),
+    splitPercentage: splitPercent,
+  };
+}
+
+/**
  * Calculates best grid dimensions for N windows
  * Prefers square-ish grids, slightly favoring more columns than rows
  */
-function calculateGridDimensions(windowCount: number): { rows: number; cols: number } {
+function calculateGridDimensions(windowCount: number): {
+  rows: number;
+  cols: number;
+} {
   const sqrt = Math.sqrt(windowCount);
   const rows = Math.floor(sqrt);
   const cols = Math.ceil(windowCount / rows);
@@ -95,16 +122,16 @@ function buildGridLayout(windowIds: string[]): MosaicNode<string> {
     return windowIds[0];
   }
 
-  const { rows, cols } = calculateGridDimensions(windowIds.length);
+  const { cols } = calculateGridDimensions(windowIds.length);
 
   // Split windows into rows
   const rowChunks = chunkArray(windowIds, cols);
 
   // Build each row as a horizontal split
-  const rowNodes = rowChunks.map(chunk => buildHorizontalRow(chunk));
+  const rowNodes = rowChunks.map((chunk) => buildHorizontalRow(chunk));
 
   // Stack rows vertically
-  return buildVerticalStack(rowNodes);
+  return buildVerticalStackOfNodes(rowNodes);
 }
 
 /**
@@ -156,9 +183,7 @@ export const BUILT_IN_PRESETS: Record<string, LayoutPreset> = {
 /**
  * Collects window IDs from a layout tree in depth-first order
  */
-export function collectWindowIds(
-  layout: MosaicNode<string> | null
-): string[] {
+export function collectWindowIds(layout: MosaicNode<string> | null): string[] {
   if (layout === null) {
     return [];
   }
@@ -167,7 +192,10 @@ export function collectWindowIds(
     return [layout];
   }
 
-  return [...collectWindowIds(layout.first), ...collectWindowIds(layout.second)];
+  return [
+    ...collectWindowIds(layout.first),
+    ...collectWindowIds(layout.second),
+  ];
 }
 
 /**
@@ -176,7 +204,7 @@ export function collectWindowIds(
  */
 export function applyPresetToLayout(
   currentLayout: MosaicNode<string> | null,
-  preset: LayoutPreset
+  preset: LayoutPreset,
 ): MosaicNode<string> {
   // Collect all window IDs from current layout
   const windowIds = collectWindowIds(currentLayout);
@@ -184,14 +212,14 @@ export function applyPresetToLayout(
   // Check minimum requirement
   if (windowIds.length < preset.minSlots) {
     throw new Error(
-      `Preset "${preset.name}" requires at least ${preset.minSlots} windows but only ${windowIds.length} available`
+      `Preset "${preset.name}" requires at least ${preset.minSlots} windows but only ${windowIds.length} available`,
     );
   }
 
   // Check maximum limit if defined
   if (preset.maxSlots && windowIds.length > preset.maxSlots) {
     throw new Error(
-      `Preset "${preset.name}" supports maximum ${preset.maxSlots} windows but ${windowIds.length} available`
+      `Preset "${preset.name}" supports maximum ${preset.maxSlots} windows but ${windowIds.length} available`,
     );
   }
 

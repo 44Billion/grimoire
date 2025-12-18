@@ -10,7 +10,6 @@ import {
 import { Button } from "./ui/button";
 import { Slider } from "./ui/slider";
 import { useGrimoire } from "@/core/state";
-import { cn } from "@/lib/utils";
 import { getAllPresets } from "@/lib/layout-presets";
 import {
   DropdownMenu,
@@ -25,7 +24,7 @@ import { useState } from "react";
 
 export function LayoutControls() {
   const { state, applyPresetLayout, updateLayoutConfig } = useGrimoire();
-  const { workspaces, activeWorkspaceId, layoutConfig } = state;
+  const { workspaces, activeWorkspaceId } = state;
 
   // Local state for immediate slider feedback (debounced persistence)
   const [localSplitPercentage, setLocalSplitPercentage] = useState<
@@ -33,8 +32,14 @@ export function LayoutControls() {
   >(null);
 
   const activeWorkspace = workspaces[activeWorkspaceId];
+  const layoutConfig = activeWorkspace?.layoutConfig;
   const windowCount = activeWorkspace?.windowIds.length || 0;
   const presets = getAllPresets();
+
+  // Early return if no active workspace or layout config
+  if (!activeWorkspace || !layoutConfig) {
+    return null;
+  }
 
   const handleApplyPreset = (presetId: string) => {
     const preset = presets.find((p) => p.id === presetId);

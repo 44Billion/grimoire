@@ -1,6 +1,11 @@
 import { v4 as uuidv4 } from "uuid";
 import type { MosaicNode } from "react-mosaic-component";
-import { GrimoireState, WindowInstance, UserRelays } from "@/types/app";
+import {
+  GrimoireState,
+  WindowInstance,
+  UserRelays,
+  LayoutConfig,
+} from "@/types/app";
 import { insertWindow } from "@/lib/layout-utils";
 import { applyPresetToLayout, type LayoutPreset } from "@/lib/layout-presets";
 
@@ -48,6 +53,12 @@ export const createWorkspace = (
         label,
         layout: null,
         windowIds: [],
+        layoutConfig: {
+          insertionMode: "smart",
+          splitPercentage: 50,
+          insertionPosition: "second",
+          autoPreset: undefined,
+        },
       },
     },
   };
@@ -76,8 +87,8 @@ export const addWindow = (
     commandString: payload.commandString,
   };
 
-  // Insert window using global layout configuration
-  const newLayout = insertWindow(ws.layout, newWindowId, state.layoutConfig);
+  // Insert window using workspace's layout configuration
+  const newLayout = insertWindow(ws.layout, newWindowId, ws.layoutConfig);
 
   return {
     ...state,
@@ -347,18 +358,27 @@ export const updateWindow = (
 };
 
 /**
- * Updates the global layout configuration.
- * Controls how new windows are inserted into all workspaces.
+ * Updates the active workspace's layout configuration.
+ * Controls how new windows are inserted into the active workspace.
  */
 export const updateLayoutConfig = (
   state: GrimoireState,
-  layoutConfig: Partial<GrimoireState["layoutConfig"]>,
+  layoutConfig: Partial<LayoutConfig>,
 ): GrimoireState => {
+  const activeId = state.activeWorkspaceId;
+  const activeWorkspace = state.workspaces[activeId];
+
   return {
     ...state,
-    layoutConfig: {
-      ...state.layoutConfig,
-      ...layoutConfig,
+    workspaces: {
+      ...state.workspaces,
+      [activeId]: {
+        ...activeWorkspace,
+        layoutConfig: {
+          ...activeWorkspace.layoutConfig,
+          ...layoutConfig,
+        },
+      },
     },
   };
 };

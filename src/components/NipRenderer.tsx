@@ -16,7 +16,9 @@ export function NipRenderer({ nipId, className = "" }: NipRendererProps) {
 
   if (loading) {
     return (
-      <CenteredContent className={cn("text-muted-foreground text-sm", className)}>
+      <CenteredContent
+        className={cn("text-muted-foreground text-sm", className)}
+      >
         Loading NIP-{nipId}...
       </CenteredContent>
     );

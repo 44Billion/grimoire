@@ -73,8 +73,9 @@ const migrations: Record<number, MigrationFn> = {
 
     // Add default layoutConfig to each workspace
     for (const [id, workspace] of Object.entries(state.workspaces || {})) {
+      const ws = workspace as Record<string, any>;
       migratedWorkspaces[id] = {
-        ...workspace,
+        ...ws,
         layoutConfig: {
           insertionMode: "smart", // New smart default (auto-balance)
           splitPercentage: 50, // Matches old 50/50 behavior
@@ -90,30 +91,28 @@ const migrations: Record<number, MigrationFn> = {
       workspaces: migratedWorkspaces,
     };
   },
-  // Migration from v8 to v9 - moves layoutConfig from per-workspace to global
+  // Migration from v8 to v9 - preserve per-workspace layoutConfig
   8: (state: any) => {
+    // Ensure all workspaces have layoutConfig (add default if missing)
     const migratedWorkspaces: Record<string, any> = {};
 
-    // Get layoutConfig from first workspace (or use default)
-    const firstWorkspace = Object.values(state.workspaces || {})[0] as any;
-    const layoutConfig = firstWorkspace?.layoutConfig || {
-      insertionMode: "smart",
-      splitPercentage: 50,
-      insertionPosition: "second",
-      autoPreset: undefined,
-    };
-
-    // Remove layoutConfig from all workspaces
     for (const [id, workspace] of Object.entries(state.workspaces || {})) {
-      const { layoutConfig: _, ...workspaceWithoutConfig } = workspace as any;
-      migratedWorkspaces[id] = workspaceWithoutConfig;
+      const ws = workspace as Record<string, any>;
+      migratedWorkspaces[id] = {
+        ...ws,
+        layoutConfig: ws.layoutConfig || {
+          insertionMode: "smart",
+          splitPercentage: 50,
+          insertionPosition: "second",
+          autoPreset: undefined,
+        },
+      };
     }
 
     return {
       ...state,
       __version: 9,
       workspaces: migratedWorkspaces,
-      layoutConfig, // Move to global state
     };
   },
 };
@@ -134,7 +133,6 @@ export function validateState(state: any): state is GrimoireState {
       !state.windows ||
       !state.workspaces ||
       !state.activeWorkspaceId ||
-      !state.layoutConfig ||
       typeof state.__version !== "number"
     ) {
       return false;
@@ -156,11 +154,17 @@ export function validateState(state: any): state is GrimoireState {
     }
 
     // All window IDs in workspaces must exist in windows
+    // Each workspace must have layoutConfig
     for (const workspace of Object.values(state.workspaces)) {
-      if (!Array.isArray((workspace as any).windowIds)) {
+      const ws = workspace as any;
+      if (!Array.isArray(ws.windowIds)) {
         return false;
       }
-      for (const windowId of (workspace as any).windowIds) {
+      // Verify workspace has layoutConfig
+      if (!ws.layoutConfig || typeof ws.layoutConfig !== "object") {
+        return false;
+      }
+      for (const windowId of ws.windowIds) {
         if (!state.windows[windowId]) {
           return false;
         }

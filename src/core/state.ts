@@ -1,7 +1,12 @@
 import { useEffect, useCallback } from "react";
 import { useAtom } from "jotai";
 import { atomWithStorage, createJSONStorage } from "jotai/utils";
-import { GrimoireState, AppId, WindowInstance } from "@/types/app";
+import {
+  GrimoireState,
+  AppId,
+  WindowInstance,
+  LayoutConfig,
+} from "@/types/app";
 import { useLocale } from "@/hooks/useLocale";
 import * as Logic from "./logic";
 import { CURRENT_VERSION, validateState, migrateState } from "@/lib/migrations";
@@ -18,13 +23,13 @@ const initialState: GrimoireState = {
       number: 1,
       windowIds: [],
       layout: null,
+      layoutConfig: {
+        insertionMode: "smart", // Smart auto-balancing by default
+        splitPercentage: 50, // Equal split
+        insertionPosition: "second", // New windows on right/bottom
+        autoPreset: undefined, // No preset maintenance
+      },
     },
-  },
-  layoutConfig: {
-    insertionMode: "smart", // Smart auto-balancing by default
-    splitPercentage: 50, // Equal split
-    insertionPosition: "second", // New windows on right/bottom
-    autoPreset: undefined, // No preset maintenance
   },
 };
 
@@ -230,14 +235,13 @@ export const useGrimoire = () => {
   );
 
   const updateLayoutConfig = useCallback(
-    (layoutConfig: Partial<GrimoireState["layoutConfig"]>) =>
+    (layoutConfig: Partial<LayoutConfig>) =>
       setState((prev) => Logic.updateLayoutConfig(prev, layoutConfig)),
     [setState],
   );
 
   const applyPresetLayout = useCallback(
-    (preset: any) =>
-      setState((prev) => Logic.applyPresetLayout(prev, preset)),
+    (preset: any) => setState((prev) => Logic.applyPresetLayout(prev, preset)),
     [setState],
   );
 

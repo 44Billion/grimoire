@@ -180,13 +180,7 @@ describe("layout-presets", () => {
     });
 
     it("handles 5 windows (main + 4 sidebars)", () => {
-      const layout = mainSidebarPreset.generate([
-        "w1",
-        "w2",
-        "w3",
-        "w4",
-        "w5",
-      ]);
+      const layout = mainSidebarPreset.generate(["w1", "w2", "w3", "w4", "w5"]);
       const windowIds = collectWindowIds(layout);
       expect(windowIds).toEqual(["w1", "w2", "w3", "w4", "w5"]);
       // First window is main, rest are stacked vertically
@@ -203,9 +197,9 @@ describe("layout-presets", () => {
   describe("applyPresetToLayout", () => {
     it("throws error if too few windows", () => {
       const layout: MosaicNode<string> = "w1";
-      expect(() =>
-        applyPresetToLayout(layout, BUILT_IN_PRESETS.grid)
-      ).toThrow("at least 2 windows");
+      expect(() => applyPresetToLayout(layout, BUILT_IN_PRESETS.grid)).toThrow(
+        "at least 2 windows",
+      );
     });
 
     it("applies grid preset to existing layout", () => {

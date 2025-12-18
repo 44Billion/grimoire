@@ -1,10 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { MosaicNode } from "react-mosaic-component";
-import {
-  analyzeLayoutStats,
-  insertWindow,
-  type LayoutStats,
-} from "./layout-utils";
+import { analyzeLayoutStats, insertWindow } from "./layout-utils";
 import type { LayoutConfig } from "@/types/app";
 
 describe("analyzeLayoutStats", () => {

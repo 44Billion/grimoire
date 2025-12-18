@@ -35,19 +35,22 @@ describe("migrations", () => {
       expect(migrated.workspaces.ws2.number).toBe(2);
       expect(migrated.workspaces.ws2.label).toBeUndefined();
 
-      // v7→v8→v9: layoutConfig moved to global state
-      expect(migrated.layoutConfig).toEqual({
+      // v7→v8→v9: layoutConfig added to each workspace
+      expect(migrated.workspaces.ws1.layoutConfig).toEqual({
         insertionMode: "smart",
         splitPercentage: 50,
         insertionPosition: "second",
         autoPreset: undefined,
       });
-      // Workspaces should NOT have layoutConfig
-      expect(migrated.workspaces.ws1.layoutConfig).toBeUndefined();
-      expect(migrated.workspaces.ws2.layoutConfig).toBeUndefined();
+      expect(migrated.workspaces.ws2.layoutConfig).toEqual({
+        insertionMode: "smart",
+        splitPercentage: 50,
+        insertionPosition: "second",
+        autoPreset: undefined,
+      });
     });
 
-    it("should convert non-numeric labels to number with label and add global layoutConfig", () => {
+    it("should convert non-numeric labels to number with label and add per-workspace layoutConfig", () => {
       const oldState = {
         __version: 6,
         windows: {},
@@ -78,13 +81,12 @@ describe("migrations", () => {
       expect(migrated.workspaces.ws2.number).toBe(2);
       expect(migrated.workspaces.ws2.label).toBe("Development");
 
-      // v7→v8→v9: layoutConfig is global, not per-workspace
-      expect(migrated.layoutConfig).toBeDefined();
-      expect(migrated.workspaces.ws1.layoutConfig).toBeUndefined();
-      expect(migrated.workspaces.ws2.layoutConfig).toBeUndefined();
+      // v7→v8→v9: layoutConfig added to each workspace
+      expect(migrated.workspaces.ws1.layoutConfig).toBeDefined();
+      expect(migrated.workspaces.ws2.layoutConfig).toBeDefined();
     });
 
-    it("should handle mixed numeric and text labels and add global layoutConfig", () => {
+    it("should handle mixed numeric and text labels and add per-workspace layoutConfig", () => {
       const oldState = {
         __version: 6,
         windows: {},
@@ -123,11 +125,10 @@ describe("migrations", () => {
       expect(migrated.workspaces.ws3.number).toBe(3);
       expect(migrated.workspaces.ws3.label).toBeUndefined();
 
-      // v7→v8→v9: layoutConfig is global
-      expect(migrated.layoutConfig).toBeDefined();
-      expect(migrated.workspaces.ws1.layoutConfig).toBeUndefined();
-      expect(migrated.workspaces.ws2.layoutConfig).toBeUndefined();
-      expect(migrated.workspaces.ws3.layoutConfig).toBeUndefined();
+      // v7→v8→v9: layoutConfig added to each workspace
+      expect(migrated.workspaces.ws1.layoutConfig).toBeDefined();
+      expect(migrated.workspaces.ws2.layoutConfig).toBeDefined();
+      expect(migrated.workspaces.ws3.layoutConfig).toBeDefined();
     });
 
     it("should validate migrated state", () => {
@@ -151,7 +152,7 @@ describe("migrations", () => {
   });
 
   describe("v8 to v9 migration", () => {
-    it("should move layoutConfig from workspaces to global state", () => {
+    it("should preserve per-workspace layoutConfig", () => {
       const v8State = {
         __version: 8,
         windows: {
@@ -177,7 +178,12 @@ describe("migrations", () => {
             id: "ws2",
             number: 2,
             label: "Development",
-            layout: { direction: "row", first: "w1", second: "w2", splitPercentage: 50 },
+            layout: {
+              direction: "row",
+              first: "w1",
+              second: "w2",
+              splitPercentage: 50,
+            },
             windowIds: ["w1", "w2"],
             layoutConfig: {
               insertionMode: "row",
@@ -193,17 +199,19 @@ describe("migrations", () => {
 
       expect(migrated.__version).toBe(9);
 
-      // layoutConfig should be at global level (from first workspace)
-      expect(migrated.layoutConfig).toEqual({
+      // layoutConfig should remain per-workspace
+      expect(migrated.workspaces.ws1.layoutConfig).toEqual({
         insertionMode: "smart",
         splitPercentage: 50,
         insertionPosition: "second",
         autoPreset: undefined,
       });
-
-      // Workspaces should NOT have layoutConfig
-      expect(migrated.workspaces.ws1.layoutConfig).toBeUndefined();
-      expect(migrated.workspaces.ws2.layoutConfig).toBeUndefined();
+      expect(migrated.workspaces.ws2.layoutConfig).toEqual({
+        insertionMode: "row",
+        splitPercentage: 70,
+        insertionPosition: "first",
+        autoPreset: undefined,
+      });
 
       // Other fields should be preserved
       expect(migrated.workspaces.ws2.label).toBe("Development");

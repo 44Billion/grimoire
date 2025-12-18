@@ -1,8 +1,4 @@
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "./ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { useGrimoire } from "@/core/state";
 import type { LayoutConfig } from "@/types/app";
 import { cn } from "@/lib/utils";
@@ -24,7 +20,13 @@ export function WorkspaceSettings({
   children,
 }: WorkspaceSettingsProps) {
   const { state, updateLayoutConfig } = useGrimoire();
-  const config = state.layoutConfig;
+  const activeWorkspace = state.workspaces[state.activeWorkspaceId];
+  const config = activeWorkspace?.layoutConfig;
+
+  // Early return if no config available
+  if (!config) {
+    return null;
+  }
 
   const setInsertionMode = (mode: LayoutConfig["insertionMode"]) => {
     updateLayoutConfig({ insertionMode: mode });
@@ -64,7 +66,7 @@ export function WorkspaceSettings({
                     "w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded transition-colors",
                     isActive
                       ? "bg-accent text-accent-foreground"
-                      : "hover:bg-muted"
+                      : "hover:bg-muted",
                   )}
                 >
                   <Icon className="h-3.5 w-3.5" />

@@ -80,10 +80,7 @@ export function LiveActivityDetailRenderer({
         </div>
 
         {/* Host */}
-        <UserName
-          pubkey={hostPubkey}
-          className="text-sm text-accent"
-        />
+        <UserName pubkey={hostPubkey} className="text-sm text-accent" />
 
         {/* Description */}
         {activity.summary && (

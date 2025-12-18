@@ -68,60 +68,60 @@ export default function NipsViewer() {
     <CenteredContent>
       {/* Header */}
       <div>
-          <h1 className="text-2xl font-bold mb-2">
-            {search
-              ? `Showing ${filteredNips.length} of ${sortedNips.length} NIPs`
-              : `Nostr Implementation Possibilities (${sortedNips.length})`}
-          </h1>
-          <p className="text-sm text-muted-foreground mb-4">
-            Protocol specifications and extensions for the Nostr network. Click
-            any NIP to view its full specification document.
-          </p>
+        <h1 className="text-2xl font-bold mb-2">
+          {search
+            ? `Showing ${filteredNips.length} of ${sortedNips.length} NIPs`
+            : `Nostr Implementation Possibilities (${sortedNips.length})`}
+        </h1>
+        <p className="text-sm text-muted-foreground mb-4">
+          Protocol specifications and extensions for the Nostr network. Click
+          any NIP to view its full specification document.
+        </p>
 
-          {/* Search Input */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search NIPs by number or title..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="pl-9 pr-9"
-            />
-            {search && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleClear}
-                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0 hover:bg-muted"
-                aria-label="Clear search"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
+        {/* Search Input */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            ref={searchInputRef}
+            type="text"
+            placeholder="Search NIPs by number or title..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className="pl-9 pr-9"
+          />
+          {search && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClear}
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0 hover:bg-muted"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
+      </div>
 
-        {/* NIP List */}
-        {filteredNips.length > 0 ? (
-          <div className="flex flex-col gap-0">
-            {filteredNips.map((nipId) => (
-              <NIPBadge
-                className="border-none"
-                key={nipId}
-                showName
-                nipNumber={nipId}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-12 text-muted-foreground">
-            <p className="text-lg mb-2">No NIPs match "{search}"</p>
-            <p className="text-sm">Try searching for a different term</p>
-          </div>
-        )}
+      {/* NIP List */}
+      {filteredNips.length > 0 ? (
+        <div className="flex flex-col gap-0">
+          {filteredNips.map((nipId) => (
+            <NIPBadge
+              className="border-none"
+              key={nipId}
+              showName
+              nipNumber={nipId}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-12 text-muted-foreground">
+          <p className="text-lg mb-2">No NIPs match "{search}"</p>
+          <p className="text-sm">Try searching for a different term</p>
+        </div>
+      )}
     </CenteredContent>
   );
 }
