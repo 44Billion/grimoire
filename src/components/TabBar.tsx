@@ -76,50 +76,54 @@ export function TabBar() {
   return (
     <>
       <div className="h-8 border-t border-border bg-background flex items-center px-2 gap-1 overflow-x-auto">
+        {/* Left side: Workspace tabs + new workspace button */}
         <div className="flex items-center gap-1 flex-nowrap">
           {sortedWorkspaces.map((ws) => (
-            <div key={ws.id} className="relative group flex-shrink-0">
-              <button
-                onClick={() => setActiveWorkspace(ws.id)}
-                className={cn(
-                  "px-3 py-1 pr-7 text-xs font-mono rounded transition-colors whitespace-nowrap",
-                  ws.id === activeWorkspaceId
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted",
-                )}
-              >
-                {ws.label && ws.label.trim()
-                  ? `${ws.number} ${ws.label}`
-                  : ws.number}
-              </button>
-              <button
-                onClick={(e) => handleSettingsClick(e)}
-                className={cn(
-                  "absolute right-0.5 top-1/2 -translate-y-1/2 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity",
-                  ws.id === activeWorkspaceId
-                    ? "text-primary-foreground hover:bg-primary-foreground/20"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted",
-                )}
-                aria-label="Layout settings"
-              >
-                <SlidersHorizontal className="h-3 w-3" />
-              </button>
-            </div>
+            <button
+              key={ws.id}
+              onClick={() => setActiveWorkspace(ws.id)}
+              className={cn(
+                "px-3 py-1 text-xs font-mono rounded transition-colors whitespace-nowrap flex-shrink-0",
+                ws.id === activeWorkspaceId
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted",
+              )}
+            >
+              {ws.label && ws.label.trim()
+                ? `${ws.number} ${ws.label}`
+                : ws.number}
+            </button>
           ))}
 
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 ml-1 flex-shrink-0"
+            onClick={handleNewTab}
+            aria-label="Create new workspace"
+          >
+            <Plus className="h-3 w-3" />
+          </Button>
+        </div>
+
+        {/* Spacer to push right side controls to the end */}
+        <div className="flex-1" />
+
+        {/* Right side: Layout controls */}
+        <div className="flex items-center gap-1 flex-shrink-0">
           {/* Layout Preset Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 ml-1 flex-shrink-0"
+                className="h-6 w-6"
                 aria-label="Apply layout preset"
               >
                 <Grid2X2 className="h-3 w-3" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-64">
+            <DropdownMenuContent align="end" className="w-64">
               <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
                 Apply Layout Preset
               </div>
@@ -137,7 +141,7 @@ export function TabBar() {
                       <div className="font-medium text-sm">{preset.name}</div>
                       <div className="text-xs text-muted-foreground truncate">
                         {canApply
-                          ? `${preset.slots} windows`
+                          ? `${preset.slots}+ windows`
                           : `Needs ${preset.slots} (have ${windowCount})`}
                       </div>
                     </div>
@@ -147,14 +151,15 @@ export function TabBar() {
             </DropdownMenuContent>
           </DropdownMenu>
 
+          {/* Window/Layout Settings */}
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 ml-1 flex-shrink-0"
-            onClick={handleNewTab}
-            aria-label="Create new workspace"
+            className="h-6 w-6"
+            onClick={handleSettingsClick}
+            aria-label="Layout settings"
           >
-            <Plus className="h-3 w-3" />
+            <SlidersHorizontal className="h-3 w-3" />
           </Button>
         </div>
       </div>

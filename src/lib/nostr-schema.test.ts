@@ -8,6 +8,10 @@ import {
   getContentTypeDescription,
 } from "./nostr-schema";
 
+// TODO: Some tests in this file fail because IndexedDB is not available in the Vitest runtime.
+// The failures are related to Dexie/IndexedDB operations that can't run in the Node.js test environment.
+// Future work: Mock IndexedDB or use an in-memory IndexedDB implementation for testing.
+
 describe("nostr-schema", () => {
   describe("loadSchema", () => {
     it("should load and parse the schema", () => {
