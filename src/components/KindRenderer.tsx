@@ -131,7 +131,9 @@ export default function KindRenderer({ kind }: { kind: number }) {
                     <tr>
                       <th className="text-left p-3 font-semibold w-20">name</th>
                       <th className="text-left p-3 font-semibold">value</th>
-                      <th className="text-left p-3 font-semibold">other parameters</th>
+                      <th className="text-left p-3 font-semibold">
+                        other parameters
+                      </th>
                     </tr>
                   </thead>
                   <tbody>

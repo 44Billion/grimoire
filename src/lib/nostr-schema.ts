@@ -139,7 +139,7 @@ export function parseTagStructure(tag: TagDefinition): {
  * Get content type description
  */
 export function getContentTypeDescription(
-  contentType: "free" | "json" | "empty"
+  contentType: "free" | "json" | "empty",
 ): string {
   switch (contentType) {
     case "free":

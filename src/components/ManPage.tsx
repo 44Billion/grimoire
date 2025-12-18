@@ -61,13 +61,9 @@ export default function ManPage({ cmd }: ManPageProps) {
     <div className="p-6 font-mono text-sm space-y-4 max-w-4xl">
       {/* Header */}
       <div className="flex justify-between border-b border-border pb-2">
-        <span className="font-bold">
-          {page.name.toUpperCase()}
-        </span>
+        <span className="font-bold">{page.name.toUpperCase()}</span>
         <span className="text-muted-foreground">Grimoire Manual</span>
-        <span className="font-bold">
-          {page.name.toUpperCase()}
-        </span>
+        <span className="font-bold">{page.name.toUpperCase()}</span>
       </div>
 
       {/* NAME */}
@@ -97,10 +93,10 @@ export default function ManPage({ cmd }: ManPageProps) {
           <div className="ml-8 space-y-3">
             {page.options.map((opt, i) => (
               <div key={i}>
-                <div className="text-accent font-semibold">
-                  {opt.flag}
+                <div className="text-accent font-semibold">{opt.flag}</div>
+                <div className="ml-8 text-muted-foreground">
+                  {opt.description}
                 </div>
-                <div className="ml-8 text-muted-foreground">{opt.description}</div>
               </div>
             ))}
           </div>

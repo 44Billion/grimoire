@@ -202,7 +202,7 @@ describe("nostr-schema", () => {
   describe("getContentTypeDescription", () => {
     it("should describe free content", () => {
       expect(getContentTypeDescription("free")).toBe(
-        "Free-form text or markdown"
+        "Free-form text or markdown",
       );
     });
 
@@ -212,7 +212,7 @@ describe("nostr-schema", () => {
 
     it("should describe empty content", () => {
       expect(getContentTypeDescription("empty")).toBe(
-        "Empty (no content field)"
+        "Empty (no content field)",
       );
     });
   });

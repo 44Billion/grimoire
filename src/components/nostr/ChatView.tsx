@@ -6,7 +6,11 @@ import { UserName } from "./UserName";
 import { RichText } from "./RichText";
 import { Zap, CornerDownRight, Quote } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getZapAmount, getZapSender, getTagValue } from "applesauce-core/helpers";
+import {
+  getZapAmount,
+  getZapSender,
+  getTagValue,
+} from "applesauce-core/helpers";
 import { getNip10References } from "applesauce-core/helpers/threading";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
 
