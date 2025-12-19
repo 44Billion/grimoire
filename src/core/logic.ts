@@ -433,3 +433,60 @@ export const updateWorkspaceLabel = (
     },
   };
 };
+
+/**
+ * Reorders workspaces based on a list of workspace IDs.
+ * Reassigns workspace numbers starting from 1 based on the provided order.
+ */
+export const reorderWorkspaces = (
+  state: GrimoireState,
+  orderedIds: string[],
+): GrimoireState => {
+  const currentWorkspaces = Object.values(state.workspaces);
+  const orderedSet = new Set(orderedIds);
+
+  // Find any workspaces not included in the ordered list (should generally be empty if all are passed)
+  const remainingWorkspaces = currentWorkspaces
+    .filter((ws) => !orderedSet.has(ws.id))
+    .sort((a, b) => a.number - b.number);
+
+  const newWorkspaces = { ...state.workspaces };
+  let counter = 1;
+
+  // Assign new numbers to ordered IDs
+  for (const id of orderedIds) {
+    if (newWorkspaces[id]) {
+      newWorkspaces[id] = {
+        ...newWorkspaces[id],
+        number: counter++,
+      };
+    }
+  }
+
+  // Assign new numbers to remaining IDs
+  for (const ws of remainingWorkspaces) {
+    newWorkspaces[ws.id] = {
+      ...newWorkspaces[ws.id],
+      number: counter++,
+    };
+  }
+
+  return {
+    ...state,
+    workspaces: newWorkspaces,
+  };
+};
+
+/**
+ * Updates the list of event kinds that should be displayed in compact mode.
+ */
+export const setCompactModeKinds = (
+  state: GrimoireState,
+  kinds: number[],
+): GrimoireState => {
+  return {
+    ...state,
+    compactModeKinds: kinds,
+  };
+};
+

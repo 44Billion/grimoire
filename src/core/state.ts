@@ -24,6 +24,7 @@ const initialState: GrimoireState = {
     insertionPosition: "second", // New windows on right/bottom
     autoPreset: undefined, // No preset maintenance
   },
+  compactModeKinds: [6, 7, 16, 9735],
   workspaces: {
     default: {
       id: "default",
@@ -278,6 +279,18 @@ export const useGrimoire = () => {
     [setState],
   );
 
+  const reorderWorkspaces = useCallback(
+    (orderedIds: string[]) =>
+      setState((prev) => Logic.reorderWorkspaces(prev, orderedIds)),
+    [setState],
+  );
+
+  const setCompactModeKinds = useCallback(
+    (kinds: number[]) =>
+      setState((prev) => Logic.setCompactModeKinds(prev, kinds)),
+    [setState],
+  );
+
   return {
     state,
     locale: state.locale || browserLocale,
@@ -295,5 +308,7 @@ export const useGrimoire = () => {
     updateLayoutConfig,
     applyPresetLayout,
     updateWorkspaceLabel,
+    reorderWorkspaces,
+    setCompactModeKinds,
   };
 };

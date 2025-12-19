@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import type { MosaicNode } from "react-mosaic-component";
-import { findLowestAvailableWorkspaceNumber, addWindow } from "./logic";
+import {
+  findLowestAvailableWorkspaceNumber,
+  addWindow,
+  reorderWorkspaces,
+} from "./logic";
 import type { GrimoireState, LayoutConfig } from "@/types/app";
 
 describe("findLowestAvailableWorkspaceNumber", () => {
@@ -618,5 +622,62 @@ describe("addWindow", () => {
       expect(result.windows["window-1"]).toBeDefined();
       expect(Object.keys(result.windows)).toHaveLength(2);
     });
+  });
+});
+
+describe("reorderWorkspaces", () => {
+  const createTestState = (workspaces: Record<string, any>): GrimoireState => ({
+    __version: 8,
+    windows: {},
+    activeWorkspaceId: "default",
+    layoutConfig: {
+      insertionMode: "smart",
+      splitPercentage: 50,
+      insertionPosition: "second",
+    },
+    workspaces: workspaces,
+  });
+
+  it("should reorder workspaces based on provided IDs", () => {
+    const state = createTestState({
+      w1: { id: "w1", number: 1 },
+      w2: { id: "w2", number: 2 },
+      w3: { id: "w3", number: 3 },
+    });
+
+    const result = reorderWorkspaces(state, ["w3", "w1", "w2"]);
+
+    expect(result.workspaces["w3"].number).toBe(1);
+    expect(result.workspaces["w1"].number).toBe(2);
+    expect(result.workspaces["w2"].number).toBe(3);
+  });
+
+  it("should handle partial reordering by appending remaining workspaces", () => {
+    const state = createTestState({
+      w1: { id: "w1", number: 1 },
+      w2: { id: "w2", number: 2 },
+      w3: { id: "w3", number: 3 },
+      w4: { id: "w4", number: 4 },
+    });
+
+    const result = reorderWorkspaces(state, ["w3", "w1"]);
+
+    expect(result.workspaces["w3"].number).toBe(1);
+    expect(result.workspaces["w1"].number).toBe(2);
+    // Remaining should be sorted by original number (w2, w4)
+    expect(result.workspaces["w2"].number).toBe(3);
+    expect(result.workspaces["w4"].number).toBe(4);
+  });
+
+  it("should ignore invalid IDs", () => {
+    const state = createTestState({
+      w1: { id: "w1", number: 1 },
+      w2: { id: "w2", number: 2 },
+    });
+
+    const result = reorderWorkspaces(state, ["w2", "w1", "invalid"]);
+
+    expect(result.workspaces["w2"].number).toBe(1);
+    expect(result.workspaces["w1"].number).toBe(2);
   });
 });

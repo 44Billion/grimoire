@@ -4,6 +4,7 @@ import { useGrimoire } from "@/core/state";
 import { cn } from "@/lib/utils";
 import { LayoutControls } from "./LayoutControls";
 import { useEffect, useState } from "react";
+import { Reorder } from "framer-motion";
 
 export function TabBar() {
   const {
@@ -12,6 +13,7 @@ export function TabBar() {
     createWorkspace,
     createWorkspaceWithNumber,
     updateWorkspaceLabel,
+    reorderWorkspaces,
   } = useGrimoire();
   const { workspaces, activeWorkspaceId } = state;
 
@@ -98,72 +100,90 @@ export function TabBar() {
     <>
       <div className="h-8 border-t border-border bg-background flex items-center px-2 gap-1 overflow-x-auto">
         {/* Left side: Workspace tabs + new workspace button */}
-        <div className="flex items-center gap-1 flex-nowrap">
+        <Reorder.Group
+          axis="x"
+          values={sortedWorkspaces}
+          onReorder={(newOrder) => reorderWorkspaces(newOrder.map((w) => w.id))}
+          className="flex items-center gap-1 flex-nowrap list-none p-0 m-0"
+        >
           {sortedWorkspaces.map((ws) => {
             const isEditing = editingId === ws.id;
             const isActive = ws.id === activeWorkspaceId;
 
-            if (isEditing) {
-              // Render input field when editing
-              return (
-                <div
-                  key={ws.id}
-                  className={cn(
-                    "px-3 py-1 text-xs font-mono rounded flex items-center gap-2 flex-shrink-0",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-foreground",
-                  )}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <span>{ws.number}</span>
-                  <input
-                    type="text"
-                    value={editingLabel}
-                    onChange={(e) => setEditingLabel(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    onBlur={saveLabel}
-                    autoFocus
-                    style={{ width: `${Math.max(editingLabel.length, 1)}ch` }}
-                    className="bg-transparent border-0 outline-none focus:outline-none focus:ring-0 p-0 m-0"
-                  />
-                </div>
-              );
-            }
-
-            // Render button when not editing
             return (
-              <button
+              <Reorder.Item
                 key={ws.id}
-                onClick={() => setActiveWorkspace(ws.id)}
-                onDoubleClick={() => startEditing(ws.id, ws.label)}
+                value={ws}
+                dragListener={!isEditing}
+                whileDrag={{ scale: 1.05 }}
+                transition={{ type: "spring", stiffness: 500, damping: 30 }}
                 className={cn(
-                  "flex items-center gap-2 px-3 py-1 text-xs font-mono rounded transition-colors whitespace-nowrap flex-shrink-0",
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                  "flex items-center justify-center cursor-default outline-none",
                 )}
+                // Prevent drag when clicking input
+                onDragStart={(e) => isEditing && e.preventDefault()}
               >
-                <span>{ws.number}</span>
-                {ws.label && ws.label.trim() && (
-                  <span style={{ width: `${ws.label.trim().length || 0}ch` }}>
-                    {ws.label.trim()}
-                  </span>
+                {isEditing ? (
+                  // Render input field when editing
+                  <div
+                    className={cn(
+                      "px-3 py-1 text-xs font-mono rounded flex items-center gap-2 flex-shrink-0",
+                      isActive
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-foreground",
+                    )}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span>{ws.number}</span>
+                    <input
+                      type="text"
+                      value={editingLabel}
+                      onChange={(e) => setEditingLabel(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      onBlur={saveLabel}
+                      autoFocus
+                      style={{
+                        width: `${Math.max(editingLabel.length, 1)}ch`,
+                      }}
+                      className="bg-transparent border-0 outline-none focus:outline-none focus:ring-0 p-0 m-0 text-inherit"
+                    />
+                  </div>
+                ) : (
+                  // Render button when not editing
+                  <button
+                    onClick={() => setActiveWorkspace(ws.id)}
+                    onDoubleClick={() => startEditing(ws.id, ws.label)}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-1 text-xs font-mono rounded transition-colors whitespace-nowrap flex-shrink-0 cursor-pointer",
+                      isActive
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                    )}
+                  >
+                    <span>{ws.number}</span>
+                    {ws.label && ws.label.trim() && (
+                      <span
+                        style={{ width: `${ws.label.trim().length || 0}ch` }}
+                      >
+                        {ws.label.trim()}
+                      </span>
+                    )}
+                  </button>
                 )}
-              </button>
+              </Reorder.Item>
             );
           })}
+        </Reorder.Group>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 ml-1 flex-shrink-0"
-            onClick={handleNewTab}
-            aria-label="Create new workspace"
-          >
-            <Plus className="h-3 w-3" />
-          </Button>
-        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 ml-1 flex-shrink-0"
+          onClick={handleNewTab}
+          aria-label="Create new workspace"
+        >
+          <Plus className="h-3 w-3" />
+        </Button>
 
         {/* Spacer to push right side controls to the end */}
         <div className="flex-1" />
