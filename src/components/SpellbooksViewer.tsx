@@ -312,7 +312,7 @@ export function SpellbooksViewer() {
   const handleApply = (spellbook: ParsedSpellbook) => {
     loadSpellbook(spellbook);
     toast.success("Layout applied", {
-      description: `Added ${Object.keys(spellbook.content.workspaces).length} workspaces.`,
+      description: `Replaced current layout with ${Object.keys(spellbook.content.workspaces).length} workspaces.`,
     });
   };
 

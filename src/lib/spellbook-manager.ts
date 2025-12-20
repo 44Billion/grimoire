@@ -211,11 +211,9 @@ export function loadSpellbook(
   const workspaceIdMap = new Map<string, string>();
   const windowIdMap = new Map<string, string>();
 
-  // 1. Generate new Workspace IDs and Numbers
-  // We don't want to mess up existing workspace numbers, so we append.
-  // We'll calculate starting number based on existing.
-  const newWorkspaces: Record<string, Workspace> = { ...state.workspaces };
-  const newWindows: Record<string, WindowInstance> = { ...state.windows };
+  // 1. Start fresh
+  const newWorkspaces: Record<string, Workspace> = {};
+  const newWindows: Record<string, WindowInstance> = {};
 
   // 2. Process Windows first to build ID map
   Object.values(windows).forEach((window) => {
@@ -230,8 +228,17 @@ export function loadSpellbook(
   });
 
   // 3. Process Workspaces
-  Object.values(workspaces).forEach((ws) => {
+  // Sort by original number to preserve order
+  const sortedWorkspaces = Object.values(workspaces).sort(
+    (a, b) => a.number - b.number
+  );
+
+  let firstNewWorkspaceId: string | null = null;
+
+  sortedWorkspaces.forEach((ws) => {
     const newWsId = uuidv4();
+    if (!firstNewWorkspaceId) firstNewWorkspaceId = newWsId;
+    
     workspaceIdMap.set(ws.id, newWsId);
 
     // Update window IDs in the windowIds array
@@ -242,34 +249,8 @@ export function loadSpellbook(
     // Update layout tree with new window IDs
     const newLayout = updateLayoutIds(ws.layout, windowIdMap);
 
-    // Create new workspace instance
-    // Note: We use the lowest available number strategy to avoid conflicts
-    // but this might separate workspaces that were sequential in the spellbook
-    // if there are gaps in the current state.
-    // Ideally, we keep them sequential relative to each other.
-    
-    // Actually, let's find the max existing number and append after that to keep them grouped
-    // logic.ts findLowestAvailable fills gaps.
-    // If we want to group them, we should find the max and start there.
-    // But findLowestAvailable is the standard convention in this codebase.
-    // Let's stick to findLowestAvailable for now, but call it sequentially.
-    
-    // Wait, findLowestAvailable scans the *current* map.
-    // So if we add one to newWorkspaces, the next call will find the next number.
-    
-    // Simple approach: just use the logic helper against the ACCUMULATING state.
-    
-    // However, findLowestAvailable is O(N). Calling it in a loop is O(N^2).
-    // For small N (workspaces) it's fine.
-    
-    const targetNumber = (() => {
-        // We can't easily use the helper because we haven't added the new workspace yet.
-        // And if we add it, we need the number first. Catch-22.
-        // Actually, we can just pass the current state of newWorkspaces to the helper
-        // provided it matches the signature Record<string, {number: number}>.
-        // It does.
-        return findLowestAvailableWorkspaceNumber(newWorkspaces);
-    })();
+    // Assign sequential numbers starting from 1
+    const targetNumber = findLowestAvailableWorkspaceNumber(newWorkspaces);
 
     newWorkspaces[newWsId] = {
       ...ws,
@@ -277,7 +258,6 @@ export function loadSpellbook(
       number: targetNumber,
       layout: newLayout,
       windowIds: newWindowIds,
-      // If label exists, keep it, maybe prepend "Imported"? No, keep it as is.
     };
   });
 
@@ -285,9 +265,6 @@ export function loadSpellbook(
     ...state,
     workspaces: newWorkspaces,
     windows: newWindows,
-    // Optionally switch to the first imported workspace?
-    // Let's just return the state, let the UI decide navigation.
-    // But usually importing implies you want to see it.
-    // We'll leave activeWorkspaceId unchanged for now, the caller can update it if needed.
+    activeWorkspaceId: firstNewWorkspaceId || state.activeWorkspaceId,
   };
 }
