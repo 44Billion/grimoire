@@ -1165,7 +1165,7 @@ export default function ReqViewer({
                 className="shadow-lg bg-accent text-accent-foreground opacity-100 hover:bg-accent"
                 size="sm"
               >
-                <ChevronUp className="size-4 mr-2" />
+                <ChevronUp className="size-4" />
                 {newEventCount} new event{newEventCount !== 1 ? "s" : ""}
               </Button>
             </div>

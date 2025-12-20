@@ -1,10 +1,107 @@
-import { Plus } from "lucide-react";
+import { Plus, GripVertical } from "lucide-react";
 import { Button } from "./ui/button";
 import { useGrimoire } from "@/core/state";
 import { cn } from "@/lib/utils";
 import { LayoutControls } from "./LayoutControls";
 import { useEffect, useState } from "react";
-import { Reorder } from "framer-motion";
+import { Reorder, useDragControls } from "framer-motion";
+import { Workspace } from "@/types/app";
+
+interface TabItemProps {
+  ws: Workspace;
+  isActive: boolean;
+  isEditing: boolean;
+  editingLabel: string;
+  setEditingLabel: (label: string) => void;
+  handleKeyDown: (e: React.KeyboardEvent) => void;
+  saveLabel: () => void;
+  setActiveWorkspace: (id: string) => void;
+  startEditing: (id: string, label?: string) => void;
+}
+
+function TabItem({
+  ws,
+  isActive,
+  isEditing,
+  editingLabel,
+  setEditingLabel,
+  handleKeyDown,
+  saveLabel,
+  setActiveWorkspace,
+  startEditing,
+}: TabItemProps) {
+  const dragControls = useDragControls();
+
+  return (
+    <Reorder.Item
+      key={ws.id}
+      value={ws}
+      dragListener={false}
+      dragControls={dragControls}
+      whileDrag={{ scale: 1.05 }}
+      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+      className={cn(
+        "flex items-center justify-center cursor-default outline-none",
+      )}
+    >
+      {isEditing ? (
+        // Render input field when editing
+        <div
+          className={cn(
+            "px-3 py-1 text-xs font-mono rounded flex items-center gap-2 flex-shrink-0",
+            isActive
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted text-foreground",
+          )}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span>{ws.number}</span>
+          <input
+            type="text"
+            value={editingLabel}
+            onChange={(e) => setEditingLabel(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={saveLabel}
+            autoFocus
+            style={{
+              width: `${Math.max(editingLabel.length, 1)}ch`,
+            }}
+            className="bg-transparent border-0 outline-none focus:outline-none focus:ring-0 p-0 m-0 text-inherit"
+          />
+        </div>
+      ) : (
+        // Render button when not editing
+        <div
+          className={cn(
+            "flex items-center gap-0 px-1 py-0.5 text-xs font-mono rounded transition-colors whitespace-nowrap flex-shrink-0 group",
+            isActive
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted",
+          )}
+        >
+          <div
+            onPointerDown={(e) => dragControls.start(e)}
+            className="cursor-grab active:cursor-grabbing p-1 hover:bg-black/10 rounded flex items-center justify-center"
+          >
+            <GripVertical className="h-3 w-3 opacity-50 group-hover:opacity-100 transition-opacity" />
+          </div>
+          <button
+            onClick={() => setActiveWorkspace(ws.id)}
+            onDoubleClick={() => startEditing(ws.id, ws.label)}
+            className="flex items-center gap-2 px-1 py-0.5 cursor-pointer"
+          >
+            <span>{ws.number}</span>
+            {ws.label && ws.label.trim() && (
+              <span style={{ width: `${ws.label.trim().length || 0}ch` }}>
+                {ws.label.trim()}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+    </Reorder.Item>
+  );
+}
 
 export function TabBar() {
   const {
@@ -106,73 +203,20 @@ export function TabBar() {
           onReorder={(newOrder) => reorderWorkspaces(newOrder.map((w) => w.id))}
           className="flex items-center gap-1 flex-nowrap list-none p-0 m-0"
         >
-          {sortedWorkspaces.map((ws) => {
-            const isEditing = editingId === ws.id;
-            const isActive = ws.id === activeWorkspaceId;
-
-            return (
-              <Reorder.Item
-                key={ws.id}
-                value={ws}
-                dragListener={!isEditing}
-                whileDrag={{ scale: 1.05 }}
-                transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                className={cn(
-                  "flex items-center justify-center cursor-default outline-none",
-                )}
-                // Prevent drag when clicking input
-                onDragStart={(e) => isEditing && e.preventDefault()}
-              >
-                {isEditing ? (
-                  // Render input field when editing
-                  <div
-                    className={cn(
-                      "px-3 py-1 text-xs font-mono rounded flex items-center gap-2 flex-shrink-0",
-                      isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-foreground",
-                    )}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <span>{ws.number}</span>
-                    <input
-                      type="text"
-                      value={editingLabel}
-                      onChange={(e) => setEditingLabel(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      onBlur={saveLabel}
-                      autoFocus
-                      style={{
-                        width: `${Math.max(editingLabel.length, 1)}ch`,
-                      }}
-                      className="bg-transparent border-0 outline-none focus:outline-none focus:ring-0 p-0 m-0 text-inherit"
-                    />
-                  </div>
-                ) : (
-                  // Render button when not editing
-                  <button
-                    onClick={() => setActiveWorkspace(ws.id)}
-                    onDoubleClick={() => startEditing(ws.id, ws.label)}
-                    className={cn(
-                      "flex items-center gap-2 px-3 py-1 text-xs font-mono rounded transition-colors whitespace-nowrap flex-shrink-0 cursor-pointer",
-                      isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted",
-                    )}
-                  >
-                    <span>{ws.number}</span>
-                    {ws.label && ws.label.trim() && (
-                      <span
-                        style={{ width: `${ws.label.trim().length || 0}ch` }}
-                      >
-                        {ws.label.trim()}
-                      </span>
-                    )}
-                  </button>
-                )}
-              </Reorder.Item>
-            );
-          })}
+          {sortedWorkspaces.map((ws) => (
+            <TabItem
+              key={ws.id}
+              ws={ws}
+              isActive={ws.id === activeWorkspaceId}
+              isEditing={editingId === ws.id}
+              editingLabel={editingLabel}
+              setEditingLabel={setEditingLabel}
+              handleKeyDown={handleKeyDown}
+              saveLabel={saveLabel}
+              setActiveWorkspace={setActiveWorkspace}
+              startEditing={startEditing}
+            />
+          ))}
         </Reorder.Group>
 
         <Button
