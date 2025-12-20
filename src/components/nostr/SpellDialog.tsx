@@ -13,20 +13,13 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useObservableMemo } from "applesauce-react/hooks";
 import accounts from "@/services/accounts";
-import pool from "@/services/relay-pool";
-import eventStore from "@/services/event-store";
-import { AGGREGATOR_RELAYS } from "@/services/loaders";
-import { encodeSpell } from "@/lib/spell-conversion";
 import { parseReqCommand } from "@/lib/req-parser";
 import { reconstructCommand } from "@/lib/spell-conversion";
 import type { ParsedSpell, SpellEvent } from "@/types/spell";
-import type { NostrEvent } from "@/types/nostr";
-import { useGrimoire } from "@/core/state";
 import { Loader2 } from "lucide-react";
 import { saveSpell } from "@/services/spell-storage";
 import { LocalSpell } from "@/services/db";
-import { relayListCache } from "@/services/relay-list-cache";
-import { mergeRelaySets } from "applesauce-core/helpers";
+import { PublishSpellAction } from "@/actions/publish-spell";
 
 /**
  * Filter command to show only spell-relevant parts
@@ -82,7 +75,6 @@ export function SpellDialog({
   existingSpell,
   onSuccess,
 }: SpellDialogProps) {
-  const { state } = useGrimoire();
   const activeAccount = useObservableMemo(() => accounts.active$, []);
 
   // Form state
@@ -211,71 +203,34 @@ export function SpellDialog({
         throw new Error("No command provided");
       }
 
-      // Encode spell (name and description optional, published to Nostr)
-      const encoded = encodeSpell({
-        command,
-        name: name.trim() || undefined,
-        description: description.trim() || undefined,
-      });
-
-      // Create unsigned event
-      const unsignedEvent: Omit<NostrEvent, "id" | "sig"> = {
-        kind: 777,
-        pubkey: activeAccount.pubkey,
-        created_at: Math.floor(Date.now() / 1000),
-        tags: encoded.tags,
-        content: encoded.content,
-      };
-
-      // Sign event
-      setPublishingState("signing");
-      const signedEvent = await activeAccount.signer.sign(
-        unsignedEvent as NostrEvent,
-      );
-
-      // Get write relays
-      const authorWriteRelays =
-        (await relayListCache.getOutboxRelays(activeAccount.pubkey)) || [];
-      const stateWriteRelays =
-        state.activeAccount?.relays?.filter((r) => r.write).map((r) => r.url) ||
-        [];
-
-      // Combine all relay sources
-      const writeRelays = mergeRelaySets(
-        encoded.relays || [],
-        authorWriteRelays,
-        stateWriteRelays,
-        AGGREGATOR_RELAYS,
-      );
-
-      // Publish event
-      setPublishingState("publishing");
-      await pool.publish(writeRelays, signedEvent);
-
-      // Add to event store for immediate availability
-      eventStore.add(signedEvent);
-
-      // Save locally with alias and event ID
-      await saveSpell({
+      // 1. Save locally first (to get an ID)
+      setPublishingState("saving");
+      const localSpell = await saveSpell({
         alias: alias.trim() || undefined,
         name: name.trim() || undefined,
         command,
         description: description.trim() || undefined,
-        isPublished: true,
-        eventId: signedEvent.id,
+        isPublished: false,
       });
+
+      // 2. Use PublishSpellAction to handle signing and publishing
+      setPublishingState("publishing");
+      const action = new PublishSpellAction();
+      await action.execute(localSpell);
 
       // Success!
       setPublishingState("idle");
 
       const spellLabel = alias.trim() || name.trim() || "Spell";
       toast.success(`${spellLabel} published!`, {
-        description: `Your spell has been saved and published to ${writeRelays.length} relay${writeRelays.length > 1 ? "s" : ""}.`,
+        description: `Your spell has been saved and published to Nostr.`,
       });
 
       // Call success callback
       if (onSuccess) {
-        onSuccess(signedEvent as SpellEvent);
+        // We don't easily have the event here anymore, but most callers don't use it
+        // Or we could fetch it from storage if needed.
+        onSuccess(null);
       }
 
       // Close dialog

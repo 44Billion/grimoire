@@ -9,6 +9,7 @@ import { AGGREGATOR_RELAYS } from "@/services/loaders";
 import { mergeRelaySets } from "applesauce-core/helpers";
 import { GrimoireState } from "@/types/app";
 import { SpellbookContent } from "@/types/spell";
+import eventStore from "@/services/event-store";
 
 export interface PublishSpellbookOptions {
   state: GrimoireState;
@@ -70,6 +71,9 @@ export class PublishSpellbookAction {
 
     // 4. Publish
     await pool.publish(relays, event);
+
+    // Add to event store for immediate availability
+    eventStore.add(event);
 
     // 5. Mark as published in local DB
     if (localId) {

@@ -8,6 +8,7 @@ import { SpellEvent } from "@/types/spell";
 import { relayListCache } from "@/services/relay-list-cache";
 import { AGGREGATOR_RELAYS } from "@/services/loaders";
 import { mergeRelaySets } from "applesauce-core/helpers";
+import eventStore from "@/services/event-store";
 
 export class PublishSpellAction {
   type = "publish-spell";
@@ -70,6 +71,9 @@ export class PublishSpellAction {
     // Publish to all target relays
 
     await pool.publish(relays, event);
+
+    // Add to event store for immediate availability
+    eventStore.add(event);
 
     await markSpellPublished(spell.id, event);
   }

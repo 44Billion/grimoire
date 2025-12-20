@@ -78,6 +78,7 @@ export function SaveSpellbookDialog({
           description,
           workspaceIds: selectedWorkspaces,
           localId: localSpellbook.id,
+          content: localSpellbook.content, // Pass explicitly to avoid re-calculating (and potentially failing)
         });
         toast.success("Spellbook saved and published to Nostr");
       } else {
