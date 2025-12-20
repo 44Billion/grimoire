@@ -1,5 +1,5 @@
 import { useEffect, useCallback } from "react";
-import { useAtom } from "jotai";
+import { atom, useAtom } from "jotai";
 import { atomWithStorage, createJSONStorage } from "jotai/utils";
 import {
   GrimoireState,
@@ -117,28 +117,51 @@ const storage = createJSONStorage<GrimoireState>(() => ({
   },
 }));
 
-// Persistence Atom with custom storage
+// Persistence Atom with custom storage (The Dashboard)
 export const grimoireStateAtom = atomWithStorage<GrimoireState>(
   "grimoire_v6",
   initialState,
   storage,
 );
 
+// Temporary Atom for Previews/Sessions (In-memory only)
+export const temporaryStateAtom = atom<GrimoireState | null>(null);
+
 // The Hook
 export const useGrimoire = () => {
-  const [state, setState] = useAtom(grimoireStateAtom);
+  const [persistentState, setPersistentState] = useAtom(grimoireStateAtom);
+  const [tempState, setTempState] = useAtom(temporaryStateAtom);
+  
+  // Decide which state we are using
+  // If tempState is set, we are in a temporary session (Preview or Direct Link)
+  const isTemporary = tempState !== null;
+  const state = isTemporary ? tempState : persistentState;
+
+  const setState = useCallback((
+    updater: (prev: GrimoireState) => GrimoireState
+  ) => {
+    if (isTemporary) {
+      setTempState(prev => {
+        const current = prev || persistentState;
+        return updater(current);
+      });
+    } else {
+      setPersistentState(updater);
+    }
+  }, [isTemporary, setTempState, setPersistentState, persistentState]);
+
   const browserLocale = useLocale();
 
   // Initialize locale from browser if not set (moved to useEffect to avoid race condition)
   useEffect(() => {
     if (!state.locale) {
-      setState((prev) => ({ ...prev, locale: browserLocale }));
+      setState((prev: GrimoireState) => ({ ...prev, locale: browserLocale }));
     }
   }, [state.locale, browserLocale, setState]);
 
   // Wrap all callbacks in useCallback for stable references
   const createWorkspace = useCallback(() => {
-    setState((prev) => {
+    setState((prev: GrimoireState) => {
       const nextNumber = Logic.findLowestAvailableWorkspaceNumber(
         prev.workspaces,
       );
@@ -148,7 +171,7 @@ export const useGrimoire = () => {
 
   const createWorkspaceWithNumber = useCallback(
     (number: number) => {
-      setState((prev) => {
+      setState((prev: GrimoireState) => {
         // Check if we're leaving an empty workspace and should auto-remove it
         const currentWorkspace = prev.workspaces[prev.activeWorkspaceId];
         const shouldDeleteCurrent =
@@ -180,7 +203,7 @@ export const useGrimoire = () => {
       customTitle?: string,
       spellId?: string,
     ) =>
-      setState((prev) =>
+      setState((prev: GrimoireState) =>
         Logic.addWindow(prev, {
           appId,
           props,
@@ -201,31 +224,31 @@ export const useGrimoire = () => {
           "props" | "title" | "customTitle" | "commandString" | "appId"
         >
       >,
-    ) => setState((prev) => Logic.updateWindow(prev, windowId, updates)),
+    ) => setState((prev: GrimoireState) => Logic.updateWindow(prev, windowId, updates)),
     [setState],
   );
 
   const removeWindow = useCallback(
-    (id: string) => setState((prev) => Logic.removeWindow(prev, id)),
+    (id: string) => setState((prev: GrimoireState) => Logic.removeWindow(prev, id)),
     [setState],
   );
 
   const moveWindowToWorkspace = useCallback(
     (windowId: string, targetWorkspaceId: string) =>
-      setState((prev) =>
+      setState((prev: GrimoireState) =>
         Logic.moveWindowToWorkspace(prev, windowId, targetWorkspaceId),
       ),
     [setState],
   );
 
   const updateLayout = useCallback(
-    (layout: any) => setState((prev) => Logic.updateLayout(prev, layout)),
+    (layout: any) => setState((prev: GrimoireState) => Logic.updateLayout(prev, layout)),
     [setState],
   );
 
   const setActiveWorkspace = useCallback(
     (id: string) =>
-      setState((prev) => {
+      setState((prev: GrimoireState) => {
         // Validate target workspace exists
         if (!prev.workspaces[id]) {
           console.warn(`Cannot switch to non-existent workspace: ${id}`);
@@ -261,58 +284,79 @@ export const useGrimoire = () => {
 
   const setActiveAccount = useCallback(
     (pubkey: string | undefined) =>
-      setState((prev) => Logic.setActiveAccount(prev, pubkey)),
+      setState((prev: GrimoireState) => Logic.setActiveAccount(prev, pubkey)),
     [setState],
   );
 
   const setActiveAccountRelays = useCallback(
     (relays: RelayInfo[]) =>
-      setState((prev) => Logic.setActiveAccountRelays(prev, relays)),
+      setState((prev: GrimoireState) => Logic.setActiveAccountRelays(prev, relays)),
     [setState],
   );
 
   const updateLayoutConfig = useCallback(
     (layoutConfig: Partial<LayoutConfig>) =>
-      setState((prev) => Logic.updateLayoutConfig(prev, layoutConfig)),
+      setState((prev: GrimoireState) => Logic.updateLayoutConfig(prev, layoutConfig)),
     [setState],
   );
 
   const applyPresetLayout = useCallback(
-    (preset: any) => setState((prev) => Logic.applyPresetLayout(prev, preset)),
+    (preset: any) => setState((prev: GrimoireState) => Logic.applyPresetLayout(prev, preset)),
     [setState],
   );
 
   const updateWorkspaceLabel = useCallback(
     (workspaceId: string, label: string | undefined) =>
-      setState((prev) => Logic.updateWorkspaceLabel(prev, workspaceId, label)),
+      setState((prev: GrimoireState) => Logic.updateWorkspaceLabel(prev, workspaceId, label)),
     [setState],
   );
 
   const reorderWorkspaces = useCallback(
     (orderedIds: string[]) =>
-      setState((prev) => Logic.reorderWorkspaces(prev, orderedIds)),
+      setState((prev: GrimoireState) => Logic.reorderWorkspaces(prev, orderedIds)),
     [setState],
   );
 
   const setCompactModeKinds = useCallback(
     (kinds: number[]) =>
-      setState((prev) => Logic.setCompactModeKinds(prev, kinds)),
+      setState((prev: GrimoireState) => Logic.setCompactModeKinds(prev, kinds)),
     [setState],
   );
 
   const loadSpellbook = useCallback(
     (spellbook: ParsedSpellbook) =>
-      setState((prev) => SpellbookManager.loadSpellbook(prev, spellbook)),
+      setState((prev: GrimoireState) => SpellbookManager.loadSpellbook(prev, spellbook)),
     [setState],
   );
 
   const clearActiveSpellbook = useCallback(
-    () => setState((prev) => Logic.clearActiveSpellbook(prev)),
+    () => setState((prev: GrimoireState) => Logic.clearActiveSpellbook(prev)),
     [setState],
   );
 
+  const switchToTemporary = useCallback((spellbook?: ParsedSpellbook) => {
+    setTempState(prev => {
+      const current = prev || persistentState;
+      return spellbook 
+        ? SpellbookManager.loadSpellbook(current, spellbook)
+        : { ...current };
+    });
+  }, [persistentState, setTempState]);
+
+  const applyTemporaryToPersistent = useCallback(() => {
+    if (tempState) {
+      setPersistentState(tempState);
+      setTempState(null);
+    }
+  }, [tempState, setPersistentState, setTempState]);
+
+  const discardTemporary = useCallback(() => {
+    setTempState(null);
+  }, [setTempState]);
+
   return {
     state,
+    isTemporary,
     locale: state.locale || browserLocale,
     activeWorkspace: state.workspaces[state.activeWorkspaceId],
     createWorkspace,
@@ -332,5 +376,8 @@ export const useGrimoire = () => {
     setCompactModeKinds,
     loadSpellbook,
     clearActiveSpellbook,
+    switchToTemporary,
+    applyTemporaryToPersistent,
+    discardTemporary,
   };
 };

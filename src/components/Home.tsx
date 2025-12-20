@@ -23,10 +23,16 @@ import { SpellbookEvent } from "@/types/spell";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 
-const PREVIEW_BACKUP_KEY = "grimoire-preview-backup";
-
 export default function Home() {
-  const { state, updateLayout, removeWindow, loadSpellbook } = useGrimoire();
+  const { 
+    state, 
+    updateLayout, 
+    removeWindow, 
+    switchToTemporary, 
+    applyTemporaryToPersistent, 
+    discardTemporary,
+    isTemporary 
+  } = useGrimoire();
   const [commandLauncherOpen, setCommandLauncherOpen] = useState(false);
   const { actor, identifier } = useParams();
   const navigate = useNavigate();
@@ -35,6 +41,7 @@ export default function Home() {
   // Preview state
   const [resolvedPubkey, setResolvedPubkey] = useState<string | null>(null);
   const isPreviewPath = location.pathname.startsWith("/preview/");
+  const isDirectPath = actor && identifier && !isPreviewPath;
   const [hasLoadedSpellbook, setHasLoadedSpellbook] = useState(false);
 
   // 1. Resolve actor to pubkey
@@ -42,6 +49,8 @@ export default function Home() {
     if (!actor) {
       setResolvedPubkey(null);
       setHasLoadedSpellbook(false);
+      // If we were in temporary mode and navigated back to /, discard
+      if (isTemporary) discardTemporary();
       return;
     }
 
@@ -62,7 +71,7 @@ export default function Home() {
     };
 
     resolve();
-  }, [actor]);
+  }, [actor, isTemporary, discardTemporary]);
 
   // 2. Fetch the spellbook event
   const pointer = useMemo(() => {
@@ -82,58 +91,35 @@ export default function Home() {
       try {
         const parsed = parseSpellbook(spellbookEvent as SpellbookEvent);
         
+        // Use the new temporary state system
+        switchToTemporary(parsed);
+        setHasLoadedSpellbook(true);
+
         if (isPreviewPath) {
-          // In preview mode, save current state to sessionStorage for recovery
-          if (!sessionStorage.getItem(PREVIEW_BACKUP_KEY)) {
-            sessionStorage.setItem(PREVIEW_BACKUP_KEY, JSON.stringify(state));
-          }
-          
-          loadSpellbook(parsed);
-          setHasLoadedSpellbook(true);
           toast.info(`Previewing layout: ${parsed.title}`, {
-            description: "You are in preview mode. Apply to keep this layout or discard to return.",
+            description: "You are in a temporary session. Apply to keep this layout permanently.",
           });
-        } else {
-          // Direct mode: Just load it immediately
-          loadSpellbook(parsed);
-          setHasLoadedSpellbook(true);
-          // Update URL to home after loading to avoid re-loading on refresh if they start modifying
-          navigate("/", { replace: true });
-          toast.success(`Loaded layout: ${parsed.title}`);
+        } else if (isDirectPath) {
+          toast.success(`Loaded temporary layout: ${parsed.title}`, {
+            description: "Visit / to return to your permanent dashboard, or click Apply Layout.",
+          });
         }
       } catch (e) {
         console.error("Failed to parse spellbook:", e);
         toast.error("Failed to load spellbook");
       }
     }
-  }, [spellbookEvent, hasLoadedSpellbook, isPreviewPath]);
+  }, [spellbookEvent, hasLoadedSpellbook, isPreviewPath, isDirectPath, switchToTemporary]);
 
   const handleApplyLayout = () => {
-    sessionStorage.removeItem(PREVIEW_BACKUP_KEY);
+    applyTemporaryToPersistent();
     navigate("/", { replace: true });
-    toast.success("Layout applied permanently");
+    toast.success("Layout applied to your dashboard permanently");
   };
 
   const handleDiscardPreview = () => {
-    const backup = sessionStorage.getItem(PREVIEW_BACKUP_KEY);
-    if (backup) {
-      try {
-        JSON.parse(backup);
-        // We need a way to restore the whole state. 
-        // For now, the easiest way to "restore" a persisted state from sessionStorage
-        // is to clear our local storage and reload, or manually call setters.
-        // But loadSpellbook already overwrote it in localStorage via Jotai.
-        
-        // Let's try to overwrite localStorage directly and reload for a clean restore
-        localStorage.setItem("grimoire-state", backup);
-        sessionStorage.removeItem(PREVIEW_BACKUP_KEY);
-        window.location.href = "/";
-        return;
-      } catch (e) {
-        console.error("Failed to restore backup:", e);
-      }
-    }
-    navigate("/");
+    discardTemporary();
+    navigate("/", { replace: true });
   };
 
   // Sync active account and fetch relay lists
@@ -206,11 +192,13 @@ export default function Home() {
       />
       <GlobalAuthPrompt />
       <main className="h-screen w-screen flex flex-col bg-background text-foreground">
-        {isPreviewPath && (
-          <div className="bg-accent text-accent-foreground px-4 py-1.5 flex items-center justify-between text-sm font-medium animate-in slide-in-from-top duration-300">
+        {isTemporary && (
+          <div className="bg-accent text-accent-foreground px-4 py-1.5 flex items-center justify-between text-sm font-medium animate-in slide-in-from-top duration-300 shadow-md z-50">
             <div className="flex items-center gap-2">
               <BookHeart className="size-4" />
-              <span>Preview Mode: {spellbookEvent?.tags.find(t => t[0] === 'title')?.[1] || 'Spellbook'}</span>
+              <span>
+                {isPreviewPath ? "Preview Mode" : "Temporary Layout"}: {spellbookEvent?.tags.find(t => t[0] === 'title')?.[1] || 'Spellbook'}
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <Button 

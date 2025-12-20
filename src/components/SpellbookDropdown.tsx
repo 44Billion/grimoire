@@ -184,9 +184,7 @@ export function SpellbookDropdown() {
               >
                 <Save className="size-3.5 mr-2 text-muted-foreground" />
                 <div className="flex flex-col min-w-0">
-                  <span className="font-medium text-sm">
-                    Update "{activeSpellbook.title}"
-                  </span>
+                  <span className="font-medium text-sm">Update</span>
                   <span className="text-[10px] text-muted-foreground">
                     Save current state to this spellbook
                   </span>
@@ -197,7 +195,7 @@ export function SpellbookDropdown() {
                 className={cn(itemClass, "text-xs opacity-70")}
               >
                 <X className="size-3.5 mr-2 text-muted-foreground" />
-                Stop Tracking Layout
+                Deselect
               </DropdownMenuItem>
               <DropdownMenuSeparator />
             </>
