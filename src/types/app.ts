@@ -95,4 +95,10 @@ export interface GrimoireState {
     timeFormat: "12h" | "24h";
   };
   relayState?: GlobalRelayState;
+  activeSpellbook?: {
+    id: string; // event id or local uuid
+    slug: string; // d-tag
+    title: string;
+    pubkey?: string; // owner
+  };
 }

@@ -306,6 +306,11 @@ export const useGrimoire = () => {
     [setState],
   );
 
+  const clearActiveSpellbook = useCallback(
+    () => setState((prev) => Logic.clearActiveSpellbook(prev)),
+    [setState],
+  );
+
   return {
     state,
     locale: state.locale || browserLocale,
@@ -326,5 +331,6 @@ export const useGrimoire = () => {
     reorderWorkspaces,
     setCompactModeKinds,
     loadSpellbook,
+    clearActiveSpellbook,
   };
 };

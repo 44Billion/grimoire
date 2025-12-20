@@ -266,5 +266,11 @@ export function loadSpellbook(
     workspaces: newWorkspaces,
     windows: newWindows,
     activeWorkspaceId: firstNewWorkspaceId || state.activeWorkspaceId,
+    activeSpellbook: {
+      id: spellbook.event?.id || uuidv4(), // Fallback to uuid if local
+      slug: spellbook.slug,
+      title: spellbook.title,
+      pubkey: spellbook.event?.pubkey,
+    },
   };
 }

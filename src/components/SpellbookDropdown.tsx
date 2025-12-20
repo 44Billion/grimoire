@@ -1,10 +1,10 @@
-import { useMemo } from "react";
-import { BookHeart, ChevronDown, WandSparkles } from "lucide-react";
+import { useMemo, useState } from "react";
+import { BookHeart, ChevronDown, Plus, Save, WandSparkles } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import db from "@/services/db";
 import { useGrimoire } from "@/core/state";
 import { useReqTimeline } from "@/hooks/useReqTimeline";
-import { parseSpellbook } from "@/lib/spellbook-manager";
+import { createSpellbook, parseSpellbook } from "@/lib/spellbook-manager";
 import { decodeSpell } from "@/lib/spell-conversion";
 import type {
   SpellbookEvent,
@@ -25,10 +25,16 @@ import {
 import { toast } from "sonner";
 import { manPages } from "@/types/man";
 import { cn } from "@/lib/utils";
+import { PublishSpellbookAction } from "@/actions/publish-spellbook";
+import { saveSpellbook } from "@/services/spellbook-storage";
+import { SaveSpellbookDialog } from "./SaveSpellbookDialog";
 
 export function SpellbookDropdown() {
   const { state, loadSpellbook, addWindow } = useGrimoire();
   const activeAccount = state.activeAccount;
+  const activeSpellbook = state.activeSpellbook;
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   // 1. Load Local Data
   const localSpellbooks = useLiveQuery(() =>
@@ -130,6 +136,51 @@ export function SpellbookDropdown() {
     toast.success(`Layout "${sb.title}" applied`);
   };
 
+  const handleUpdateActive = async () => {
+    if (!activeSpellbook) return;
+    setIsUpdating(true);
+    try {
+      // Generate current layout content
+      const encoded = createSpellbook({
+        state,
+        title: activeSpellbook.title,
+      });
+      
+      const content = JSON.parse(encoded.eventProps.content);
+
+      // 1. Save locally
+      const local = await db.spellbooks.where("slug").equals(activeSpellbook.slug).first();
+      if (local) {
+        await db.spellbooks.update(local.id, { content });
+      } else {
+        await saveSpellbook({
+          slug: activeSpellbook.slug,
+          title: activeSpellbook.title,
+          content,
+          isPublished: false,
+        });
+      }
+
+      // 2. If it was published or we want to publish updates
+      if (activeSpellbook.pubkey === activeAccount.pubkey) {
+        const action = new PublishSpellbookAction();
+        await action.execute({
+          state,
+          title: activeSpellbook.title,
+          content,
+          localId: local?.id,
+        });
+        toast.success(`Layout "${activeSpellbook.title}" updated and published`);
+      } else {
+        toast.success(`Layout "${activeSpellbook.title}" updated locally`);
+      }
+    } catch (e) {
+      toast.error("Failed to update layout");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const handleRunSpell = async (spell: ParsedSpell) => {
     try {
       const parts = spell.command.trim().split(/\s+/);
@@ -153,90 +204,131 @@ export function SpellbookDropdown() {
     "cursor-pointer py-2 hover:bg-muted focus:bg-muted transition-colors";
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2 gap-1.5 text-muted-foreground hover:text-foreground"
+    <>
+      <SaveSpellbookDialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen} />
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "h-7 px-2 gap-1.5 text-muted-foreground hover:text-foreground",
+              activeSpellbook && "text-foreground font-bold"
+            )}
+          >
+            <BookHeart className="size-4" />
+            <span className="text-xs font-medium hidden sm:inline">
+              {activeSpellbook ? activeSpellbook.title : "Library"}
+            </span>
+            <ChevronDown className="size-3 opacity-50" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="center"
+          className="w-64 max-h-[80vh] overflow-y-auto"
         >
-          <BookHeart className="size-4" />
-          <span className="text-xs font-medium hidden sm:inline">Library</span>
-          <ChevronDown className="size-3 opacity-50" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="center"
-        className="w-64 max-h-[80vh] overflow-y-auto"
-      >
-        {/* Spellbooks Section */}
-        {spellbooks.length > 0 && (
-          <>
-            <DropdownMenuLabel className="flex items-center justify-between py-1 px-2 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
-              Spellbooks
-            </DropdownMenuLabel>
-            {spellbooks.map((sb) => (
+          {/* Active Spellbook Actions */}
+          {activeSpellbook && (
+            <>
+              <DropdownMenuLabel className="py-1 px-2 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
+                Current Layout
+              </DropdownMenuLabel>
               <DropdownMenuItem
-                key={sb.slug}
-                onClick={() => handleApplySpellbook(sb)}
+                onClick={handleUpdateActive}
+                disabled={isUpdating}
                 className={itemClass}
               >
-                <BookHeart className="size-3.5 mr-2 text-muted-foreground flex-shrink-0" />
+                <Save className="size-3.5 mr-2 text-muted-foreground" />
                 <div className="flex flex-col min-w-0">
-                  <span className="truncate font-medium text-sm">
-                    {sb.title}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground truncate">
-                    {Object.keys(sb.content.workspaces).length} tabs
-                  </span>
+                  <span className="font-medium text-sm">Update "{activeSpellbook.title}"</span>
+                  <span className="text-[10px] text-muted-foreground">Save current state to this spellbook</span>
                 </div>
               </DropdownMenuItem>
-            ))}
-            <DropdownMenuItem
-              onClick={() => addWindow("spellbooks", {})}
-              className={cn(itemClass, "text-xs opacity-70")}
-            >
-              <BookHeart className="size-3 mr-2 text-muted-foreground" />
-              Manage Library
-            </DropdownMenuItem>
-          </>
-        )}
+              <DropdownMenuSeparator />
+            </>
+          )}
 
-        {/* Spells Section */}
-        {spells.length > 0 && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel className="flex items-center justify-between py-1 px-2 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
-              Spells
-            </DropdownMenuLabel>
-            {spells.map((s, idx) => (
+          {/* Spellbooks Section */}
+          {spellbooks.length > 0 && (
+            <>
+              <DropdownMenuLabel className="flex items-center justify-between py-1 px-2 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
+                Spellbooks
+              </DropdownMenuLabel>
+              {spellbooks.map((sb) => {
+                const isActive = activeSpellbook?.slug === sb.slug;
+                return (
+                  <DropdownMenuItem
+                    key={sb.slug}
+                    onClick={() => handleApplySpellbook(sb)}
+                    className={cn(itemClass, isActive && "bg-muted font-bold")}
+                  >
+                    <BookHeart className={cn("size-3.5 mr-2 text-muted-foreground", isActive && "text-foreground")} />
+                    <div className="flex flex-col min-w-0">
+                      <span className="truncate font-medium text-sm">
+                        {sb.title}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground truncate">
+                        {Object.keys(sb.content.workspaces).length} tabs
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                );
+              })}
               <DropdownMenuItem
-                key={s.event?.id || `local-${idx}`}
-                onClick={() => handleRunSpell(s)}
-                className={itemClass}
+                onClick={() => addWindow("spellbooks", {})}
+                className={cn(itemClass, "text-xs opacity-70")}
               >
-                <WandSparkles className="size-3.5 mr-2 text-muted-foreground flex-shrink-0" />
-                <div className="flex flex-col min-w-0">
-                  <span className="truncate font-medium text-sm">
-                    {s.name || "Untitled Spell"}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground truncate font-mono">
-                    {s.command}
-                  </span>
-                </div>
+                <BookHeart className="size-3 mr-2 text-muted-foreground" />
+                Manage Library
               </DropdownMenuItem>
-            ))}
-            <DropdownMenuItem
-              onClick={() => addWindow("spells", {})}
-              className={cn(itemClass, "text-xs opacity-70")}
-            >
-                          <WandSparkles className="size-3 mr-2 text-muted-foreground" />
-                          Manage Spells
-                        </DropdownMenuItem>
-                      </>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              );
-              }
-              
+              <DropdownMenuSeparator />
+            </>
+          )}
+
+          {/* New/Save Section */}
+          <DropdownMenuItem
+            onClick={() => setSaveDialogOpen(true)}
+            className={itemClass}
+          >
+            <Plus className="size-3.5 mr-2 text-muted-foreground" />
+            <span className="text-sm">Save as new layout</span>
+          </DropdownMenuItem>
+
+          {/* Spells Section */}
+          {spells.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="flex items-center justify-between py-1 px-2 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
+                Spells
+              </DropdownMenuLabel>
+              {spells.map((s, idx) => (
+                <DropdownMenuItem
+                  key={s.event?.id || `local-${idx}`}
+                  onClick={() => handleRunSpell(s)}
+                  className={itemClass}
+                >
+                  <WandSparkles className="size-3.5 mr-2 text-muted-foreground flex-shrink-0" />
+                  <div className="flex flex-col min-w-0">
+                    <span className="truncate font-medium text-sm">
+                      {s.name || "Untitled Spell"}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground truncate font-mono">
+                      {s.command}
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuItem
+                onClick={() => addWindow("spells", {})}
+                className={cn(itemClass, "text-xs opacity-70")}
+              >
+                <WandSparkles className="size-3 mr-2 text-muted-foreground" />
+                Manage Spells
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  );
+}

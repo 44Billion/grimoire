@@ -9,7 +9,7 @@ import { Mosaic, MosaicWindow, MosaicBranch } from "react-mosaic-component";
 import CommandLauncher from "./CommandLauncher";
 import { WindowToolbar } from "./WindowToolbar";
 import { WindowTile } from "./WindowTitle";
-import { Terminal, BookHeart, X, Check } from "lucide-react";
+import { BookHeart, X, Check } from "lucide-react";
 import UserMenu from "./nostr/user-menu";
 import { GrimoireWelcome } from "./GrimoireWelcome";
 import { GlobalAuthPrompt } from "./GlobalAuthPrompt";
@@ -26,11 +26,13 @@ import { Button } from "./ui/button";
 const PREVIEW_BACKUP_KEY = "grimoire-preview-backup";
 
 export default function Home() {
-  const { state, updateLayout, removeWindow, loadSpellbook } = useGrimoire();
+  const { state, updateLayout, removeWindow, loadSpellbook, clearActiveSpellbook } = useGrimoire();
   const [commandLauncherOpen, setCommandLauncherOpen] = useState(false);
   const { actor, identifier } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const activeSpellbook = state.activeSpellbook;
 
   // Preview state
   const [resolvedPubkey, setResolvedPubkey] = useState<string | null>(null);
@@ -241,10 +243,24 @@ export default function Home() {
             title="Launch command (Cmd+K)"
             aria-label="Launch command palette"
           >
-            <Terminal className="size-4" />
           </button>
           
-          <SpellbookDropdown />
+          <div className="flex items-center gap-2">
+            <SpellbookDropdown />
+            {activeSpellbook && !isPreviewPath && (
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted/50 border border-border animate-in fade-in zoom-in duration-300">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight">Active:</span>
+                <span className="text-xs font-medium truncate max-w-[150px]">{activeSpellbook.title}</span>
+                <button 
+                  onClick={clearActiveSpellbook}
+                  className="ml-1 p-0.5 hover:bg-background rounded-full text-muted-foreground hover:text-foreground transition-colors"
+                  title="Clear active spellbook context"
+                >
+                  <X className="size-3" />
+                </button>
+              </div>
+            )}
+          </div>
 
           <UserMenu />
         </header>

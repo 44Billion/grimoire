@@ -491,3 +491,13 @@ export const setCompactModeKinds = (
     compactModeKinds: kinds,
   };
 };
+
+/**
+ * Clears the currently active spellbook tracking.
+ */
+export const clearActiveSpellbook = (state: GrimoireState): GrimoireState => {
+  return {
+    ...state,
+    activeSpellbook: undefined,
+  };
+};
