@@ -7,6 +7,10 @@ const router = createBrowserRouter([
     element: <Home />,
   },
   {
+    path: "/preview/:actor/:identifier",
+    element: <Home />,
+  },
+  {
     path: "/:actor/:identifier",
     element: <Home />,
   },

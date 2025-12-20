@@ -31,7 +31,7 @@ function PreviewButton({ event, identifier, size = "default", className = "" }: 
   const handlePreview = (e: React.MouseEvent) => {
     e.stopPropagation();
     const actor = profile?.nip05 || nip19.npubEncode(event.pubkey);
-    navigate(`/${actor}/${identifier}`);
+    navigate(`/preview/${actor}/${identifier}`);
   };
 
   return (

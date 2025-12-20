@@ -9,11 +9,12 @@ import { Mosaic, MosaicWindow, MosaicBranch } from "react-mosaic-component";
 import CommandLauncher from "./CommandLauncher";
 import { WindowToolbar } from "./WindowToolbar";
 import { WindowTile } from "./WindowTitle";
-import { Terminal, Book, BookHeart, X, Check } from "lucide-react";
+import { Terminal, BookHeart, X, Check } from "lucide-react";
 import UserMenu from "./nostr/user-menu";
 import { GrimoireWelcome } from "./GrimoireWelcome";
 import { GlobalAuthPrompt } from "./GlobalAuthPrompt";
-import { useParams, useNavigate } from "react-router";
+import { SpellbookDropdown } from "./SpellbookDropdown";
+import { useParams, useNavigate, useLocation } from "react-router";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
 import { resolveNip05, isNip05 } from "@/lib/nip05";
 import { nip19 } from "nostr-tools";
@@ -22,25 +23,25 @@ import { SpellbookEvent } from "@/types/spell";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 
-export default function Home({
-  spellbookName,
-}: {
-  spellbookName?: string | null;
-}) {
+const PREVIEW_BACKUP_KEY = "grimoire-preview-backup";
+
+export default function Home() {
   const { state, updateLayout, removeWindow, loadSpellbook } = useGrimoire();
   const [commandLauncherOpen, setCommandLauncherOpen] = useState(false);
   const { actor, identifier } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Preview state
   const [resolvedPubkey, setResolvedPubkey] = useState<string | null>(null);
-  const [originalState, setOriginalState] = useState<typeof state | null>(null);
-  const [isPreviewing, setIsPreviewing] = useState(false);
+  const isPreviewPath = location.pathname.startsWith("/preview/");
+  const [hasLoadedSpellbook, setHasLoadedSpellbook] = useState(false);
 
   // 1. Resolve actor to pubkey
   useEffect(() => {
     if (!actor) {
       setResolvedPubkey(null);
+      setHasLoadedSpellbook(false);
       return;
     }
 
@@ -75,48 +76,64 @@ export default function Home({
 
   const spellbookEvent = useNostrEvent(pointer);
 
-  // 3. Apply preview when event is loaded
+  // 3. Apply preview/layout when event is loaded
   useEffect(() => {
-    if (spellbookEvent && !isPreviewing) {
+    if (spellbookEvent && !hasLoadedSpellbook) {
       try {
         const parsed = parseSpellbook(spellbookEvent as SpellbookEvent);
-        // Save current state before replacing
-        setOriginalState({ ...state });
-        loadSpellbook(parsed);
-        setIsPreviewing(true);
-        toast.info(`Previewing layout: ${parsed.title}`, {
-          description: "This is a temporary preview. You can apply or discard it.",
-        });
+        
+        if (isPreviewPath) {
+          // In preview mode, save current state to sessionStorage for recovery
+          if (!sessionStorage.getItem(PREVIEW_BACKUP_KEY)) {
+            sessionStorage.setItem(PREVIEW_BACKUP_KEY, JSON.stringify(state));
+          }
+          
+          loadSpellbook(parsed);
+          setHasLoadedSpellbook(true);
+          toast.info(`Previewing layout: ${parsed.title}`, {
+            description: "You are in preview mode. Apply to keep this layout or discard to return.",
+          });
+        } else {
+          // Direct mode: Just load it immediately
+          loadSpellbook(parsed);
+          setHasLoadedSpellbook(true);
+          // Update URL to home after loading to avoid re-loading on refresh if they start modifying
+          navigate("/", { replace: true });
+          toast.success(`Loaded layout: ${parsed.title}`);
+        }
       } catch (e) {
-        console.error("Failed to parse preview spellbook:", e);
-        toast.error("Failed to load spellbook preview");
+        console.error("Failed to parse spellbook:", e);
+        toast.error("Failed to load spellbook");
       }
     }
-  }, [spellbookEvent, isPreviewing]);
+  }, [spellbookEvent, hasLoadedSpellbook, isPreviewPath]);
 
   const handleApplyLayout = () => {
-    setIsPreviewing(false);
-    setOriginalState(null);
-    navigate("/");
+    sessionStorage.removeItem(PREVIEW_BACKUP_KEY);
+    navigate("/", { replace: true });
     toast.success("Layout applied permanently");
   };
 
   const handleDiscardPreview = () => {
-    if (originalState) {
-      // Restore original workspaces and windows
-      // We need a way to restore the whole state.
-      // For now, let's just navigate back, which might reload if we are not careful
-      // Actually, useGrimoire doesn't have a 'restoreState' yet.
-      // Let's just navigate home and hope the user re-applies if they want.
-      // But Grimoire state is persisted to localStorage.
-      // THIS IS TRICKY: loadSpellbook already mutated the persisted state!
-      
-      // To properly discard, we would need to revert the state.
-      // For now, let's just go home.
-      window.location.href = "/"; 
-    } else {
-      navigate("/");
+    const backup = sessionStorage.getItem(PREVIEW_BACKUP_KEY);
+    if (backup) {
+      try {
+        JSON.parse(backup);
+        // We need a way to restore the whole state. 
+        // For now, the easiest way to "restore" a persisted state from sessionStorage
+        // is to clear our local storage and reload, or manually call setters.
+        // But loadSpellbook already overwrote it in localStorage via Jotai.
+        
+        // Let's try to overwrite localStorage directly and reload for a clean restore
+        localStorage.setItem("grimoire-state", backup);
+        sessionStorage.removeItem(PREVIEW_BACKUP_KEY);
+        window.location.href = "/";
+        return;
+      } catch (e) {
+        console.error("Failed to restore backup:", e);
+      }
     }
+    navigate("/");
   };
 
   // Sync active account and fetch relay lists
@@ -189,7 +206,7 @@ export default function Home({
       />
       <GlobalAuthPrompt />
       <main className="h-screen w-screen flex flex-col bg-background text-foreground">
-        {isPreviewing && (
+        {isPreviewPath && (
           <div className="bg-accent text-accent-foreground px-4 py-1.5 flex items-center justify-between text-sm font-medium animate-in slide-in-from-top duration-300">
             <div className="flex items-center gap-2">
               <BookHeart className="size-4" />
@@ -227,14 +244,7 @@ export default function Home({
             <Terminal className="size-4" />
           </button>
           
-          {spellbookName && (
-            <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-accent/10 border border-accent/20 text-accent animate-in fade-in slide-in-from-top-1 duration-500">
-              <Book className="size-3" />
-              <span className="text-xs font-medium tracking-tight truncate max-w-[200px]">
-                {spellbookName}
-              </span>
-            </div>
-          )}
+          <SpellbookDropdown />
 
           <UserMenu />
         </header>
