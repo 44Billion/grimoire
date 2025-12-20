@@ -1,4 +1,8 @@
 import type { NostrEvent, NostrFilter } from "./nostr";
+import type { Workspace, WindowInstance } from "./app";
+import { SPELL_KIND, SPELLBOOK_KIND } from "@/constants/kinds";
+
+export { SPELL_KIND, SPELLBOOK_KIND };
 
 /**
  * Spell event (kind 777 immutable event)
@@ -119,4 +123,50 @@ export interface EncodedSpell {
 
   /** Close on EOSE flag */
   closeOnEose: boolean;
+}
+
+/**
+ * Content structure for a Spellbook (Kind 30777)
+ * Represents a saved layout configuration (one or more workspaces)
+ */
+export interface SpellbookContent {
+  /** Schema version for migrations */
+  version: number;
+  /** Workspaces included in this spellbook */
+  workspaces: Record<string, Workspace>;
+  /** Windows referenced by the workspaces */
+  windows: Record<string, WindowInstance>;
+}
+
+/**
+ * Spellbook event (kind 30777 parameterized replaceable event)
+ *
+ * TAGS:
+ * - ["d", "slug"] - Unique identifier (slugified title)
+ * - ["title", "My Dashboard"] - Human readable title
+ * - ["description", "My cool setup"] - Optional description
+ * - ["e", "spell-id", "relay", "mention"] - References to spells used in the layout
+ */
+export interface SpellbookEvent extends NostrEvent {
+  kind: 30777;
+  content: string; // JSON encoded SpellbookContent
+  tags: [string, string, ...string[]][];
+}
+
+/**
+ * Parsed spellbook with extracted metadata and content
+ */
+export interface ParsedSpellbook {
+  /** Slug identifier (from d tag) */
+  slug: string;
+  /** Title (from title tag) */
+  title: string;
+  /** Description (from description tag) */
+  description?: string;
+  /** The actual layout data */
+  content: SpellbookContent;
+  /** IDs of spells referenced in this book (from e tags) */
+  referencedSpells: string[];
+  /** Full event reference */
+  event: SpellbookEvent;
 }

@@ -6,7 +6,7 @@ import {
   getLiveHost,
 } from "@/lib/live-activity";
 import { BaseEventContainer, ClickableEventTitle } from "./BaseEventRenderer";
-import { Label } from "@/components/ui/Label";
+import { Label } from "@/components/ui/label";
 import { VideoPlayer } from "@/components/live/VideoPlayer";
 import { StatusBadge } from "@/components/live/StatusBadge";
 import { Users, Play, Circle, Calendar, Video } from "lucide-react";

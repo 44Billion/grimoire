@@ -113,6 +113,7 @@ export default function CommandLauncher({
         result.props,
         activeSpell ? effectiveParsed.fullInput : input.trim(),
         result.globalFlags?.windowProps?.title,
+        activeSpell?.id,
       );
     }
 

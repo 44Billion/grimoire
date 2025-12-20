@@ -74,6 +74,9 @@ export interface EventKind {
   icon: LucideIcon;
 }
 
+export const SPELL_KIND = 777;
+export const SPELLBOOK_KIND = 30777;
+
 export const EVENT_KINDS: Record<number | string, EventKind> = {
   // Core protocol kinds
   0: {
@@ -681,12 +684,19 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     icon: Zap,
   },
   9735: { kind: 9735, name: "Zap", description: "Zap", nip: "57", icon: Zap },
-  777: {
-    kind: 777,
+  [SPELL_KIND]: {
+    kind: SPELL_KIND,
     name: "Spell",
     description: "REQ Command Spell",
     nip: "",
     icon: WandSparkles,
+  },
+  [SPELLBOOK_KIND]: {
+    kind: SPELLBOOK_KIND,
+    name: "Spellbook",
+    description: "Grimoire Layout Configuration",
+    nip: "",
+    icon: Grid3x3,
   },
   9802: {
     kind: 9802,

@@ -3,7 +3,7 @@ import { Dexie, Table } from "dexie";
 import { RelayInformation } from "../types/nip11";
 import { normalizeRelayURL } from "../lib/relay-url";
 import type { NostrEvent } from "@/types/nostr";
-import type { SpellEvent } from "@/types/spell";
+import type { SpellEvent, SpellbookContent, SpellbookEvent } from "@/types/spell";
 
 export interface Profile extends ProfileContent {
   pubkey: string;
@@ -63,6 +63,19 @@ export interface LocalSpell {
   deletedAt?: number; // Timestamp when soft-deleted
 }
 
+export interface LocalSpellbook {
+  id: string; // UUID for local-only, or event ID for published
+  slug: string; // d-tag for replaceable events
+  title: string; // Human readable title
+  description?: string; // Optional description
+  content: SpellbookContent; // JSON payload
+  createdAt: number;
+  isPublished: boolean;
+  eventId?: string;
+  event?: SpellbookEvent;
+  deletedAt?: number;
+}
+
 class GrimoireDb extends Dexie {
   profiles!: Table<Profile>;
   nip05!: Table<Nip05>;
@@ -72,6 +85,7 @@ class GrimoireDb extends Dexie {
   relayLists!: Table<CachedRelayList>;
   relayLiveness!: Table<RelayLivenessEntry>;
   spells!: Table<LocalSpell>;
+  spellbooks!: Table<LocalSpellbook>;
 
   constructor(name: string) {
     super(name);
@@ -279,6 +293,19 @@ class GrimoireDb extends Dexie {
       relayLists: "&pubkey, updatedAt",
       relayLiveness: "&url",
       spells: "&id, alias, createdAt, isPublished, deletedAt",
+    });
+
+    // Version 14: Add local spellbook storage
+    this.version(14).stores({
+      profiles: "&pubkey",
+      nip05: "&nip05",
+      nips: "&id",
+      relayInfo: "&url",
+      relayAuthPreferences: "&url",
+      relayLists: "&pubkey, updatedAt",
+      relayLiveness: "&url",
+      spells: "&id, alias, createdAt, isPublished, deletedAt",
+      spellbooks: "&id, slug, title, createdAt, isPublished, deletedAt",
     });
   }
 }

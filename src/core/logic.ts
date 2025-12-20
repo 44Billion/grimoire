@@ -68,6 +68,7 @@ export const addWindow = (
     props: any;
     commandString?: string;
     customTitle?: string;
+    spellId?: string;
   },
 ): GrimoireState => {
   const activeId = state.activeWorkspaceId;
@@ -79,6 +80,7 @@ export const addWindow = (
     customTitle: payload.customTitle,
     props: payload.props,
     commandString: payload.commandString,
+    spellId: payload.spellId,
   };
 
   // Insert window using global layout configuration

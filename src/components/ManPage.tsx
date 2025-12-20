@@ -15,10 +15,12 @@ export function ExecutableCommand({
   commandLine,
   className,
   children,
+  spellId,
 }: {
   commandLine: string;
   className?: string;
   children: React.ReactNode;
+  spellId?: string;
 }) {
   const { addWindow } = useGrimoire();
 
@@ -34,7 +36,7 @@ export function ExecutableCommand({
         ? await Promise.resolve(command.argParser(cmdArgs))
         : command.defaultProps || {};
 
-      addWindow(command.appId, cmdProps);
+      addWindow(command.appId, cmdProps, undefined, undefined, spellId);
     }
   };
 

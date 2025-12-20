@@ -16,7 +16,9 @@ export type AppId =
   | "relay"
   | "debug"
   | "conn"
-  | "spells";
+  | "spells"
+  | "spellbooks"
+  | "wallet";
 
 export interface WindowInstance {
   id: string;
@@ -25,6 +27,7 @@ export interface WindowInstance {
   customTitle?: string; // User-provided custom title via --title flag (overrides dynamic title)
   props: any;
   commandString?: string; // Original command that created this window (e.g., "profile alice@domain.com")
+  spellId?: string; // ID of the spell that created this window (if any)
 }
 
 /**

@@ -15,7 +15,7 @@ import {
   getRepositoryName,
   getRepositoryIdentifier,
 } from "@/lib/nip34-helpers";
-import { Label } from "@/components/ui/Label";
+import { Label } from "@/components/ui/label";
 
 /**
  * Renderer for Kind 1621 - Issue

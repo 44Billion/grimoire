@@ -73,6 +73,14 @@ export const manPages: Record<string, ManPageEntry> = {
     argParser: (args: string[]) => ({ number: args[0] || "1" }),
     defaultProps: { number: "1" },
   },
+  spellbooks: {
+    name: "spellbooks",
+    section: "1",
+    synopsis: "spellbooks",
+    description: "Browse and manage saved layout spellbooks.",
+    appId: "spellbooks",
+    category: "System",
+  },
   help: {
     name: "help",
     section: "1",
@@ -468,6 +476,18 @@ export const manPages: Record<string, ManPageEntry> = {
     seeAlso: ["req"],
     appId: "spells",
     category: "Nostr",
+    defaultProps: {},
+  },
+  wallet: {
+    name: "wallet",
+    section: "1",
+    synopsis: "wallet",
+    description:
+      "Manage Nostr Wallet Connect (NWC) connection. Allows connecting to a remote Lightning wallet to pay invoices.",
+    examples: ["wallet          Open wallet connection manager"],
+    seeAlso: ["conn"],
+    appId: "wallet",
+    category: "System",
     defaultProps: {},
   },
 };

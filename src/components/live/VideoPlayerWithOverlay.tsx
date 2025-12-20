@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { VideoPlayer } from "./VideoPlayer";
 import { StatusBadge } from "./StatusBadge";
 import { UserName } from "../nostr/UserName";
-import { Label } from "../ui/Label";
+import { Label } from "../ui/label";
 import type { LiveStatus } from "@/types/live-activity";
 import { cn } from "@/lib/utils";
 

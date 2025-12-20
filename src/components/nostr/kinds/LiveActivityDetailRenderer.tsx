@@ -8,7 +8,7 @@ import {
 import { VideoPlayer } from "@/components/live/VideoPlayer";
 import { StatusBadge } from "@/components/live/StatusBadge";
 import { UserName } from "../UserName";
-import { Label } from "@/components/ui/Label";
+import { Label } from "@/components/ui/label";
 import { Calendar } from "lucide-react";
 
 interface LiveActivityDetailRendererProps {

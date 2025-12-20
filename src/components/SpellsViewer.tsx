@@ -124,6 +124,7 @@ function SpellCard({ spell, onDelete, onPublish }: SpellCardProps) {
           <ExecutableCommand
             commandLine={spell.command}
             className="text-xs truncate line-clamp-1 text-primary hover:underline cursor-pointer"
+            spellId={spell.id}
           >
             {spell.command}
           </ExecutableCommand>
@@ -299,7 +300,7 @@ export function SpellsViewer() {
       // 1. If published, send Nostr Kind 5
       if (isPublic && spell.event) {
         toast.promise(
-          new DeleteEventAction().execute(spell, "Deleted by user in Grimoire"),
+          new DeleteEventAction().execute({ event: spell.event }, "Deleted by user in Grimoire"),
           {
             loading: "Sending Nostr deletion request...",
             success: "Deletion request broadcasted",

@@ -8,7 +8,7 @@ import {
   getCodeName,
   getCodeDescription,
 } from "@/lib/nip-c0-helpers";
-import { Label } from "@/components/ui/Label";
+import { Label } from "@/components/ui/label";
 import { SyntaxHighlight } from "@/components/SyntaxHighlight";
 
 // Map common language names to Prism-supported languages

@@ -10,8 +10,10 @@ import {
 } from "@/types/app";
 import { useLocale } from "@/hooks/useLocale";
 import * as Logic from "./logic";
+import * as SpellbookManager from "@/lib/spellbook-manager";
 import { CURRENT_VERSION, validateState, migrateState } from "@/lib/migrations";
 import { toast } from "sonner";
+import { ParsedSpellbook } from "@/types/spell";
 
 // Initial State Definition - Empty canvas on first load
 const initialState: GrimoireState = {
@@ -171,13 +173,20 @@ export const useGrimoire = () => {
   );
 
   const addWindow = useCallback(
-    (appId: AppId, props: any, commandString?: string, customTitle?: string) =>
+    (
+      appId: AppId,
+      props: any,
+      commandString?: string,
+      customTitle?: string,
+      spellId?: string,
+    ) =>
       setState((prev) =>
         Logic.addWindow(prev, {
           appId,
           props,
           commandString,
           customTitle,
+          spellId,
         }),
       ),
     [setState],
@@ -291,6 +300,12 @@ export const useGrimoire = () => {
     [setState],
   );
 
+  const loadSpellbook = useCallback(
+    (spellbook: ParsedSpellbook) =>
+      setState((prev) => SpellbookManager.loadSpellbook(prev, spellbook)),
+    [setState],
+  );
+
   return {
     state,
     locale: state.locale || browserLocale,
@@ -310,5 +325,6 @@ export const useGrimoire = () => {
     updateWorkspaceLabel,
     reorderWorkspaces,
     setCompactModeKinds,
+    loadSpellbook,
   };
 };

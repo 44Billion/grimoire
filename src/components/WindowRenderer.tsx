@@ -30,6 +30,12 @@ const ConnViewer = lazy(() => import("./ConnViewer"));
 const SpellsViewer = lazy(() =>
   import("./SpellsViewer").then((m) => ({ default: m.SpellsViewer })),
 );
+const SpellbooksViewer = lazy(() =>
+  import("./SpellbooksViewer").then((m) => ({ default: m.SpellbooksViewer })),
+);
+const WalletViewer = lazy(() =>
+  import("./WalletViewer").then((m) => ({ default: m.WalletViewer })),
+);
 
 // Loading fallback component
 function ViewerLoading() {
@@ -167,6 +173,12 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
         break;
       case "spells":
         content = <SpellsViewer />;
+        break;
+      case "spellbooks":
+        content = <SpellbooksViewer />;
+        break;
+      case "wallet":
+        content = <WalletViewer />;
         break;
       default:
         content = (

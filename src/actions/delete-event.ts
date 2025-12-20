@@ -6,14 +6,14 @@ import { AGGREGATOR_RELAYS } from "@/services/loaders";
 import { mergeRelaySets } from "applesauce-core/helpers";
 import { grimoireStateAtom } from "@/core/state";
 import { getDefaultStore } from "jotai";
-import { LocalSpell } from "@/services/db";
+import { NostrEvent } from "@/types/nostr";
 
 export class DeleteEventAction {
   type = "delete-event";
   label = "Delete Event";
 
-  async execute(spell: LocalSpell, reason: string = ""): Promise<void> {
-    if (!spell.event) throw new Error("Spell has no event to delete");
+  async execute(item: { event?: NostrEvent }, reason: string = ""): Promise<void> {
+    if (!item.event) throw new Error("Item has no event to delete");
 
     const account = accountManager.active;
     if (!account) throw new Error("No active account");
@@ -23,7 +23,7 @@ export class DeleteEventAction {
 
     const factory = new EventFactory({ signer });
 
-    const draft = await factory.delete([spell.event], reason);
+    const draft = await factory.delete([item.event], reason);
     const event = await factory.sign(draft);
 
     // Get write relays from cache and state
