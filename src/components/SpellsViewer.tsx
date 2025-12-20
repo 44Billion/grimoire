@@ -36,6 +36,9 @@ import { cn } from "@/lib/utils";
 import { KindBadge } from "@/components/KindBadge";
 import { parseReqCommand } from "@/lib/req-parser";
 import { CreateSpellDialog } from "./CreateSpellDialog";
+import { useReqTimeline } from "@/hooks/useReqTimeline";
+import { decodeSpell } from "@/lib/spell-conversion";
+import type { SpellEvent } from "@/types/spell";
 
 interface SpellCardProps {
   spell: LocalSpell;
@@ -201,18 +204,59 @@ export function SpellsViewer() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   // Load spells from storage with live query
-  const spells =
-    useLiveQuery(() => db.spells.orderBy("createdAt").reverse().toArray()) ||
-    [];
-  const loading = spells === undefined;
+  const localSpells = useLiveQuery(() =>
+    db.spells.orderBy("createdAt").reverse().toArray(),
+  );
+
+  // Fetch spells from Nostr if logged in
+  const { events: networkEvents, loading: networkLoading } = useReqTimeline(
+    state.activeAccount ? `user-spells-${state.activeAccount.pubkey}` : "none",
+    state.activeAccount
+      ? { kinds: [777], authors: [state.activeAccount.pubkey] }
+      : [],
+    state.activeAccount?.relays?.map((r) => r.url) || [],
+    { stream: true },
+  );
+
+  const loading = localSpells === undefined;
 
   // Filter and sort spells
-  const filteredSpells = useMemo(() => {
-    let filtered = [...spells];
+  const { filteredSpells, totalCount } = useMemo(() => {
+    // Start with local spells
+    const allSpellsMap = new Map<string, LocalSpell>();
+    for (const s of localSpells || []) {
+      allSpellsMap.set(s.eventId || s.id, s);
+    }
+
+    // Merge in network spells
+    for (const event of networkEvents) {
+      if (allSpellsMap.has(event.id)) continue;
+
+      try {
+        const decoded = decodeSpell(event as SpellEvent);
+        const spell: LocalSpell = {
+          id: event.id,
+          name: decoded.name,
+          command: decoded.command,
+          description: decoded.description,
+          createdAt: event.created_at * 1000,
+          isPublished: true,
+          eventId: event.id,
+          event: event as SpellEvent,
+        };
+        allSpellsMap.set(event.id, spell);
+      } catch (e) {
+        console.warn("Failed to decode network spell", event.id, e);
+      }
+    }
+
+    const allMerged = Array.from(allSpellsMap.values());
+    const total = allMerged.length;
+    let filtered = [...allMerged];
 
     // Filter by type
     if (filterType === "local") {
-      filtered = filtered.filter((s) => !s.isPublished && !s.deletedAt);
+      filtered = filtered.filter((s) => !s.isPublished || !!s.deletedAt);
     } else if (filterType === "published") {
       filtered = filtered.filter((s) => s.isPublished && !s.deletedAt);
     }
@@ -230,13 +274,15 @@ export function SpellsViewer() {
     }
 
     // Sort: non-deleted first, then by createdAt descending
-    return filtered.sort((a, b) => {
+    filtered.sort((a, b) => {
       if (!!a.deletedAt !== !!b.deletedAt) {
         return a.deletedAt ? 1 : -1;
       }
       return b.createdAt - a.createdAt;
     });
-  }, [spells, searchQuery, filterType]);
+
+    return { filteredSpells: filtered, totalCount: total };
+  }, [localSpells, networkEvents, searchQuery, filterType]);
 
   // Handle deleting a spell
   const handleDeleteSpell = async (spell: LocalSpell) => {
@@ -301,8 +347,11 @@ export function SpellsViewer() {
             <WandSparkles className="size-5 text-muted-foreground" />
             <h2 className="text-lg font-semibold">Spells</h2>
             <Badge variant="secondary" className="ml-2">
-              {filteredSpells.length}
+              {filteredSpells.length}/{totalCount}
             </Badge>
+            {networkLoading && (
+              <Loader2 className="size-3 animate-spin text-muted-foreground" />
+            )}
           </div>
           <Button
             size="sm"
