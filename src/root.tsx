@@ -6,6 +6,10 @@ const router = createBrowserRouter([
     path: "/",
     element: <Home />,
   },
+  {
+    path: "/:actor/:identifier",
+    element: <Home />,
+  },
 ]);
 
 export default function Root() {

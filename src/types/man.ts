@@ -478,16 +478,4 @@ export const manPages: Record<string, ManPageEntry> = {
     category: "Nostr",
     defaultProps: {},
   },
-  wallet: {
-    name: "wallet",
-    section: "1",
-    synopsis: "wallet",
-    description:
-      "Manage Nostr Wallet Connect (NWC) connection. Allows connecting to a remote Lightning wallet to pay invoices.",
-    examples: ["wallet          Open wallet connection manager"],
-    seeAlso: ["conn"],
-    appId: "wallet",
-    category: "System",
-    defaultProps: {},
-  },
 };

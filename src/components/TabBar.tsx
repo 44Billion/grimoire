@@ -3,7 +3,6 @@ import { Button } from "./ui/button";
 import { useGrimoire } from "@/core/state";
 import { cn } from "@/lib/utils";
 import { LayoutControls } from "./LayoutControls";
-import { WalletStatus } from "./WalletStatus";
 import { useEffect, useState } from "react";
 import { Reorder, useDragControls } from "framer-motion";
 import { Workspace } from "@/types/app";
@@ -235,7 +234,6 @@ export function TabBar() {
 
         {/* Right side: Layout controls */}
         <div className="flex items-center gap-1 flex-shrink-0">
-          <WalletStatus />
           <LayoutControls />
         </div>
       </div>

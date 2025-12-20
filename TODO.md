@@ -84,6 +84,24 @@ When an action is entered, show the list of available options below and provide 
 
 ## Recent Improvements ✅
 
+### Removed Wallet Feature (Temporary)
+**Completed**: 2025-12-20
+**Reason**: Deferred to focus on core features
+**Changes**:
+- Removed `applesauce-wallet-connect` dependency
+- Deleted `src/services/wallet.ts`, `src/components/WalletStatus.tsx`, `src/components/WalletViewer.tsx`
+- Removed wallet command from `manPages` and `AppId` type
+- Cleaned up `TabBar.tsx` and `WindowRenderer.tsx`
+
+### Spellbook Routing and Auto-Loading
+**Completed**: 2025-12-20
+**Features**:
+- New route `/:user/:identifier` that resolves and applies kind 30777 spellbooks
+- Supports npub, nprofile, hex pubkey, and NIP-05 identifiers for user
+- Automatically fetches and parses spellbook from relays
+- Applies spellbook to app state (workspaces/windows)
+- Displays active spellbook name in the top header
+
 ### Relay Liveness Persistence
 **Completed**: 2024-12-17
 **Files**: `src/services/db.ts`, `src/services/relay-liveness.ts`

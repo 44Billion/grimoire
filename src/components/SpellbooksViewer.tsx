@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import {
   Search,
-  Grid3x3,
+  BookHeart,
   Trash2,
   Send,
   Cloud,
@@ -98,7 +98,7 @@ function SpellbookCard({
       <CardHeader className="p-4 pb-2">
         <div className="flex items-center flex-wrap justify-between gap-2">
           <div className="flex items-center gap-2 flex-1 overflow-hidden">
-            <Grid3x3 className="size-4 flex-shrink-0 text-muted-foreground mt-0.5" />
+            <BookHeart className="size-4 flex-shrink-0 text-muted-foreground mt-0.5" />
             <CardTitle className="text-xl truncate" title={displayName}>
               {displayName}
             </CardTitle>
@@ -344,7 +344,7 @@ export function SpellbooksViewer() {
       <div className="border-b border-border px-4 py-3 flex-shrink-0">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <Grid3x3 className="size-5 text-muted-foreground" />
+            <BookHeart className="size-5 text-muted-foreground" />
             <h2 className="text-lg font-semibold">Spellbooks</h2>
             <Badge variant="secondary" className="ml-2">
               {filteredSpellbooks.length}/{totalCount}

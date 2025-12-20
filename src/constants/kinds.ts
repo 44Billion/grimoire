@@ -24,7 +24,7 @@ import {
   GitBranch,
   GitMerge,
   GitPullRequest,
-  Grid3x3,
+  BookHeart,
   Hash,
   Heart,
   Highlighter,
@@ -696,7 +696,7 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     name: "Spellbook",
     description: "Grimoire Layout Configuration",
     nip: "",
-    icon: Grid3x3,
+    icon: BookHeart,
   },
   9802: {
     kind: 9802,
@@ -1117,7 +1117,7 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     name: "Marketplace UI/UX",
     description: "Marketplace UI/UX",
     nip: "15",
-    icon: Grid3x3,
+    icon: BookHeart,
   },
   30020: {
     kind: 30020,
@@ -1187,7 +1187,7 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     name: "App Curation",
     description: "App curation sets",
     nip: "51",
-    icon: Grid3x3,
+    icon: BookHeart,
   },
   30311: {
     kind: 30311,

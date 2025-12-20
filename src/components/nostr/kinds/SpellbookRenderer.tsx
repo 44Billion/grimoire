@@ -7,10 +7,45 @@ import {
 import { parseSpellbook } from "@/lib/spellbook-manager";
 import { SpellbookEvent } from "@/types/spell";
 import { NostrEvent } from "@/types/nostr";
-import { Grid3x3, Layout, ExternalLink, Play } from "lucide-react";
+import { BookHeart, Layout, ExternalLink, Play, Eye, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useGrimoire } from "@/core/state";
 import { toast } from "sonner";
+import { useProfile } from "@/hooks/useProfile";
+import { nip19 } from "nostr-tools";
+import { useNavigate } from "react-router";
+
+/**
+ * Preview Button Component
+ * Navigates to /<npub|nip05>/<identifier>
+ */
+function PreviewButton({ event, identifier, size = "default", className = "" }: { 
+  event: NostrEvent, 
+  identifier: string,
+  size?: "default" | "sm" | "lg" | "icon",
+  className?: string
+}) {
+  const profile = useProfile(event.pubkey);
+  const navigate = useNavigate();
+  
+  const handlePreview = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const actor = profile?.nip05 || nip19.npubEncode(event.pubkey);
+    navigate(`/${actor}/${identifier}`);
+  };
+
+  return (
+    <Button 
+      variant="outline" 
+      size={size} 
+      onClick={handlePreview}
+      className={`flex items-center gap-2 ${className}`}
+    >
+      <Eye className="size-4" />
+      {size !== "icon" && "Preview"}
+    </Button>
+  );
+}
 
 /**
  * Renderer for Kind 30777 - Spellbook (Layout Configuration)
@@ -28,7 +63,9 @@ export function SpellbookRenderer({ event }: BaseEventProps) {
   if (!spellbook) {
     return (
       <BaseEventContainer event={event}>
-        <div className="text-destructive text-sm italic">Failed to parse spellbook data</div>
+        <div className="text-destructive text-sm italic">
+          Failed to parse spellbook data
+        </div>
       </BaseEventContainer>
     );
   }
@@ -38,34 +75,40 @@ export function SpellbookRenderer({ event }: BaseEventProps) {
 
   return (
     <BaseEventContainer event={event}>
-      <div className="flex flex-col gap-2">
-        {/* Title */}
-        <div className="flex items-center gap-2">
-          <Grid3x3 className="size-4 text-accent" />
-          <ClickableEventTitle
-            event={event}
-            className="text-lg font-bold text-foreground"
-          >
-            {spellbook.title}
-          </ClickableEventTitle>
-        </div>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1 min-w-0">
+            {/* Title */}
+            <div className="flex items-center gap-2 min-w-0">
+              <BookHeart className="size-4 text-accent flex-shrink-0" />
+              <ClickableEventTitle
+                event={event}
+                className="text-lg font-bold text-foreground truncate"
+              >
+                {spellbook.title}
+              </ClickableEventTitle>
+            </div>
 
-        {/* Description */}
-        {spellbook.description && (
-          <p className="text-sm text-muted-foreground line-clamp-2">
-            {spellbook.description}
-          </p>
-        )}
+            {/* Description */}
+            {spellbook.description && (
+              <p className="text-sm text-muted-foreground line-clamp-2">
+                {spellbook.description}
+              </p>
+            )}
+          </div>
+
+          <PreviewButton event={event} identifier={spellbook.slug} size="sm" className="flex-shrink-0" />
+        </div>
 
         {/* Stats */}
         <div className="flex gap-4 mt-1 text-xs text-muted-foreground font-mono">
           <div className="flex items-center gap-1">
-            <Layout className="size-3" />
-            {workspaceCount} {workspaceCount === 1 ? 'workspace' : 'workspaces'}
+            <Layout className="size-3 flex-shrink-0" />
+            {workspaceCount} {workspaceCount === 1 ? "tab" : "tabs"}
           </div>
           <div className="flex items-center gap-1">
-            <ExternalLink className="size-3" />
-            {windowCount} {windowCount === 1 ? 'window' : 'windows'}
+            <ExternalLink className="size-3 flex-shrink-0" />
+            {windowCount} {windowCount === 1 ? "window" : "windows"}
           </div>
         </div>
       </div>
@@ -79,7 +122,8 @@ export function SpellbookRenderer({ event }: BaseEventProps) {
  */
 export function SpellbookDetailRenderer({ event }: { event: NostrEvent }) {
   const { loadSpellbook } = useGrimoire();
-  
+  const profile = useProfile(event.pubkey);
+
   const spellbook = useMemo(() => {
     try {
       return parseSpellbook(event as SpellbookEvent);
@@ -89,7 +133,11 @@ export function SpellbookDetailRenderer({ event }: { event: NostrEvent }) {
   }, [event]);
 
   if (!spellbook) {
-    return <div className="p-4 text-destructive italic">Failed to parse spellbook data</div>;
+    return (
+      <div className="p-4 text-destructive italic">
+        Failed to parse spellbook data
+      </div>
+    );
   }
 
   const handleApply = () => {
@@ -99,32 +147,62 @@ export function SpellbookDetailRenderer({ event }: { event: NostrEvent }) {
     });
   };
 
-  const sortedWorkspaces = Object.values(spellbook.content.workspaces).sort((a, b) => a.number - b.number);
+  const handleCopyLink = () => {
+    const actor = profile?.nip05 || nip19.npubEncode(event.pubkey);
+    const url = `${window.location.origin}/${actor}/${spellbook.slug}`;
+    navigator.clipboard.writeText(url);
+    toast.success("Preview link copied to clipboard");
+  };
+
+  const sortedWorkspaces = Object.values(spellbook.content.workspaces).sort(
+    (a, b) => a.number - b.number,
+  );
 
   return (
     <div className="flex flex-col gap-6 p-6 max-w-4xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div className="space-y-2">
+      <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between border-b border-border/50 pb-6">
+        <div className="space-y-2 min-w-0">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-accent/10 rounded-lg">
-              <Grid3x3 className="size-6 text-accent" />
+            <div className="p-2.5 bg-accent/10 rounded-xl">
+              <BookHeart className="size-8 text-accent" />
             </div>
-            <h2 className="text-3xl font-bold">{spellbook.title}</h2>
+            <h2 className="text-3xl font-bold truncate">{spellbook.title}</h2>
           </div>
           {spellbook.description && (
-            <p className="text-lg text-muted-foreground">{spellbook.description}</p>
+            <p className="text-lg text-muted-foreground">
+              {spellbook.description}
+            </p>
           )}
         </div>
-        
-        <Button 
-          size="lg" 
-          onClick={handleApply}
-          className="bg-accent hover:bg-accent/90 text-accent-foreground flex items-center gap-2 h-12 px-6 text-lg font-bold"
-        >
-          <Play className="size-5 fill-current" />
-          Apply Layout
-        </Button>
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Button 
+            variant="outline" 
+            size="lg" 
+            onClick={handleCopyLink}
+            className="flex items-center gap-2 h-12 px-5"
+          >
+            <Share2 className="size-5" />
+            Share Link
+          </Button>
+          
+          <PreviewButton 
+            event={event} 
+            identifier={spellbook.slug} 
+            size="lg" 
+            className="bg-background"
+          />
+
+          <Button
+            size="lg"
+            onClick={handleApply}
+            className="bg-accent hover:bg-accent/90 text-accent-foreground flex items-center gap-2 h-12 px-6 text-lg font-bold"
+          >
+            <Play className="size-5 fill-current" />
+            Apply Layout
+          </Button>
+        </div>
       </div>
 
       {/* Workspaces Summary */}
@@ -133,22 +211,26 @@ export function SpellbookDetailRenderer({ event }: { event: NostrEvent }) {
           <Layout className="size-4" />
           Workspaces Content
         </h3>
-        
+
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
           {sortedWorkspaces.map((ws) => {
             const wsWindows = ws.windowIds.length;
             return (
-              <div 
-                key={ws.id} 
+              <div
+                key={ws.id}
                 className="p-4 rounded-xl border border-border bg-card/50 flex items-center justify-between"
               >
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-sm font-mono text-muted-foreground">Workspace {ws.number}</span>
-                  <span className="font-bold">{ws.label || 'Untitled Workspace'}</span>
+                  <span className="text-sm font-mono text-muted-foreground">
+                    Workspace {ws.number}
+                  </span>
+                  <span className="font-bold">
+                    {ws.label || "Untitled Workspace"}
+                  </span>
                 </div>
                 <div className="flex items-center gap-1.5 px-3 py-1 bg-muted rounded-full text-xs font-medium">
                   <ExternalLink className="size-3" />
-                  {wsWindows} {wsWindows === 1 ? 'window' : 'windows'}
+                  {wsWindows} {wsWindows === 1 ? "window" : "windows"}
                 </div>
               </div>
             );
