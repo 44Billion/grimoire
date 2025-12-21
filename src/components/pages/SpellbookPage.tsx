@@ -28,9 +28,15 @@ export default function SpellbookPage() {
   const [isResolving, setIsResolving] = useState(false);
   const [hasLoadedSpellbook, setHasLoadedSpellbook] = useState(false);
 
+  // Reset loading state when params change
+  useEffect(() => {
+    setHasLoadedSpellbook(false);
+  }, [actor, identifier]);
+
+  const isPreviewPath = location.pathname.startsWith("/preview/");
   // Determine if we should show the preview banner
-  // In SpellbookPage, we always show it if we have loaded a spellbook temporarily
-  const showBanner = isTemporary && hasLoadedSpellbook;
+  // In SpellbookPage, we only show it if we have loaded a spellbook temporarily AND we are in a preview route
+  const showBanner = isTemporary && hasLoadedSpellbook && isPreviewPath;
 
   // 1. Resolve actor to pubkey
   useEffect(() => {
@@ -95,24 +101,33 @@ export default function SpellbookPage() {
   useEffect(() => {
     if (spellbookEvent && !hasLoadedSpellbook) {
       try {
-        const parsed = parseSpellbook(spellbookEvent as SpellbookEvent);
-        switchToTemporary(parsed);
-        setHasLoadedSpellbook(true);
+        const parsedSpellbook = parseSpellbook(spellbookEvent as SpellbookEvent);
         
-        const isPreviewPath = location.pathname.startsWith("/preview/");
+        const isPreviewPath = location.pathname.startsWith("/preview/"); // Check if it's a preview route
+
         if (isPreviewPath) {
-             toast.info(`Previewing spellbook: ${parsed.title}`, {
+          // If it's a preview route, load into temporary state and show the banner
+          switchToTemporary(parsedSpellbook);
+          toast.info(`Previewing spellbook: ${parsedSpellbook.title}`, {
             description:
               "You are in a temporary session. Apply to keep this spellbook.",
           });
+        } else {
+          // If it's not a preview route, just load into temporary state.
+          // This bypasses the banner but doesn't overwrite the persistent dashboard.
+          // Navigating to / (Home) will restore the user's dashboard.
+          switchToTemporary(parsedSpellbook);
         }
-       
+        
+        setHasLoadedSpellbook(true); // Mark as loaded, regardless of preview or direct load
+
       } catch (e) {
         console.error("Failed to parse spellbook:", e);
         toast.error("Failed to load spellbook");
+        setHasLoadedSpellbook(true); // Ensure we don't re-attempt on error
       }
     }
-  }, [spellbookEvent, hasLoadedSpellbook, switchToTemporary, location.pathname]);
+  }, [spellbookEvent, hasLoadedSpellbook, switchToTemporary, applyTemporaryToPersistent, location.pathname]);
 
   // Cleanup when leaving the page (unmounting)
   // But wait, if we navigate to /, we want to discard.
@@ -264,7 +279,17 @@ export default function SpellbookPage() {
 
       {/* Main Content */}
       <div className={showBanner ? "pt-12 h-full" : "h-full"}>
+        {!hasLoadedSpellbook && !resolutionError ? (
+          <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground animate-in fade-in duration-500">
+            <Loader2 className="size-8 animate-spin text-primary/50" />
+            <div className="flex flex-col items-center gap-1">
+              <p className="font-medium text-foreground">Loading Spellbook...</p>
+              <p className="text-xs">Fetching from the relays</p>
+            </div>
+          </div>
+        ) : (
           <WorkspaceView />
+        )}
       </div>
     </div>
   );

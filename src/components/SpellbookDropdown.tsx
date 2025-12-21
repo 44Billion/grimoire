@@ -259,8 +259,14 @@ export function SpellbookDropdown() {
   };
 
   const handleCloseSpellbook = () => {
-    clearActiveSpellbook();
-    toast.info("Spellbook closed");
+    if (isTemporary) {
+      discardTemporary();
+      navigate("/", { replace: true });
+      toast.info("Returned to your dashboard");
+    } else {
+      clearActiveSpellbook();
+      toast.info("Spellbook closed");
+    }
   };
 
   const itemClass =
@@ -287,7 +293,7 @@ export function SpellbookDropdown() {
             <BookHeart
               className={cn("size-4", isTemporary && "text-amber-500")}
             />
-            <span className="text-xs font-medium hidden sm:inline max-w-[120px] truncate">
+            <span className="text-xs font-medium max-w-[100px] sm:max-w-[120px] truncate">
               {activeSpellbook ? activeSpellbook.title : "grimoire"}
             </span>
             <ChevronDown className="size-3 opacity-50" />
