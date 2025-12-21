@@ -300,7 +300,9 @@ export function getRepositoryStateHead(event: NostrEvent): string | undefined {
  * @param headRef HEAD reference string (e.g., "ref: refs/heads/main")
  * @returns Branch name (e.g., "main") or undefined
  */
-export function parseHeadBranch(headRef: string | undefined): string | undefined {
+export function parseHeadBranch(
+  headRef: string | undefined,
+): string | undefined {
   if (!headRef) return undefined;
   const match = headRef.match(/^ref:\s*refs\/heads\/(.+)$/);
   return match ? match[1] : undefined;

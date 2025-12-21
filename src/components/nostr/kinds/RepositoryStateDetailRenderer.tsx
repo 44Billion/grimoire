@@ -1,5 +1,12 @@
 import { useMemo } from "react";
-import { GitBranch, GitCommit, Tag, Copy, CopyCheck, FolderGit2 } from "lucide-react";
+import {
+  GitBranch,
+  GitCommit,
+  Tag,
+  Copy,
+  CopyCheck,
+  FolderGit2,
+} from "lucide-react";
 import { useCopy } from "@/hooks/useCopy";
 import { useGrimoire } from "@/core/state";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
@@ -18,12 +25,19 @@ import {
  * Detail renderer for Kind 30618 - Repository State
  * Displays full repository state with all refs, branches, and tags
  */
-export function RepositoryStateDetailRenderer({ event }: { event: NostrEvent }) {
+export function RepositoryStateDetailRenderer({
+  event,
+}: {
+  event: NostrEvent;
+}) {
   const { addWindow } = useGrimoire();
   const repoId = useMemo(() => getRepositoryIdentifier(event), [event]);
   const headRef = useMemo(() => getRepositoryStateHead(event), [event]);
-  const branch = useMemo(() => parseHeadBranch(headRef), [event, headRef]);
-  const commitHash = useMemo(() => getRepositoryStateHeadCommit(event), [event]);
+  const branch = useMemo(() => parseHeadBranch(headRef), [headRef]);
+  const commitHash = useMemo(
+    () => getRepositoryStateHeadCommit(event),
+    [event],
+  );
   const branches = useMemo(() => getRepositoryStateBranches(event), [event]);
   const tags = useMemo(() => getRepositoryStateTags(event), [event]);
 
@@ -81,7 +95,9 @@ export function RepositoryStateDetailRenderer({ event }: { event: NostrEvent }) 
             <div className="flex flex-col gap-1 pl-6">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">Branch:</span>
-                <code className="text-sm font-mono font-semibold">{branch}</code>
+                <code className="text-sm font-mono font-semibold">
+                  {branch}
+                </code>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">Commit:</span>
