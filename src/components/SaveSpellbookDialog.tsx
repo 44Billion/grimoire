@@ -37,7 +37,7 @@ export function SaveSpellbookDialog({
   onOpenChange,
   existingSpellbook,
 }: SaveSpellbookDialogProps) {
-  const { state } = useGrimoire();
+  const { state, loadSpellbook } = useGrimoire();
   const isUpdateMode = !!existingSpellbook;
 
   const [title, setTitle] = useState(existingSpellbook?.title || "");
@@ -122,6 +122,17 @@ export function SaveSpellbookDialog({
           isUpdateMode ? "Spellbook updated locally" : "Spellbook saved locally",
         );
       }
+
+      // 5. Set as active spellbook
+      const parsedSpellbook = {
+        slug,
+        title,
+        description: description || undefined,
+        content: localSpellbook.content,
+        referencedSpells: [],
+        event: localSpellbook.event as any, // Event might not exist for locally-only spellbooks
+      };
+      loadSpellbook(parsedSpellbook);
 
       onOpenChange(false);
       // Reset form only if creating new

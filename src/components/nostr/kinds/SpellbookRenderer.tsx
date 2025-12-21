@@ -83,6 +83,41 @@ function LayoutVisualizer({
     if (typeof node === "string") {
       const window = windows[node];
       const appId = window?.appId || "unknown";
+
+      // For req windows, show kind badges if available
+      if (appId === "req" && window?.props?.filter?.kinds) {
+        const kinds = window.props.filter.kinds;
+        return (
+          <div
+            style={{
+              flex: 1,
+              minHeight: "40px",
+              minWidth: "40px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexWrap: "wrap",
+              gap: "2px",
+              borderRadius: "4px",
+              border: "1px solid hsl(var(--border))",
+              background: "hsl(var(--muted))",
+              padding: "4px",
+            }}
+          >
+            {kinds.map((kind: number) => (
+              <KindBadge
+                key={kind}
+                kind={kind}
+                variant="compact"
+                className="text-[8px] h-4 px-1"
+                showName={false}
+              />
+            ))}
+          </div>
+        );
+      }
+
+      // Default: show appId as text
       return (
         <div
           style={{
@@ -112,6 +147,8 @@ function LayoutVisualizer({
     // Branch node - split
     if (node && typeof node === "object" && "first" in node && "second" in node) {
       const isRow = node.direction === "row";
+      const splitPercentage = node.splitPercentage ?? 50; // Default to 50/50 if not specified
+
       return (
         <div
           style={{
@@ -123,8 +160,12 @@ function LayoutVisualizer({
             minWidth: isRow ? "80px" : "40px",
           }}
         >
-          {renderLayout(node.first)}
-          {renderLayout(node.second)}
+          <div style={{ flexGrow: splitPercentage, minHeight: "40px", minWidth: "40px", display: "flex" }}>
+            {renderLayout(node.first)}
+          </div>
+          <div style={{ flexGrow: 100 - splitPercentage, minHeight: "40px", minWidth: "40px", display: "flex" }}>
+            {renderLayout(node.second)}
+          </div>
         </div>
       );
     }
@@ -325,26 +366,16 @@ export function SpellbookDetailRenderer({ event }: { event: NostrEvent }) {
 
         <div className="grid gap-4 grid-cols-1">
           {sortedWorkspaces.map((ws) => {
-            const wsWindows = ws.windowIds.length;
             return (
               <div
                 key={ws.id}
                 className="flex flex-col gap-3 p-4 rounded-xl border border-border bg-card/50"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-mono text-muted-foreground">
-                      Tab {ws.number}
-                    </span>
-                    <span className="font-bold">
-                      {ws.label || "Untitled Tab"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 px-3 py-1 bg-muted rounded-full text-xs font-medium">
-                    <ExternalLink className="size-3" />
-                    {wsWindows} {wsWindows === 1 ? "window" : "windows"}
-                  </div>
-                </div>
+                {ws.label && (
+                  <span className="font-bold text-sm">
+                    {ws.label}
+                  </span>
+                )}
 
                 {ws.layout && (
                   <LayoutVisualizer

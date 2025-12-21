@@ -24,14 +24,14 @@ import { toast } from "sonner";
 import { Button } from "./ui/button";
 
 export default function Home() {
-  const { 
-    state, 
-    updateLayout, 
-    removeWindow, 
-    switchToTemporary, 
-    applyTemporaryToPersistent, 
+  const {
+    state,
+    updateLayout,
+    removeWindow,
+    switchToTemporary,
+    applyTemporaryToPersistent,
     discardTemporary,
-    isTemporary 
+    isTemporary,
   } = useGrimoire();
   const [commandLauncherOpen, setCommandLauncherOpen] = useState(false);
   const { actor, identifier } = useParams();
@@ -94,18 +94,15 @@ export default function Home() {
     if (spellbookEvent && !hasLoadedSpellbook) {
       try {
         const parsed = parseSpellbook(spellbookEvent as SpellbookEvent);
-        
+
         // Use the new temporary state system
         switchToTemporary(parsed);
         setHasLoadedSpellbook(true);
 
         if (isPreviewPath) {
           toast.info(`Previewing layout: ${parsed.title}`, {
-            description: "You are in a temporary session. Apply to keep this layout permanently.",
-          });
-        } else if (isDirectPath) {
-          toast.success(`Loaded temporary layout: ${parsed.title}`, {
-            description: "Visit / to return to your permanent dashboard, or click Apply Layout.",
+            description:
+              "You are in a temporary session. Apply to keep this layout.",
           });
         }
       } catch (e) {
@@ -113,12 +110,18 @@ export default function Home() {
         toast.error("Failed to load spellbook");
       }
     }
-  }, [spellbookEvent, hasLoadedSpellbook, isPreviewPath, isDirectPath, switchToTemporary]);
+  }, [
+    spellbookEvent,
+    hasLoadedSpellbook,
+    isPreviewPath,
+    isDirectPath,
+    switchToTemporary,
+  ]);
 
   const handleApplyLayout = () => {
     applyTemporaryToPersistent();
     navigate("/", { replace: true });
-    toast.success("Layout applied to your dashboard permanently");
+    toast.success("Layout applied to your dashboard");
   };
 
   const handleDiscardPreview = () => {
@@ -201,22 +204,24 @@ export default function Home() {
             <div className="flex items-center gap-2">
               <BookHeart className="size-4" />
               <span>
-                {isPreviewPath ? "Preview Mode" : "Temporary Layout"}: {spellbookEvent?.tags.find(t => t[0] === 'title')?.[1] || 'Spellbook'}
+                {isPreviewPath ? "Preview Mode" : "Temporary Layout"}:{" "}
+                {spellbookEvent?.tags.find((t) => t[0] === "title")?.[1] ||
+                  "Spellbook"}
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="ghost"
+                size="sm"
                 className="h-7 hover:bg-black/10 text-accent-foreground font-bold"
                 onClick={handleDiscardPreview}
               >
                 <X className="size-3.5 mr-1" />
                 Discard
               </Button>
-              <Button 
-                variant="secondary" 
-                size="sm" 
+              <Button
+                variant="secondary"
+                size="sm"
                 className="h-7 bg-white text-accent hover:bg-white/90 font-bold shadow-sm"
                 onClick={handleApplyLayout}
               >
@@ -232,9 +237,8 @@ export default function Home() {
             className="p-1 text-muted-foreground hover:text-accent transition-colors cursor-crosshair"
             title="Launch command (Cmd+K)"
             aria-label="Launch command palette"
-          >
-          </button>
-          
+          ></button>
+
           <div className="flex items-center gap-2">
             <SpellbookDropdown />
           </div>

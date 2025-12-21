@@ -6,8 +6,6 @@ import {
   Sparkles,
   SplitSquareHorizontal,
   SplitSquareVertical,
-  Save,
-  BookOpen,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Slider } from "./ui/slider";
@@ -23,17 +21,15 @@ import {
 import { toast } from "sonner";
 import type { LayoutConfig } from "@/types/app";
 import { useState } from "react";
-import { SaveSpellbookDialog } from "./SaveSpellbookDialog";
 
 export function LayoutControls() {
-  const { state, applyPresetLayout, updateLayoutConfig, addWindow } = useGrimoire();
+  const { state, applyPresetLayout, updateLayoutConfig } = useGrimoire();
   const { workspaces, activeWorkspaceId, layoutConfig } = state;
 
   // Local state for immediate slider feedback (debounced persistence)
   const [localSplitPercentage, setLocalSplitPercentage] = useState<
     number | null
   >(null);
-  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
 
   const activeWorkspace = workspaces[activeWorkspaceId];
   const windowCount = activeWorkspace?.windowIds.length || 0;
@@ -109,42 +105,19 @@ export function LayoutControls() {
     localSplitPercentage ?? layoutConfig.splitPercentage;
 
   return (
-    <>
-      <SaveSpellbookDialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen} />
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            aria-label="Layout settings"
-          >
-            <SlidersHorizontal className="h-3 w-3 text-muted-foreground" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64">
-          {/* Spellbooks Section */}
-          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-            Spellbooks
-          </div>
-          <DropdownMenuItem
-            onClick={() => setSaveDialogOpen(true)}
-            className="flex items-center gap-3 cursor-pointer"
-          >
-            <Save className="h-4 w-4 text-muted-foreground" />
-            <div className="font-medium text-sm">Save Layout</div>
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => addWindow("spellbooks", {})}
-            className="flex items-center gap-3 cursor-pointer"
-          >
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-            <div className="font-medium text-sm">Open Spellbooks</div>
-          </DropdownMenuItem>
-
-          <DropdownMenuSeparator />
-
-          {/* Layouts Section */}
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          aria-label="Layout settings"
+        >
+          <SlidersHorizontal className="h-3 w-3 text-muted-foreground" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64">
+        {/* Layouts Section */}
           <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
             Layout Presets
           </div>
@@ -225,6 +198,5 @@ export function LayoutControls() {
           </div>
         </DropdownMenuContent>
       </DropdownMenu>
-    </>
   );
 }
