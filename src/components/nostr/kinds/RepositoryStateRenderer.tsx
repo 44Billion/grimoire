@@ -13,6 +13,7 @@ import {
   getRepositoryStateHead,
   getRepositoryName,
 } from "@/lib/nip34-helpers";
+import { Label } from "@/components/ui/Label";
 
 /**
  * Renderer for Kind 30618 - Repository State
@@ -64,7 +65,7 @@ export function RepositoryStateRenderer({ event }: BaseEventProps) {
                 {shortHash}
               </code>
             </ClickableEventTitle>{" "}
-            to <span className="font-semibold">{branchName}</span> in{" "}
+            to <Label className="inline">{branchName}</Label> in{" "}
             {repoPointer ? (
               <span
                 onClick={handleRepoClick}
