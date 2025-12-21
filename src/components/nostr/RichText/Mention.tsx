@@ -3,6 +3,12 @@ import { UserName } from "../UserName";
 import { EventEmbed } from "./EventEmbed";
 import { EventPointer, AddressPointer } from "nostr-tools/nip19";
 import { useDepth, useRichTextOptions } from "../RichText";
+import { getKindName } from "@/constants/kinds";
+
+function EventPlaceholder({ kind }: { kind?: number }) {
+  const name = kind !== undefined ? getKindName(kind) : "event";
+  return <span className="text-muted-foreground text-sm">[{name}]</span>;
+}
 
 interface MentionNodeProps {
   node: {
@@ -49,11 +55,7 @@ export function Mention({ node }: MentionNodeProps) {
     };
 
     if (!options.showEventEmbeds) {
-      return (
-        <span className="text-muted-foreground font-mono text-sm">
-          {node.encoded || `note:${pointer.id.slice(0, 8)}...`}
-        </span>
-      );
+      return <EventPlaceholder kind={kinds.ShortTextNote} />;
     }
 
     return <EventEmbed node={{ pointer }} depth={depth} />;
@@ -63,11 +65,7 @@ export function Mention({ node }: MentionNodeProps) {
     const pointer: EventPointer = node.decoded.data;
 
     if (!options.showEventEmbeds) {
-      return (
-        <span className="text-muted-foreground font-mono text-sm">
-          {node.encoded || `nevent:${pointer.id.slice(0, 8)}...`}
-        </span>
-      );
+      return <EventPlaceholder kind={pointer.kind} />;
     }
 
     return <EventEmbed node={{ pointer }} depth={depth} />;
@@ -77,12 +75,7 @@ export function Mention({ node }: MentionNodeProps) {
     const pointer: AddressPointer = node.decoded.data;
 
     if (!options.showEventEmbeds) {
-      return (
-        <span className="text-muted-foreground font-mono text-sm">
-          {node.encoded ||
-            `naddr:${pointer.identifier || pointer.pubkey.slice(0, 8)}...`}
-        </span>
-      );
+      return <EventPlaceholder kind={pointer.kind} />;
     }
 
     return <EventEmbed node={{ pointer }} depth={depth} />;

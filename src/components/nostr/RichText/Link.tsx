@@ -9,6 +9,10 @@ import { MediaEmbed } from "../MediaEmbed";
 import { PlainLink } from "../LinkPreview";
 import { useRichTextOptions } from "../RichText";
 
+function MediaPlaceholder({ type }: { type: "image" | "video" | "audio" }) {
+  return <span className="text-muted-foreground text-sm">[{type}]</span>;
+}
+
 interface LinkNodeProps {
   node: {
     href: string;
@@ -40,7 +44,7 @@ export function Link({ node }: LinkNodeProps) {
         />
       );
     }
-    return <PlainLink url={href} />;
+    return <MediaPlaceholder type="image" />;
   }
 
   if (isVideoURL(href)) {
@@ -54,7 +58,7 @@ export function Link({ node }: LinkNodeProps) {
         />
       );
     }
-    return <PlainLink url={href} />;
+    return <MediaPlaceholder type="video" />;
   }
 
   if (isAudioURL(href)) {
@@ -76,7 +80,7 @@ export function Link({ node }: LinkNodeProps) {
         </>
       );
     }
-    return <PlainLink url={href} />;
+    return <MediaPlaceholder type="audio" />;
   }
 
   // Plain link for non-media URLs

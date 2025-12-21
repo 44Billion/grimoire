@@ -6,8 +6,11 @@ import {
 } from "applesauce-core/helpers/url";
 import { MediaDialog } from "../MediaDialog";
 import { MediaEmbed } from "../MediaEmbed";
-import { PlainLink } from "../LinkPreview";
 import { useRichTextOptions } from "../RichText";
+
+function MediaPlaceholder({ type }: { type: "image" | "video" | "audio" }) {
+  return <span className="text-muted-foreground text-sm">[{type}]</span>;
+}
 
 interface GalleryNodeProps {
   node: {
@@ -35,13 +38,13 @@ export function Gallery({ node }: GalleryNodeProps) {
       if (shouldShowMedia && options.showImages) {
         return <MediaEmbed url={url} type="image" preset="inline" enableZoom />;
       }
-      return <PlainLink url={url} />;
+      return <MediaPlaceholder type="image" />;
     }
     if (isVideoURL(url)) {
       if (shouldShowMedia && options.showVideos) {
         return <MediaEmbed url={url} type="video" preset="inline" />;
       }
-      return <PlainLink url={url} />;
+      return <MediaPlaceholder type="video" />;
     }
     if (isAudioURL(url)) {
       if (shouldShowMedia && options.showAudio) {
@@ -53,9 +56,10 @@ export function Gallery({ node }: GalleryNodeProps) {
           />
         );
       }
-      return <PlainLink url={url} />;
+      return <MediaPlaceholder type="audio" />;
     }
-    return <PlainLink url={url} />;
+    // Non-media URLs shouldn't appear in galleries, but handle gracefully
+    return null;
   };
 
   // Only show dialog for audio files
