@@ -1,6 +1,8 @@
 import { useMemo } from "react";
-import { GitBranch, GitCommit, Tag, Copy, CopyCheck } from "lucide-react";
+import { GitBranch, GitCommit, Tag, Copy, CopyCheck, FolderGit2 } from "lucide-react";
 import { useCopy } from "@/hooks/useCopy";
+import { useGrimoire } from "@/core/state";
+import { useNostrEvent } from "@/hooks/useNostrEvent";
 import type { NostrEvent } from "@/types/nostr";
 import {
   getRepositoryIdentifier,
@@ -9,6 +11,7 @@ import {
   getRepositoryStateHeadCommit,
   getRepositoryStateBranches,
   getRepositoryStateTags,
+  getRepositoryName,
 } from "@/lib/nip34-helpers";
 
 /**
@@ -16,6 +19,7 @@ import {
  * Displays full repository state with all refs, branches, and tags
  */
 export function RepositoryStateDetailRenderer({ event }: { event: NostrEvent }) {
+  const { addWindow } = useGrimoire();
   const repoId = useMemo(() => getRepositoryIdentifier(event), [event]);
   const headRef = useMemo(() => getRepositoryStateHead(event), [event]);
   const branch = useMemo(() => parseHeadBranch(headRef), [event, headRef]);
@@ -23,14 +27,49 @@ export function RepositoryStateDetailRenderer({ event }: { event: NostrEvent }) 
   const branches = useMemo(() => getRepositoryStateBranches(event), [event]);
   const tags = useMemo(() => getRepositoryStateTags(event), [event]);
 
-  const displayName = repoId || "Repository";
+  // Create repository pointer (kind 30617)
+  const repoPointer = useMemo(
+    () =>
+      repoId
+        ? {
+            kind: 30617,
+            pubkey: event.pubkey,
+            identifier: repoId,
+          }
+        : null,
+    [repoId, event.pubkey],
+  );
+
+  // Fetch the repository event to get its name
+  const repoEvent = useNostrEvent(repoPointer || undefined);
+
+  // Get repository display name
+  const displayName = repoEvent
+    ? getRepositoryName(repoEvent) || repoId || "Repository"
+    : repoId || "Repository";
+
+  const handleRepoClick = () => {
+    if (repoPointer) {
+      addWindow("open", { pointer: repoPointer });
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4 p-4 max-w-3xl mx-auto">
       {/* Repository Header */}
       <header className="flex flex-col gap-4 border-b border-border pb-4">
-        {/* Name */}
-        <h1 className="text-3xl font-bold">{displayName}</h1>
+        {/* Name with link to repository */}
+        {repoPointer ? (
+          <h1
+            onClick={handleRepoClick}
+            className="text-3xl font-bold cursor-crosshair underline decoration-dotted hover:text-primary inline-flex items-center gap-2"
+          >
+            <FolderGit2 className="size-8" />
+            {displayName}
+          </h1>
+        ) : (
+          <h1 className="text-3xl font-bold">{displayName}</h1>
+        )}
 
         {/* HEAD Info */}
         {branch && commitHash && (
