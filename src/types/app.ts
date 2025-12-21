@@ -99,6 +99,7 @@ export interface GrimoireState {
     id: string; // event id or local uuid
     slug: string; // d-tag
     title: string;
+    description?: string;
     pubkey?: string; // owner
   };
 }

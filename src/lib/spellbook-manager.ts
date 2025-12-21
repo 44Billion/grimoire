@@ -353,6 +353,7 @@ export function loadSpellbook(
       id: spellbook.event?.id || uuidv4(), // Fallback to uuid if local
       slug: spellbook.slug,
       title: spellbook.title,
+      description: spellbook.description,
       pubkey: spellbook.event?.pubkey,
     },
   };

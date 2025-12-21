@@ -63,7 +63,9 @@ export async function saveSpellbook(
 /**
  * Get a spellbook by ID
  */
-export async function getSpellbook(id: string): Promise<LocalSpellbook | undefined> {
+export async function getSpellbook(
+  id: string,
+): Promise<LocalSpellbook | undefined> {
   return db.spellbooks.get(id);
 }
 

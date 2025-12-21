@@ -9,7 +9,6 @@ import { SpellbookEvent, ParsedSpellbook } from "@/types/spell";
 import { NostrEvent } from "@/types/nostr";
 import { Layout, ExternalLink, Eye, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
 import { useProfile } from "@/hooks/useProfile";
 import { nip19 } from "nostr-tools";
 import { useNavigate } from "react-router";
@@ -283,7 +282,6 @@ export function SpellbookRenderer({ event }: BaseEventProps) {
  * Shows detailed workspace information with preview and sharing options
  */
 export function SpellbookDetailRenderer({ event }: { event: NostrEvent }) {
-  const profile = useProfile(event.pubkey);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
 
   const spellbook = useMemo(() => {

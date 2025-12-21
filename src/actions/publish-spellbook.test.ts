@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PublishSpellbook } from "./publish-spellbook";
-import type { ActionHub } from "applesauce-actions";
+import type { ActionContext } from "applesauce-actions";
 import type { GrimoireState } from "@/types/app";
 import type { NostrEvent } from "nostr-tools/core";
 
@@ -35,9 +35,11 @@ const mockFactory = {
   })),
 };
 
-const mockHub: ActionHub = {
-  factory: mockFactory,
-} as any;
+const mockContext: ActionContext = {
+  factory: mockFactory as any,
+  events: {} as any,
+  self: "test-pubkey",
+};
 
 const mockState: GrimoireState = {
   windows: {
@@ -62,6 +64,18 @@ const mockState: GrimoireState = {
   workspaceOrder: ["ws-1"],
 } as any;
 
+// Helper to run action with context
+async function runAction(
+  options: Parameters<typeof PublishSpellbook>[0],
+): Promise<NostrEvent[]> {
+  const events: NostrEvent[] = [];
+  const action = PublishSpellbook(options);
+  for await (const event of action(mockContext)) {
+    events.push(event);
+  }
+  return events;
+}
+
 describe("PublishSpellbook action", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -73,39 +87,33 @@ describe("PublishSpellbook action", () => {
 
   describe("validation", () => {
     it("should throw error if title is empty", async () => {
-      await expect(async () => {
-        for await (const event of PublishSpellbook(mockHub, {
+      await expect(
+        runAction({
           state: mockState,
           title: "",
-        })) {
-          // Should not reach here
-        }
-      }).rejects.toThrow("Title is required");
+        }),
+      ).rejects.toThrow("Title is required");
     });
 
     it("should throw error if title is only whitespace", async () => {
-      await expect(async () => {
-        for await (const event of PublishSpellbook(mockHub, {
+      await expect(
+        runAction({
           state: mockState,
           title: "   ",
-        })) {
-          // Should not reach here
-        }
-      }).rejects.toThrow("Title is required");
+        }),
+      ).rejects.toThrow("Title is required");
     });
 
     it("should throw error if no active account", async () => {
       const accountManager = await import("@/services/accounts");
       (accountManager.default as any).active = null;
 
-      await expect(async () => {
-        for await (const event of PublishSpellbook(mockHub, {
+      await expect(
+        runAction({
           state: mockState,
           title: "Test Spellbook",
-        })) {
-          // Should not reach here
-        }
-      }).rejects.toThrow("No active account");
+        }),
+      ).rejects.toThrow("No active account");
 
       // Restore for other tests
       (accountManager.default as any).active = mockAccount;
@@ -116,14 +124,12 @@ describe("PublishSpellbook action", () => {
       const accountWithoutSigner = { ...mockAccount, signer: null };
       (accountManager.default as any).active = accountWithoutSigner;
 
-      await expect(async () => {
-        for await (const event of PublishSpellbook(mockHub, {
+      await expect(
+        runAction({
           state: mockState,
           title: "Test Spellbook",
-        })) {
-          // Should not reach here
-        }
-      }).rejects.toThrow("No signer available");
+        }),
+      ).rejects.toThrow("No signer available");
 
       // Restore for other tests
       (accountManager.default as any).active = mockAccount;
@@ -132,15 +138,11 @@ describe("PublishSpellbook action", () => {
 
   describe("event creation", () => {
     it("should yield properly formatted spellbook event", async () => {
-      const events: NostrEvent[] = [];
-
-      for await (const event of PublishSpellbook(mockHub, {
+      const events = await runAction({
         state: mockState,
         title: "Test Spellbook",
         description: "Test description",
-      })) {
-        events.push(event);
-      }
+      });
 
       expect(events).toHaveLength(1);
       const event = events[0];
@@ -170,14 +172,10 @@ describe("PublishSpellbook action", () => {
     });
 
     it("should create event from state when no content provided", async () => {
-      const events: NostrEvent[] = [];
-
-      for await (const event of PublishSpellbook(mockHub, {
+      const events = await runAction({
         state: mockState,
         title: "My Dashboard",
-      })) {
-        events.push(event);
-      }
+      });
 
       expect(events).toHaveLength(1);
       const event = events[0];
@@ -197,15 +195,11 @@ describe("PublishSpellbook action", () => {
         windows: { "custom-win": {} as any },
       };
 
-      const events: NostrEvent[] = [];
-
-      for await (const event of PublishSpellbook(mockHub, {
+      const events = await runAction({
         state: mockState,
         title: "Custom Spellbook",
         content: explicitContent,
-      })) {
-        events.push(event);
-      }
+      });
 
       expect(events).toHaveLength(1);
       const event = events[0];
@@ -215,14 +209,10 @@ describe("PublishSpellbook action", () => {
     });
 
     it("should not include description tag when description is empty", async () => {
-      const events: NostrEvent[] = [];
-
-      for await (const event of PublishSpellbook(mockHub, {
+      const events = await runAction({
         state: mockState,
         title: "No Description",
-      })) {
-        events.push(event);
-      }
+      });
 
       const event = events[0];
       const tags = event.tags as [string, string, ...string[]][];
@@ -234,42 +224,36 @@ describe("PublishSpellbook action", () => {
 
   describe("slug generation", () => {
     it("should generate slug from title", async () => {
-      const events: NostrEvent[] = [];
-
-      for await (const event of PublishSpellbook(mockHub, {
+      const events = await runAction({
         state: mockState,
         title: "My Awesome Dashboard!",
-      })) {
-        events.push(event);
-      }
+      });
 
-      const dTag = (events[0].tags as [string, string][]).find((t) => t[0] === "d");
+      const dTag = (events[0].tags as [string, string][]).find(
+        (t) => t[0] === "d",
+      );
       expect(dTag?.[1]).toBe("my-awesome-dashboard");
     });
 
     it("should handle special characters in title", async () => {
-      const events: NostrEvent[] = [];
-
-      for await (const event of PublishSpellbook(mockHub, {
+      const events = await runAction({
         state: mockState,
         title: "Test@123#Special$Characters",
-      })) {
-        events.push(event);
-      }
+      });
 
-      const dTag = (events[0].tags as [string, string][]).find((t) => t[0] === "d");
+      const dTag = (events[0].tags as [string, string][]).find(
+        (t) => t[0] === "d",
+      );
       expect(dTag?.[1]).toMatch(/^test123specialcharacters$/);
     });
   });
 
   describe("factory integration", () => {
     it("should call factory.build with correct props", async () => {
-      for await (const event of PublishSpellbook(mockHub, {
+      await runAction({
         state: mockState,
         title: "Test",
-      })) {
-        // Event yielded
-      }
+      });
 
       expect(mockFactory.build).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -279,24 +263,20 @@ describe("PublishSpellbook action", () => {
             ["d", expect.any(String)],
             ["title", "Test"],
           ]),
-          signer: mockSigner,
-        })
+        }),
       );
     });
 
-    it("should call factory.sign with draft and signer", async () => {
-      for await (const event of PublishSpellbook(mockHub, {
+    it("should call factory.sign with draft", async () => {
+      await runAction({
         state: mockState,
         title: "Test",
-      })) {
-        // Event yielded
-      }
+      });
 
       expect(mockFactory.sign).toHaveBeenCalledWith(
         expect.objectContaining({
           kind: 30777,
         }),
-        mockSigner
       );
     });
   });
@@ -317,14 +297,10 @@ describe("PublishSpellbook action", () => {
         },
       };
 
-      const events: NostrEvent[] = [];
-
-      for await (const event of PublishSpellbook(mockHub, {
+      const events = await runAction({
         state: multiWorkspaceState,
         title: "Multi Workspace",
-      })) {
-        events.push(event);
-      }
+      });
 
       const content = JSON.parse(events[0].content);
       expect(Object.keys(content.workspaces).length).toBe(2);
@@ -345,15 +321,11 @@ describe("PublishSpellbook action", () => {
         },
       };
 
-      const events: NostrEvent[] = [];
-
-      for await (const event of PublishSpellbook(mockHub, {
+      const events = await runAction({
         state: multiWorkspaceState,
         title: "Single Workspace",
         workspaceIds: ["ws-1"],
-      })) {
-        events.push(event);
-      }
+      });
 
       const content = JSON.parse(events[0].content);
       expect(Object.keys(content.workspaces).length).toBe(1);

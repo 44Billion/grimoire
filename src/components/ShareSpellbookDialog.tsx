@@ -48,13 +48,13 @@ export function ShareSpellbookDialog({
       id: "web",
       label: "Web Link",
       description: "Share as a web URL that anyone can open",
-      getValue: (e, s, a) => `${window.location.origin}/preview/${a}/${s.slug}`,
+      getValue: (_e, s, a) => `${window.location.origin}/preview/${a}/${s.slug}`,
     },
     {
       id: "naddr",
       label: "Nostr Address (naddr)",
       description: "NIP-19 address pointer for Nostr clients",
-      getValue: (e, s) => {
+      getValue: (e, _s) => {
         const dTag = e.tags.find((t) => t[0] === "d")?.[1];
         if (!dTag) return "";
         return nip19.naddrEncode({
