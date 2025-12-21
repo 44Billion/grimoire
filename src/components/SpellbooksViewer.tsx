@@ -63,6 +63,7 @@ function SpellbookCard({
   showAuthor = false,
   isOwner = true,
 }: SpellbookCardProps) {
+  const { addWindow } = useGrimoire();
   const [isPublishing, setIsPublishing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const displayName = spellbook.title || "Untitled Spellbook";
@@ -108,6 +109,26 @@ function SpellbookCard({
     onApply(parsed);
   };
 
+  const handleOpenEvent = () => {
+    const id = spellbook.eventId || (spellbook.event?.id as string);
+    if (id && id.length === 64) {
+      addWindow("open", { pointer: { id } }, `open ${id}`);
+    } else if (spellbook.isPublished && spellbook.slug && authorPubkey) {
+      // For addressable events (kind 30003)
+      addWindow(
+        "open",
+        {
+          pointer: {
+            kind: SPELLBOOK_KIND,
+            pubkey: authorPubkey,
+            identifier: spellbook.slug,
+          },
+        },
+        `open ${SPELLBOOK_KIND}:${authorPubkey}:${spellbook.slug}`,
+      );
+    }
+  };
+
   return (
     <Card
       className={cn(
@@ -119,7 +140,19 @@ function SpellbookCard({
         <div className="flex items-center flex-wrap justify-between gap-2">
           <div className="flex items-center gap-2 flex-1 overflow-hidden">
             <BookHeart className="size-4 flex-shrink-0 text-muted-foreground mt-0.5" />
-            <CardTitle className="text-xl truncate" title={displayName}>
+            <CardTitle
+              className={cn(
+                "text-xl truncate",
+                (spellbook.eventId || spellbook.isPublished) &&
+                  "cursor-pointer hover:underline text-primary",
+              )}
+              title={displayName}
+              onClick={
+                spellbook.eventId || spellbook.isPublished
+                  ? handleOpenEvent
+                  : undefined
+              }
+            >
               {displayName}
             </CardTitle>
           </div>

@@ -47,6 +47,7 @@ interface SpellCardProps {
 }
 
 function SpellCard({ spell, onDelete, onPublish }: SpellCardProps) {
+  const { addWindow } = useGrimoire();
   const [isPublishing, setIsPublishing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const displayName = spell.name || spell.alias || "Untitled Spell";
@@ -80,6 +81,13 @@ function SpellCard({ spell, onDelete, onPublish }: SpellCardProps) {
     }
   };
 
+  const handleOpenEvent = () => {
+    const id = spell.eventId || (spell.event?.id as string);
+    if (id && id.length === 64) {
+      addWindow("open", { pointer: { id } }, `open ${id}`);
+    }
+  };
+
   return (
     <Card
       className={cn(
@@ -91,7 +99,17 @@ function SpellCard({ spell, onDelete, onPublish }: SpellCardProps) {
         <div className="flex items-center flex-wrap justify-between gap-2">
           <div className="flex items-center gap-2 flex-1 overflow-hidden">
             <WandSparkles className="size-4 flex-shrink-0 text-muted-foreground mt-0.5" />
-            <CardTitle className="text-xl truncate" title={displayName}>
+            <CardTitle
+              className={cn(
+                "text-xl truncate",
+                (spell.eventId || spell.event) &&
+                  "cursor-pointer hover:underline text-primary",
+              )}
+              title={displayName}
+              onClick={
+                spell.eventId || spell.event ? handleOpenEvent : undefined
+              }
+            >
               {displayName}
             </CardTitle>
           </div>

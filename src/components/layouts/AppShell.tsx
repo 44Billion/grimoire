@@ -1,4 +1,5 @@
 import { useState, useEffect, ReactNode } from "react";
+import { Terminal } from "lucide-react";
 import { useAccountSync } from "@/hooks/useAccountSync";
 import { useRelayListCacheSync } from "@/hooks/useRelayListCacheSync";
 import { useRelayState } from "@/hooks/useRelayState";
@@ -59,10 +60,12 @@ export function AppShell({ children }: AppShellProps) {
         <header className="flex flex-row items-center justify-between px-1 border-b border-border">
           <button
             onClick={() => setCommandLauncherOpen(true)}
-            className="p-1 text-muted-foreground hover:text-accent transition-colors cursor-crosshair"
+            className="p-1.5 text-muted-foreground hover:text-accent transition-colors cursor-crosshair flex items-center gap-2"
             title="Launch command (Cmd+K)"
             aria-label="Launch command palette"
-          ></button>
+          >
+            <Terminal className="size-4" />
+          </button>
 
           <div className="flex items-center gap-2">
             <SpellbookDropdown />
