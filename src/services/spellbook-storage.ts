@@ -47,10 +47,13 @@ export async function saveSpellbook(
     createdAt = Date.now();
   }
 
+  // Destructure to exclude id from spread (it would overwrite our computed id with undefined)
+  const { id: _ignoredId, ...spellbookData } = spellbook;
+
   const localSpellbook: LocalSpellbook = {
+    ...spellbookData,
     id,
     createdAt,
-    ...spellbook,
   };
 
   await db.spellbooks.put(localSpellbook);
