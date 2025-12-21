@@ -57,7 +57,6 @@ export function RepositoryStateRenderer({ event }: BaseEventProps) {
       <div className="flex flex-col gap-2">
         {/* Push notification */}
         <div className="flex items-center gap-2 flex-wrap">
-          <GitCommit className="size-4 text-muted-foreground flex-shrink-0" />
           <div className="text-sm font-medium text-foreground">
             <ClickableEventTitle event={event} className="" as="span">
               pushed{" "}
