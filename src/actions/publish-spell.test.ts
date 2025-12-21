@@ -10,6 +10,7 @@ vi.mock("@/services/accounts", () => ({
   default: {
     active: {
       signer: {},
+      pubkey: "test-pubkey",
     },
   },
 }));
@@ -22,6 +23,12 @@ vi.mock("@/services/relay-pool", () => ({
 
 vi.mock("@/services/spell-storage", () => ({
   markSpellPublished: vi.fn(),
+}));
+
+vi.mock("@/services/relay-list-cache", () => ({
+  relayListCache: {
+    getOutboxRelays: vi.fn().mockResolvedValue([]),
+  },
 }));
 
 describe("PublishSpellAction", () => {
@@ -62,6 +69,7 @@ describe("PublishSpellAction", () => {
     // @ts-expect-error: mocking internal state for test
     accountManager.active = {
       signer: mockSigner,
+      pubkey: "pubkey",
     };
 
     const spell: LocalSpell = {
