@@ -39,7 +39,7 @@ export function ConflictResolutionDialog({
       created_at: networkSpellbook.event?.created_at || 0,
       content: networkSpellbook.content,
       id: networkSpellbook.event?.id || "",
-    }
+    },
   );
 
   const authorProfile = useProfile(networkSpellbook.event?.pubkey);
@@ -89,12 +89,16 @@ export function ConflictResolutionDialog({
             <div className="space-y-2 text-sm">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Clock className="size-4" />
-                <span>{formatDate(comparison.differences.lastModified.local)}</span>
+                <span>
+                  {formatDate(comparison.differences.lastModified.local)}
+                </span>
               </div>
 
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Layers className="size-4" />
-                <span>{comparison.differences.workspaceCount.local} workspaces</span>
+                <span>
+                  {comparison.differences.workspaceCount.local} workspaces
+                </span>
               </div>
 
               <div className="flex items-center gap-2 text-muted-foreground">
@@ -128,7 +132,9 @@ export function ConflictResolutionDialog({
             <div className="space-y-2 text-sm">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Clock className="size-4" />
-                <span>{formatDate(comparison.differences.lastModified.network)}</span>
+                <span>
+                  {formatDate(comparison.differences.lastModified.network)}
+                </span>
               </div>
 
               <div className="flex items-center gap-2 text-muted-foreground">
@@ -140,7 +146,9 @@ export function ConflictResolutionDialog({
 
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Layout className="size-4" />
-                <span>{comparison.differences.windowCount.network} windows</span>
+                <span>
+                  {comparison.differences.windowCount.network} windows
+                </span>
               </div>
 
               {authorProfile && (

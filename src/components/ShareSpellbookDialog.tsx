@@ -19,7 +19,11 @@ interface ShareFormat {
   id: string;
   label: string;
   description: string;
-  getValue: (event: NostrEvent, spellbook: ParsedSpellbook, actor: string) => string;
+  getValue: (
+    event: NostrEvent,
+    spellbook: ParsedSpellbook,
+    actor: string,
+  ) => string;
 }
 
 interface ShareSpellbookDialogProps {
@@ -48,7 +52,8 @@ export function ShareSpellbookDialog({
       id: "web",
       label: "Web Link",
       description: "Share as a web URL that anyone can open",
-      getValue: (_e, s, a) => `${window.location.origin}/preview/${a}/${s.slug}`,
+      getValue: (_e, s, a) =>
+        `${window.location.origin}/preview/${a}/${s.slug}`,
     },
     {
       id: "naddr",

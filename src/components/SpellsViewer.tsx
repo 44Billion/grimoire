@@ -300,7 +300,10 @@ export function SpellsViewer() {
       // 1. If published, send Nostr Kind 5
       if (isPublic && spell.event) {
         toast.promise(
-          new DeleteEventAction().execute({ event: spell.event }, "Deleted by user in Grimoire"),
+          new DeleteEventAction().execute(
+            { event: spell.event },
+            "Deleted by user in Grimoire",
+          ),
           {
             loading: "Sending Nostr deletion request...",
             success: "Deletion request broadcasted",

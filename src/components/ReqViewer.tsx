@@ -16,6 +16,9 @@ import {
   Loader2,
   Mail,
   Send,
+  List,
+  Rows3,
+  Braces,
 } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import { useReqTimeline } from "@/hooks/useReqTimeline";
@@ -71,6 +74,12 @@ import { SyntaxHighlight } from "@/components/SyntaxHighlight";
 import { getConnectionIcon, getAuthIcon } from "@/lib/relay-status-utils";
 import { resolveFilterAliases, getTagValues } from "@/lib/nostr-utils";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
+import { cn } from "@/lib/utils";
+import { MemoizedCompactEventRow } from "./nostr/CompactEventRow";
+import { MemoizedJsonEventRow } from "./nostr/JsonEventRow";
+
+// View mode type
+type ViewMode = "list" | "compact" | "json";
 
 // Memoized FeedEvent to prevent unnecessary re-renders during scroll
 const MemoizedFeedEvent = memo(
@@ -747,6 +756,7 @@ export default function ReqViewer({
   const [exportFilename, setExportFilename] = useState("");
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
 
   // Freeze timeline after EOSE to prevent auto-scrolling on new events
   const [freezePoint, setFreezePoint] = useState<string | null>(null);
@@ -1105,6 +1115,61 @@ export default function ReqViewer({
             </DropdownMenuContent>
           </DropdownMenu>
 
+          {/* View Mode Toggle */}
+          <div className="flex items-center gap-0.5 border-l border-border pl-3">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setViewMode("list")}
+                  className={cn(
+                    "p-1 rounded transition-colors",
+                    viewMode === "list"
+                      ? "text-foreground bg-muted"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  aria-label="List view"
+                >
+                  <List className="size-3" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>List view</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setViewMode("compact")}
+                  className={cn(
+                    "p-1 rounded transition-colors",
+                    viewMode === "compact"
+                      ? "text-foreground bg-muted"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  aria-label="Compact view"
+                >
+                  <Rows3 className="size-3" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Compact view</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setViewMode("json")}
+                  className={cn(
+                    "p-1 rounded transition-colors",
+                    viewMode === "json"
+                      ? "text-foreground bg-muted"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  aria-label="JSON view"
+                >
+                  <Braces className="size-3" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>JSON view</TooltipContent>
+            </Tooltip>
+          </div>
+
           {/* Query (Clickable) */}
           <button
             onClick={() => setShowQuery(!showQuery)}
@@ -1198,9 +1263,16 @@ export default function ReqViewer({
               style={{ height: "100%" }}
               data={visibleEvents}
               computeItemKey={(_index, item) => item.id}
-              itemContent={(_index, event) => (
-                <MemoizedFeedEvent event={event} />
-              )}
+              itemContent={(_index, event) => {
+                switch (viewMode) {
+                  case "compact":
+                    return <MemoizedCompactEventRow event={event} />;
+                  case "json":
+                    return <MemoizedJsonEventRow event={event} />;
+                  default:
+                    return <MemoizedFeedEvent event={event} />;
+                }
+              }}
             />
           )}
         </div>

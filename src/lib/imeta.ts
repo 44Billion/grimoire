@@ -13,6 +13,7 @@ export interface ImetaEntry {
   x?: string; // SHA-256 hash
   size?: string; // file size in bytes
   fallback?: string[]; // fallback URLs
+  duration?: number; // audio/video duration in seconds (NIP-A0)
 }
 
 /**
@@ -37,6 +38,11 @@ export function parseImetaTag(tag: string[]): ImetaEntry | null {
     } else if (key === "fallback") {
       if (!entry.fallback) entry.fallback = [];
       entry.fallback.push(value);
+    } else if (key === "duration") {
+      const parsed = parseFloat(value);
+      if (!isNaN(parsed)) {
+        entry.duration = parsed;
+      }
     } else {
       (entry as any)[key] = value;
     }
@@ -134,6 +140,22 @@ export function isVideoMime(mime?: string): boolean {
 export function isAudioMime(mime?: string): boolean {
   if (!mime) return false;
   return mime.startsWith("audio/");
+}
+
+/**
+ * Format duration in seconds to MM:SS or H:MM:SS format
+ */
+export function formatDuration(seconds?: number): string | null {
+  if (seconds === undefined || seconds < 0) return null;
+
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+
+  if (hrs > 0) {
+    return `${hrs}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  }
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
 /**

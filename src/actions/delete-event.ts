@@ -12,7 +12,10 @@ export class DeleteEventAction {
   type = "delete-event";
   label = "Delete Event";
 
-  async execute(item: { event?: NostrEvent }, reason: string = ""): Promise<void> {
+  async execute(
+    item: { event?: NostrEvent },
+    reason: string = "",
+  ): Promise<void> {
     if (!item.event) throw new Error("Item has no event to delete");
 
     const account = accountManager.active;

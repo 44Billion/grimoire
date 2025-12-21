@@ -224,8 +224,8 @@ export function SpellDetailRenderer({ event }: BaseEventProps) {
       <div className="flex flex-col gap-6 p-4">
         <div className="flex flex-col gap-2">
           {spell.name && (
-            <ClickableEventTitle 
-              event={event} 
+            <ClickableEventTitle
+              event={event}
               className="text-2xl font-bold hover:underline cursor-pointer"
             >
               {spell.name}

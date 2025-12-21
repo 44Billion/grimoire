@@ -118,85 +118,85 @@ export function LayoutControls() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         {/* Layouts Section */}
-          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-            Layout Presets
-          </div>
-          {presets.map((preset) => {
-            const canApply = windowCount >= preset.minSlots;
+        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+          Layout Presets
+        </div>
+        {presets.map((preset) => {
+          const canApply = windowCount >= preset.minSlots;
 
-            return (
-              <DropdownMenuItem
-                key={preset.id}
-                onClick={() => handleApplyPreset(preset.id)}
-                disabled={!canApply}
-                className="flex items-center gap-3 cursor-pointer"
-              >
-                <div className="flex-shrink-0">{getPresetIcon(preset.id)}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm">{preset.name}</div>
-                </div>
-              </DropdownMenuItem>
-            );
-          })}
-
-          <DropdownMenuSeparator />
-
-          {/* Placement Section */}
-          <div className="px-2 py-1.5 space-y-0.5">
-            <div className="text-xs font-semibold text-muted-foreground">
-              Placement
-            </div>
-            <div className="text-xs text-muted-foreground">Window insertion</div>
-          </div>
-          {insertionModes.map((mode) => {
-            const Icon = mode.icon;
-            const isActive = layoutConfig.insertionMode === mode.id;
-            return (
-              <DropdownMenuItem
-                key={mode.id}
-                onClick={() => updateLayoutConfig({ insertionMode: mode.id })}
-                className="flex items-center gap-2 cursor-pointer"
-              >
-                <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="flex-1">{mode.label}</span>
-                {isActive && (
-                  <div className="h-1.5 w-1.5 rounded-full bg-accent" />
-                )}
-              </DropdownMenuItem>
-            );
-          })}
-
-          <DropdownMenuSeparator />
-
-          {/* Split Ratio Section */}
-          <div className="px-2 py-2 space-y-2">
-            <div className="space-y-0.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-muted-foreground">
-                  Split Ratio
-                </span>
-                <span className="text-foreground">
-                  {displayedSplitPercentage}/{100 - displayedSplitPercentage}
-                </span>
+          return (
+            <DropdownMenuItem
+              key={preset.id}
+              onClick={() => handleApplyPreset(preset.id)}
+              disabled={!canApply}
+              className="flex items-center gap-3 cursor-pointer"
+            >
+              <div className="flex-shrink-0">{getPresetIcon(preset.id)}</div>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-sm">{preset.name}</div>
               </div>
-              <div className="text-xs text-muted-foreground">
-                Default split for new windows
-              </div>
-            </div>
-            <Slider
-              value={[displayedSplitPercentage]}
-              onValueChange={([value]) => setLocalSplitPercentage(value)}
-              onValueCommit={([value]) => {
-                updateLayoutConfig({ splitPercentage: value });
-                setLocalSplitPercentage(null); // Clear local state after persist
-              }}
-              min={20}
-              max={80}
-              step={1}
-              className="w-full"
-            />
+            </DropdownMenuItem>
+          );
+        })}
+
+        <DropdownMenuSeparator />
+
+        {/* Placement Section */}
+        <div className="px-2 py-1.5 space-y-0.5">
+          <div className="text-xs font-semibold text-muted-foreground">
+            Placement
           </div>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          <div className="text-xs text-muted-foreground">Window insertion</div>
+        </div>
+        {insertionModes.map((mode) => {
+          const Icon = mode.icon;
+          const isActive = layoutConfig.insertionMode === mode.id;
+          return (
+            <DropdownMenuItem
+              key={mode.id}
+              onClick={() => updateLayoutConfig({ insertionMode: mode.id })}
+              className="flex items-center gap-2 cursor-pointer"
+            >
+              <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="flex-1">{mode.label}</span>
+              {isActive && (
+                <div className="h-1.5 w-1.5 rounded-full bg-accent" />
+              )}
+            </DropdownMenuItem>
+          );
+        })}
+
+        <DropdownMenuSeparator />
+
+        {/* Split Ratio Section */}
+        <div className="px-2 py-2 space-y-2">
+          <div className="space-y-0.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-muted-foreground">
+                Split Ratio
+              </span>
+              <span className="text-foreground">
+                {displayedSplitPercentage}/{100 - displayedSplitPercentage}
+              </span>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Default split for new windows
+            </div>
+          </div>
+          <Slider
+            value={[displayedSplitPercentage]}
+            onValueChange={([value]) => setLocalSplitPercentage(value)}
+            onValueCommit={([value]) => {
+              updateLayoutConfig({ splitPercentage: value });
+              setLocalSplitPercentage(null); // Clear local state after persist
+            }}
+            min={20}
+            max={80}
+            step={1}
+            className="w-full"
+          />
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

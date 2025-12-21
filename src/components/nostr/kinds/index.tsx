@@ -10,6 +10,7 @@ import { Kind9Renderer } from "./ChatMessageRenderer";
 import { Kind20Renderer } from "./PictureRenderer";
 import { Kind21Renderer } from "./VideoRenderer";
 import { Kind22Renderer } from "./ShortVideoRenderer";
+import { VoiceMessageRenderer } from "./VoiceMessageRenderer";
 import { Kind1063Renderer } from "./FileMetadataRenderer";
 import { Kind1337Renderer } from "./CodeSnippetRenderer";
 import { Kind1337DetailRenderer } from "./CodeSnippetDetailRenderer";
@@ -63,6 +64,8 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   22: Kind22Renderer, // Short Video (NIP-71)
   1063: Kind1063Renderer, // File Metadata (NIP-94)
   1111: Kind1111Renderer, // Post (NIP-22)
+  1222: VoiceMessageRenderer, // Voice Message (NIP-A0)
+  1244: VoiceMessageRenderer, // Voice Message Reply (NIP-A0)
   1337: Kind1337Renderer, // Code Snippet (NIP-C0)
   1617: PatchRenderer, // Patch (NIP-34)
   1618: PullRequestRenderer, // Pull Request (NIP-34)
@@ -78,6 +81,8 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   30002: GenericRelayListRenderer, // Relay Sets (NIP-51)
   30023: Kind30023Renderer, // Long-form Article
   30311: LiveActivityRenderer, // Live Streaming Event (NIP-53)
+  34235: Kind21Renderer, // Horizontal Video (NIP-71 legacy)
+  34236: Kind22Renderer, // Vertical Video (NIP-71 legacy)
   30617: RepositoryRenderer, // Repository (NIP-34)
   30618: RepositoryStateRenderer, // Repository State (NIP-34)
   30777: SpellbookRenderer, // Spellbook (Grimoire)
@@ -185,5 +190,6 @@ export { Kind9Renderer } from "./ChatMessageRenderer";
 export { Kind20Renderer } from "./PictureRenderer";
 export { Kind21Renderer } from "./VideoRenderer";
 export { Kind22Renderer } from "./ShortVideoRenderer";
+export { VoiceMessageRenderer } from "./VoiceMessageRenderer";
 export { Kind1063Renderer } from "./FileMetadataRenderer";
 export { Kind9735Renderer } from "./ZapReceiptRenderer";

@@ -3,7 +3,11 @@ import { Dexie, Table } from "dexie";
 import { RelayInformation } from "../types/nip11";
 import { normalizeRelayURL } from "../lib/relay-url";
 import type { NostrEvent } from "@/types/nostr";
-import type { SpellEvent, SpellbookContent, SpellbookEvent } from "@/types/spell";
+import type {
+  SpellEvent,
+  SpellbookContent,
+  SpellbookEvent,
+} from "@/types/spell";
 
 export interface Profile extends ProfileContent {
   pubkey: string;

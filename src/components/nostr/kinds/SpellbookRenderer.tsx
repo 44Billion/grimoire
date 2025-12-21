@@ -145,7 +145,12 @@ function LayoutVisualizer({
     }
 
     // Branch node - split
-    if (node && typeof node === "object" && "first" in node && "second" in node) {
+    if (
+      node &&
+      typeof node === "object" &&
+      "first" in node &&
+      "second" in node
+    ) {
       const isRow = node.direction === "row";
       const splitPercentage = node.splitPercentage ?? 50; // Default to 50/50 if not specified
 
@@ -160,10 +165,24 @@ function LayoutVisualizer({
             minWidth: isRow ? "80px" : "40px",
           }}
         >
-          <div style={{ flexGrow: splitPercentage, minHeight: "40px", minWidth: "40px", display: "flex" }}>
+          <div
+            style={{
+              flexGrow: splitPercentage,
+              minHeight: "40px",
+              minWidth: "40px",
+              display: "flex",
+            }}
+          >
             {renderLayout(node.first)}
           </div>
-          <div style={{ flexGrow: 100 - splitPercentage, minHeight: "40px", minWidth: "40px", display: "flex" }}>
+          <div
+            style={{
+              flexGrow: 100 - splitPercentage,
+              minHeight: "40px",
+              minWidth: "40px",
+              display: "flex",
+            }}
+          >
             {renderLayout(node.second)}
           </div>
         </div>
@@ -365,9 +384,7 @@ export function SpellbookDetailRenderer({ event }: { event: NostrEvent }) {
                 className="flex flex-col gap-3 p-4 rounded-xl border border-border bg-card/50"
               >
                 {ws.label && (
-                  <span className="font-bold text-sm">
-                    {ws.label}
-                  </span>
+                  <span className="font-bold text-sm">{ws.label}</span>
                 )}
 
                 {ws.layout && (
