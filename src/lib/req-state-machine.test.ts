@@ -387,6 +387,148 @@ describe("deriveOverallState", () => {
       expect(state.disconnectedCount).toBe(15);
       expect(state.errorCount).toBe(5);
     });
+
+    it("NEW: All relays disconnect before EOSE, no events (streaming)", () => {
+      // THE CRITICAL BUG: Stuck in LOADING when all relays disconnect
+      const relays = new Map<string, ReqRelayState>([
+        [
+          "wss://relay1.com",
+          {
+            url: "wss://relay1.com",
+            connectionState: "disconnected",
+            subscriptionState: "waiting", // Never got to receiving/eose
+            eventCount: 0,
+          },
+        ],
+        [
+          "wss://relay2.com",
+          {
+            url: "wss://relay2.com",
+            connectionState: "disconnected",
+            subscriptionState: "waiting",
+            eventCount: 0,
+          },
+        ],
+      ]);
+      const state = deriveOverallState(relays, false, true, queryStartedAt);
+      // Should be FAILED, not LOADING
+      expect(state.status).toBe("failed");
+      expect(state.connectedCount).toBe(0);
+      expect(state.hasReceivedEvents).toBe(false);
+    });
+
+    it("NEW: All relays disconnect before EOSE, with events (streaming)", () => {
+      // Relays sent some events then disconnected before EOSE
+      const relays = new Map<string, ReqRelayState>([
+        [
+          "wss://relay1.com",
+          {
+            url: "wss://relay1.com",
+            connectionState: "disconnected",
+            subscriptionState: "receiving", // Was receiving
+            eventCount: 5,
+          },
+        ],
+        [
+          "wss://relay2.com",
+          {
+            url: "wss://relay2.com",
+            connectionState: "disconnected",
+            subscriptionState: "receiving",
+            eventCount: 3,
+          },
+        ],
+      ]);
+      const state = deriveOverallState(relays, false, true, queryStartedAt);
+      // Should be OFFLINE (had events but all disconnected)
+      expect(state.status).toBe("offline");
+      expect(state.connectedCount).toBe(0);
+      expect(state.hasReceivedEvents).toBe(true);
+    });
+
+    it("NEW: All relays disconnect before EOSE, with events (non-streaming)", () => {
+      // Same as above but non-streaming
+      const relays = new Map<string, ReqRelayState>([
+        [
+          "wss://relay1.com",
+          {
+            url: "wss://relay1.com",
+            connectionState: "disconnected",
+            subscriptionState: "receiving",
+            eventCount: 5,
+          },
+        ],
+      ]);
+      const state = deriveOverallState(relays, false, false, queryStartedAt);
+      // Should be CLOSED (non-streaming completes)
+      expect(state.status).toBe("closed");
+      expect(state.hasReceivedEvents).toBe(true);
+    });
+
+    it("NEW: Some relays EOSE, others disconnect before EOSE", () => {
+      // Partial success before overall EOSE
+      const relays = new Map<string, ReqRelayState>([
+        [
+          "wss://relay1.com",
+          {
+            url: "wss://relay1.com",
+            connectionState: "connected",
+            subscriptionState: "eose",
+            eventCount: 10,
+          },
+        ],
+        [
+          "wss://relay2.com",
+          {
+            url: "wss://relay2.com",
+            connectionState: "disconnected",
+            subscriptionState: "receiving",
+            eventCount: 3,
+          },
+        ],
+        [
+          "wss://relay3.com",
+          {
+            url: "wss://relay3.com",
+            connectionState: "error",
+            subscriptionState: "error",
+            eventCount: 0,
+          },
+        ],
+      ]);
+      const state = deriveOverallState(relays, false, true, queryStartedAt);
+      // Should be PARTIAL (some succeeded, some failed, but not all terminal)
+      expect(state.status).toBe("partial");
+      expect(state.connectedCount).toBe(1);
+      expect(state.eoseCount).toBe(1);
+    });
+
+    it("NEW: Mix of EOSE and errors, all terminal", () => {
+      const relays = new Map<string, ReqRelayState>([
+        [
+          "wss://relay1.com",
+          {
+            url: "wss://relay1.com",
+            connectionState: "connected",
+            subscriptionState: "eose",
+            eventCount: 10,
+          },
+        ],
+        [
+          "wss://relay2.com",
+          {
+            url: "wss://relay2.com",
+            connectionState: "error",
+            subscriptionState: "error",
+            eventCount: 0,
+          },
+        ],
+      ]);
+      const state = deriveOverallState(relays, false, true, queryStartedAt);
+      // All terminal (eose + error), should be PARTIAL
+      expect(state.status).toBe("partial");
+      expect(state.connectedCount).toBe(1);
+    });
   });
 });
 

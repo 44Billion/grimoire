@@ -55,6 +55,14 @@ export function deriveOverallState(
 
   const allEoseAt = overallEoseReceived ? Date.now() : undefined;
 
+  // Check if all relays are in terminal states (won't make further progress)
+  const allRelaysTerminal = states.every(
+    (s) =>
+      s.subscriptionState === "eose" ||
+      s.connectionState === "error" ||
+      s.connectionState === "disconnected",
+  );
+
   // Derive status based on relay states and flags
   const status: ReqOverallStatus = (() => {
     // No relays selected yet (NIP-65 discovery in progress)
@@ -65,6 +73,26 @@ export function deriveOverallState(
     // All relays failed to connect, no events received
     if (allRelaysFailed && !hasReceivedEvents) {
       return "failed";
+    }
+
+    // All relays are in terminal states (done trying)
+    // This handles the case where relays disconnect before EOSE
+    if (allRelaysTerminal && !overallEoseReceived) {
+      if (!hasReceivedEvents) {
+        // All relays gave up before sending events
+        return "failed";
+      }
+      if (!hasActiveRelays) {
+        // Received events but all relays disconnected before EOSE
+        if (isStreaming) {
+          return "offline"; // Was trying to stream, now offline
+        } else {
+          return "closed"; // Non-streaming query, relays closed
+        }
+      }
+      // Some relays still active but all others terminated
+      // This is a partial success scenario
+      return "partial";
     }
 
     // No relays connected and no events received yet
