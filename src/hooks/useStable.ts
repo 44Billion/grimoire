@@ -56,7 +56,7 @@ export function useStableArray<T extends string>(arr: T[]): T[] {
  * @returns The memoized filter(s)
  */
 export function useStableFilters<T extends Filter | Filter[]>(filters: T): T {
-  const prevFiltersRef = useRef<T>();
+  const prevFiltersRef = useRef<T | undefined>(undefined);
 
   // Only update if filters actually changed (per isFilterEqual)
   if (
@@ -69,5 +69,5 @@ export function useStableFilters<T extends Filter | Filter[]>(filters: T): T {
     prevFiltersRef.current = filters;
   }
 
-  return prevFiltersRef.current;
+  return prevFiltersRef.current!;
 }
