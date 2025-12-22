@@ -1056,33 +1056,46 @@ export default function ReqViewer({
                   // Find NIP-65 info for this relay (if using outbox)
                   const nip65Info = reasoning?.find((r) => r.relay === url);
 
-                  // Determine relay type
-                  const relayType = relays
-                    ? "explicit"
-                    : nip65Info && !nip65Info.isFallback
-                      ? "outbox"
-                      : "fallback";
-
-                  // Type indicator icon (smaller, on left)
-                  const typeIcon = {
-                    explicit: (
-                      <LinkIcon className="size-3 text-muted-foreground/60 flex-shrink-0" />
-                    ),
-                    outbox: (
-                      <Sparkles className="size-3 text-muted-foreground/60 flex-shrink-0" />
-                    ),
-                    fallback: (
-                      <Inbox className="size-3 text-muted-foreground/60 flex-shrink-0" />
-                    ),
-                  }[relayType];
-
                   return (
                     <div
                       key={url}
                       className="flex items-center gap-2 text-xs py-1 px-3 hover:bg-accent/5"
                     >
-                      {/* Type icon on left */}
-                      {typeIcon}
+                      {/* Left side: Inbox/Outbox indicators (if available) */}
+                      <div className="flex items-center gap-1 flex-shrink-0 text-muted-foreground/70">
+                        {nip65Info && nip65Info.readers.length > 0 && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center gap-0.5">
+                                <Mail className="w-3 h-3" />
+                                <span className="text-[10px]">
+                                  {nip65Info.readers.length}
+                                </span>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Inbox for {nip65Info.readers.length} author
+                              {nip65Info.readers.length !== 1 ? "s" : ""}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        {nip65Info && nip65Info.writers.length > 0 && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center gap-0.5">
+                                <Send className="w-3 h-3" />
+                                <span className="text-[10px]">
+                                  {nip65Info.writers.length}
+                                </span>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Outbox for {nip65Info.writers.length} author
+                              {nip65Info.writers.length !== 1 ? "s" : ""}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
 
                       {/* Relay URL */}
                       <RelayLink
@@ -1122,40 +1135,6 @@ export default function ReqViewer({
                             </TooltipTrigger>
                             <TooltipContent>
                               End of stored events received
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-
-                        {/* NIP-65 inbox/outbox indicators (if available) */}
-                        {nip65Info && nip65Info.readers.length > 0 && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="flex items-center gap-0.5">
-                                <Mail className="w-3 h-3" />
-                                <span className="text-[10px]">
-                                  {nip65Info.readers.length}
-                                </span>
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              Inbox for {nip65Info.readers.length} author
-                              {nip65Info.readers.length !== 1 ? "s" : ""}
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                        {nip65Info && nip65Info.writers.length > 0 && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="flex items-center gap-0.5">
-                                <Send className="w-3 h-3" />
-                                <span className="text-[10px]">
-                                  {nip65Info.writers.length}
-                                </span>
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              Outbox for {nip65Info.writers.length} author
-                              {nip65Info.writers.length !== 1 ? "s" : ""}
                             </TooltipContent>
                           </Tooltip>
                         )}
