@@ -66,6 +66,47 @@ Applesauce uses RxJS observables for reactive data flow:
 
 Use hooks like `useProfile()`, `useNostrEvent()`, `useTimeline()` - they handle subscriptions.
 
+### Applesauce Helpers & Caching
+
+**Critical Performance Insight**: Applesauce helpers cache computed values internally using symbols. **You don't need `useMemo` when calling applesauce helpers.**
+
+```typescript
+// ❌ WRONG - Unnecessary memoization
+const title = useMemo(() => getArticleTitle(event), [event]);
+const text = useMemo(() => getHighlightText(event), [event]);
+
+// ✅ CORRECT - Helpers cache internally
+const title = getArticleTitle(event);
+const text = getHighlightText(event);
+```
+
+**How it works**: Helpers use `getOrComputeCachedValue(event, symbol, compute)` to cache results on the event object. The first call computes and caches, subsequent calls return the cached value instantly.
+
+**Available Helpers** (from `applesauce-core/helpers`):
+- **Tags**: `getTagValue(event, name)` - get single tag value (searches hidden tags first)
+- **Article**: `getArticleTitle`, `getArticleSummary`, `getArticleImage`, `getArticlePublished`
+- **Highlight**: `getHighlightText`, `getHighlightSourceUrl`, `getHighlightSourceEventPointer`, `getHighlightSourceAddressPointer`, `getHighlightContext`, `getHighlightComment`
+- **Profile**: `getProfileContent(event)`, `getDisplayName(metadata, fallback)`
+- **Pointers**: `parseCoordinate(aTag)`, `getEventPointerFromETag`, `getAddressPointerFromATag`, `getProfilePointerFromPTag`
+- **Reactions**: `getReactionEventPointer(event)`, `getReactionAddressPointer(event)`
+- **Threading**: `getNip10References(event)` - parses NIP-10 thread tags
+- **Filters**: `isFilterEqual(a, b)`, `matchFilter(filter, event)`, `mergeFilters(...filters)`
+- **And 50+ more** - see `node_modules/applesauce-core/dist/helpers/index.d.ts`
+
+**Custom Grimoire Helpers** (not in applesauce):
+- `getTagValues(event, name)` - plural version to get array of tag values (src/lib/nostr-utils.ts)
+- `resolveFilterAliases(filter, pubkey, contacts)` - resolves `$me`/`$contacts` aliases (src/lib/nostr-utils.ts)
+- `getDisplayName(pubkey, metadata)` - enhanced version with pubkey fallback (src/lib/nostr-utils.ts)
+- NIP-34 git helpers (src/lib/nip34-helpers.ts) - wraps `getTagValue` for repository, issue, patch metadata
+- NIP-C0 code snippet helpers (src/lib/nip-c0-helpers.ts) - wraps `getTagValue` for code metadata
+
+**When to use `useMemo`**:
+- ✅ Complex transformations not using applesauce helpers (sorting, filtering, mapping)
+- ✅ Creating objects/arrays for dependency tracking (options, configurations)
+- ✅ Expensive computations that don't call applesauce helpers
+- ❌ Direct calls to applesauce helpers (they cache internally)
+- ❌ Grimoire helpers that wrap `getTagValue` (caching propagates)
+
 ## Key Conventions
 
 - **Path Alias**: `@/` = `./src/`
