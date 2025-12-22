@@ -329,6 +329,284 @@ zaps$.subscribe(zaps => {
 });
 ```
 
+## Helper Functions & Caching
+
+### Applesauce Helper System
+
+applesauce-core provides **60+ helper functions** for extracting data from Nostr events. **Critical**: These helpers cache their results internally using symbols, so **you don't need `useMemo` when calling them**.
+
+```javascript
+// ❌ WRONG - Unnecessary memoization
+const title = useMemo(() => getArticleTitle(event), [event]);
+const text = useMemo(() => getHighlightText(event), [event]);
+
+// ✅ CORRECT - Helpers cache internally
+const title = getArticleTitle(event);
+const text = getHighlightText(event);
+```
+
+### How Helper Caching Works
+
+```javascript
+import { getOrComputeCachedValue } from 'applesauce-core/helpers';
+
+// Helpers use symbol-based caching
+const symbol = Symbol('ArticleTitle');
+
+export function getArticleTitle(event) {
+  return getOrComputeCachedValue(event, symbol, () => {
+    // This expensive computation only runs once
+    return getTagValue(event, 'title') || 'Untitled';
+  });
+}
+
+// First call - computes and caches
+const title1 = getArticleTitle(event); // Computation happens
+
+// Second call - returns cached value
+const title2 = getArticleTitle(event); // Instant, from cache
+
+// Same reference
+console.log(title1 === title2); // true
+```
+
+### Tag Helpers
+
+```javascript
+import { getTagValue, hasNameValueTag } from 'applesauce-core/helpers';
+
+// Get single tag value (searches hidden tags first)
+const dTag = getTagValue(event, 'd');
+const title = getTagValue(event, 'title');
+const url = getTagValue(event, 'r');
+
+// Check if tag exists with value
+const hasTag = hasNameValueTag(event, 'client', 'grimoire');
+```
+
+**Note**: applesauce only provides `getTagValue` (singular). For multiple values, implement your own:
+
+```javascript
+function getTagValues(event, tagName) {
+  return event.tags
+    .filter(tag => tag[0] === tagName && tag[1])
+    .map(tag => tag[1]);
+}
+```
+
+### Article Helpers (NIP-23)
+
+```javascript
+import {
+  getArticleTitle,
+  getArticleSummary,
+  getArticleImage,
+  getArticlePublished,
+  isValidArticle
+} from 'applesauce-core/helpers';
+
+// All cached automatically
+const title = getArticleTitle(event);
+const summary = getArticleSummary(event);
+const image = getArticleImage(event);
+const publishedAt = getArticlePublished(event);
+
+// Validation
+if (isValidArticle(event)) {
+  console.log('Valid article event');
+}
+```
+
+### Highlight Helpers (NIP-84)
+
+```javascript
+import {
+  getHighlightText,
+  getHighlightSourceUrl,
+  getHighlightSourceEventPointer,
+  getHighlightSourceAddressPointer,
+  getHighlightContext,
+  getHighlightComment,
+  getHighlightAttributions
+} from 'applesauce-core/helpers';
+
+// All cached - no useMemo needed
+const text = getHighlightText(event);
+const url = getHighlightSourceUrl(event);
+const eventPointer = getHighlightSourceEventPointer(event);
+const addressPointer = getHighlightSourceAddressPointer(event);
+const context = getHighlightContext(event);
+const comment = getHighlightComment(event);
+const attributions = getHighlightAttributions(event);
+```
+
+### Profile Helpers
+
+```javascript
+import {
+  getProfileContent,
+  getDisplayName,
+  getProfilePicture,
+  isValidProfile
+} from 'applesauce-core/helpers';
+
+// Parse profile JSON (cached)
+const profile = getProfileContent(profileEvent);
+
+// Get display name with fallback
+const name = getDisplayName(profile, 'Anonymous');
+
+// Get profile picture with fallback
+const avatar = getProfilePicture(profile, '/default-avatar.png');
+
+// Validation
+if (isValidProfile(event)) {
+  const profile = getProfileContent(event);
+}
+```
+
+### Pointer Helpers (NIP-19)
+
+```javascript
+import {
+  parseCoordinate,
+  getEventPointerFromETag,
+  getEventPointerFromQTag,
+  getAddressPointerFromATag,
+  getProfilePointerFromPTag,
+  getEventPointerForEvent,
+  getAddressPointerForEvent
+} from 'applesauce-core/helpers';
+
+// Parse "a" tag coordinate (30023:pubkey:identifier)
+const aTag = event.tags.find(t => t[0] === 'a')?.[1];
+const pointer = parseCoordinate(aTag);
+console.log(pointer.kind, pointer.pubkey, pointer.identifier);
+
+// Extract pointers from tags
+const eTag = event.tags.find(t => t[0] === 'e');
+const eventPointer = getEventPointerFromETag(eTag);
+
+const qTag = event.tags.find(t => t[0] === 'q');
+const quotePointer = getEventPointerFromQTag(qTag);
+
+// Create pointer from event
+const pointer = getEventPointerForEvent(event, ['wss://relay.example.com']);
+const address = getAddressPointerForEvent(replaceableEvent);
+```
+
+### Reaction Helpers
+
+```javascript
+import {
+  getReactionEventPointer,
+  getReactionAddressPointer
+} from 'applesauce-core/helpers';
+
+// Get what the reaction is reacting to
+const eventPointer = getReactionEventPointer(reactionEvent);
+const addressPointer = getReactionAddressPointer(reactionEvent);
+
+if (eventPointer) {
+  console.log('Reacted to event:', eventPointer.id);
+}
+```
+
+### Threading Helpers (NIP-10)
+
+```javascript
+import { getNip10References } from 'applesauce-core/helpers';
+
+// Parse NIP-10 thread structure (cached)
+const refs = getNip10References(event);
+
+if (refs.root) {
+  console.log('Root event:', refs.root.e);
+  console.log('Root address:', refs.root.a);
+}
+
+if (refs.reply) {
+  console.log('Reply to event:', refs.reply.e);
+  console.log('Reply to address:', refs.reply.a);
+}
+```
+
+### Filter Helpers
+
+```javascript
+import {
+  isFilterEqual,
+  matchFilter,
+  matchFilters,
+  mergeFilters
+} from 'applesauce-core/helpers';
+
+// Compare filters (better than JSON.stringify)
+const areEqual = isFilterEqual(filter1, filter2);
+
+// Check if event matches filter
+const matches = matchFilter({ kinds: [1], authors: [pubkey] }, event);
+
+// Check against multiple filters
+const matchesAny = matchFilters([filter1, filter2], event);
+
+// Merge filters
+const combined = mergeFilters(filter1, filter2);
+```
+
+### Available Helper Categories
+
+applesauce-core provides helpers for:
+
+- **Tags**: getTagValue, hasNameValueTag, tag type checks
+- **Articles**: getArticleTitle, getArticleSummary, getArticleImage
+- **Highlights**: 7+ helpers for highlight extraction
+- **Profiles**: getProfileContent, getDisplayName, getProfilePicture
+- **Pointers**: parseCoordinate, pointer extraction/creation
+- **Reactions**: getReactionEventPointer, getReactionAddressPointer
+- **Threading**: getNip10References for NIP-10 threads
+- **Comments**: getCommentReplyPointer for NIP-22
+- **Filters**: isFilterEqual, matchFilter, mergeFilters
+- **Bookmarks**: bookmark list parsing
+- **Emoji**: custom emoji extraction
+- **Zaps**: zap parsing and validation
+- **Calendars**: calendar event helpers
+- **Encryption**: NIP-04, NIP-44 helpers
+- **And 40+ more** - explore `node_modules/applesauce-core/dist/helpers/`
+
+### When NOT to Use useMemo with Helpers
+
+```javascript
+// ❌ DON'T memoize applesauce helper calls
+const title = useMemo(() => getArticleTitle(event), [event]);
+const summary = useMemo(() => getArticleSummary(event), [event]);
+
+// ✅ DO call helpers directly
+const title = getArticleTitle(event);
+const summary = getArticleSummary(event);
+
+// ❌ DON'T memoize helpers that wrap other helpers
+function getRepoName(event) {
+  return getTagValue(event, 'name');
+}
+const name = useMemo(() => getRepoName(event), [event]);
+
+// ✅ DO call directly (caching propagates)
+const name = getRepoName(event);
+
+// ✅ DO use useMemo for expensive transformations
+const sorted = useMemo(
+  () => events.sort((a, b) => b.created_at - a.created_at),
+  [events]
+);
+
+// ✅ DO use useMemo for object creation
+const options = useMemo(
+  () => ({ fallbackRelays, timeout: 1000 }),
+  [fallbackRelays]
+);
+```
+
 ## NIP Helpers
 
 ### NIP-05 Verification
