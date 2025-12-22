@@ -946,7 +946,7 @@ export default function ReqViewer({
               </span>
             </div>
           </TooltipTrigger>
-          <TooltipContent>
+          <TooltipContent className="bg-popover text-popover-foreground border border-border shadow-md">
             <p>{getStatusTooltip(overallState)}</p>
           </TooltipContent>
         </Tooltip>
@@ -1057,11 +1057,11 @@ export default function ReqViewer({
 
                   // Build comprehensive tooltip content
                   const tooltipContent = (
-                    <div className="space-y-1 text-xs">
-                      <div className="font-semibold border-b border-border pb-1">
+                    <div className="space-y-1.5 text-xs">
+                      <div className="font-semibold border-b border-border pb-1 mb-1">
                         {url}
                       </div>
-                      <div className="space-y-0.5 text-muted-foreground">
+                      <div className="space-y-1 text-muted-foreground">
                         <div className="flex items-center gap-2">
                           <span className="w-20">Connection:</span>
                           <span className="text-foreground">
@@ -1133,16 +1133,25 @@ export default function ReqViewer({
                           <div className="flex items-center gap-1.5 flex-shrink-0">
                             {/* Event count badge */}
                             {reqState && reqState.eventCount > 0 && (
-                              <div className="text-[10px] text-muted-foreground font-medium">
-                                [{reqState.eventCount}]
+                              <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-medium">
+                                <FileText className="size-2.5" />
+                                <span>{reqState.eventCount}</span>
                               </div>
                             )}
 
-                            {/* EOSE checkmark */}
-                            {reqState &&
-                              reqState.subscriptionState === "eose" && (
-                                <Check className="size-3 text-green-600/70" />
-                              )}
+                            {/* EOSE status */}
+                            {reqState && (
+                              <>
+                                {reqState.subscriptionState === "eose" ? (
+                                  <Check className="size-3 text-green-600/70" />
+                                ) : (
+                                  (reqState.subscriptionState === "receiving" ||
+                                    reqState.subscriptionState === "waiting") && (
+                                    <Loader2 className="size-3 text-muted-foreground/40 animate-spin" />
+                                  )
+                                )}
+                              </>
+                            )}
 
                             {/* Auth icon (always visible) */}
                             <div>{authIcon.icon}</div>
@@ -1152,7 +1161,10 @@ export default function ReqViewer({
                           </div>
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent side="left" className="max-w-xs">
+                      <TooltipContent
+                        side="left"
+                        className="max-w-xs bg-popover text-popover-foreground border border-border shadow-md"
+                      >
                         {tooltipContent}
                       </TooltipContent>
                     </Tooltip>
