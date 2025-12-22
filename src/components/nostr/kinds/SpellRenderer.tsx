@@ -220,6 +220,20 @@ export function SpellDetailRenderer({ event }: BaseEventProps) {
   try {
     const spell = decodeSpell(event as SpellEvent);
 
+    // Create a display filter that includes since/until even in relative format
+    const displayFilter = { ...spell.filter };
+
+    // Extract raw since/until values from tags
+    const sinceTag = event.tags.find((t) => t[0] === "since")?.[1];
+    const untilTag = event.tags.find((t) => t[0] === "until")?.[1];
+
+    if (sinceTag && !displayFilter.since) {
+      displayFilter.since = sinceTag as any; // Show relative format like "7d"
+    }
+    if (untilTag && !displayFilter.until) {
+      displayFilter.until = untilTag as any; // Show relative format like "now"
+    }
+
     return (
       <div className="flex flex-col gap-6 p-4">
         <div className="flex flex-col gap-2">
@@ -291,7 +305,7 @@ export function SpellDetailRenderer({ event }: BaseEventProps) {
           <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
             Filter
           </h3>
-          <CopyableJsonViewer json={JSON.stringify(spell.filter, null, 2)} />
+          <CopyableJsonViewer json={JSON.stringify(displayFilter, null, 2)} />
         </div>
 
         {spell.relays && spell.relays.length > 0 && (
