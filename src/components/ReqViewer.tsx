@@ -16,6 +16,9 @@ import {
   Loader2,
   Mail,
   Send,
+  Inbox,
+  Sparkles,
+  Link as LinkIcon,
 } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import { useReqTimelineEnhanced } from "@/hooks/useReqTimelineEnhanced";
@@ -1016,6 +1019,41 @@ export default function ReqViewer({
                     // Find NIP-65 info for this relay (if using outbox)
                     const nip65Info = reasoning?.find((r) => r.relay === url);
 
+                    // Determine relay type
+                    const relayType = relays
+                      ? "explicit" // Explicitly specified relays
+                      : nip65Info && !nip65Info.isFallback
+                        ? "outbox" // NIP-65 outbox relay
+                        : "fallback"; // Fallback relay
+
+                    // Type indicator icon
+                    const typeIcon = {
+                      explicit: (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <LinkIcon className="size-3 text-blue-500" />
+                          </TooltipTrigger>
+                          <TooltipContent>Explicit relay</TooltipContent>
+                        </Tooltip>
+                      ),
+                      outbox: (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Sparkles className="size-3 text-purple-500" />
+                          </TooltipTrigger>
+                          <TooltipContent>NIP-65 Outbox relay</TooltipContent>
+                        </Tooltip>
+                      ),
+                      fallback: (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Inbox className="size-3 text-muted-foreground/60" />
+                          </TooltipTrigger>
+                          <TooltipContent>Fallback relay</TooltipContent>
+                        </Tooltip>
+                      ),
+                    }[relayType];
+
                     return (
                       <div
                         key={url}
@@ -1027,6 +1065,9 @@ export default function ReqViewer({
                           className="flex-1 truncate font-mono text-foreground/80"
                         />
                         <div className="flex items-center gap-1.5 flex-shrink-0 text-muted-foreground">
+                          {/* Relay type indicator */}
+                          {typeIcon}
+
                           {/* Event count */}
                           {reqState && reqState.eventCount > 0 && (
                             <Tooltip>
@@ -1085,13 +1126,6 @@ export default function ReqViewer({
                                 {nip65Info.writers.length !== 1 ? "s" : ""}
                               </TooltipContent>
                             </Tooltip>
-                          )}
-
-                          {/* Fallback indicator */}
-                          {nip65Info && nip65Info.isFallback && (
-                            <span className="text-[10px] text-muted-foreground/60">
-                              fallback
-                            </span>
                           )}
 
                           {/* Auth icon */}

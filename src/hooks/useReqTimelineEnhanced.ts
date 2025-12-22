@@ -98,29 +98,58 @@ export function useReqTimelineEnhanced(
   // Sync connection states from RelayStateManager
   // This runs whenever globalRelayStates updates
   useEffect(() => {
+    if (relays.length === 0) return;
+
     setRelayStates((prev) => {
       const next = new Map(prev);
       let changed = false;
 
-      for (const [url, state] of prev) {
+      // Sync state for all relays in our query
+      for (const url of relays) {
         const globalState = globalRelayStates[url];
-        if (
-          globalState &&
-          globalState.connectionState !== state.connectionState
-        ) {
+        const currentState = prev.get(url);
+
+        // Initialize if relay not in map yet (shouldn't happen, but defensive)
+        if (!currentState) {
           next.set(url, {
-            ...state,
+            url,
+            connectionState: globalState?.connectionState || "pending",
+            subscriptionState: "waiting",
+            eventCount: 0,
+            connectedAt: globalState?.lastConnected,
+            disconnectedAt: globalState?.lastDisconnected,
+          });
+          changed = true;
+          console.log(
+            "REQ Enhanced: Initialized missing relay state",
+            url,
+            globalState?.connectionState,
+          );
+        } else if (
+          globalState &&
+          globalState.connectionState !== currentState.connectionState
+        ) {
+          // Update connection state if changed
+          next.set(url, {
+            ...currentState,
             connectionState: globalState.connectionState as any,
             connectedAt: globalState.lastConnected,
             disconnectedAt: globalState.lastDisconnected,
           });
           changed = true;
+          console.log(
+            "REQ Enhanced: Connection state changed",
+            url,
+            currentState.connectionState,
+            "→",
+            globalState.connectionState,
+          );
         }
       }
 
       return changed ? next : prev;
     });
-  }, [globalRelayStates]);
+  }, [globalRelayStates, relays]);
 
   // Subscribe to events
   useEffect(() => {
@@ -208,17 +237,34 @@ export function useReqTimelineEnhanced(
           if (relayUrl) {
             setRelayStates((prev) => {
               const state = prev.get(relayUrl);
-              if (!state) return prev;
-
               const now = Date.now();
               const next = new Map(prev);
-              next.set(relayUrl, {
-                ...state,
-                subscriptionState: "receiving",
-                eventCount: state.eventCount + 1,
-                firstEventAt: state.firstEventAt ?? now,
-                lastEventAt: now,
-              });
+
+              if (!state) {
+                // Relay not in map - initialize it (defensive)
+                console.warn(
+                  "REQ Enhanced: Event from unknown relay, initializing",
+                  relayUrl,
+                );
+                next.set(relayUrl, {
+                  url: relayUrl,
+                  connectionState: "connected",
+                  subscriptionState: "receiving",
+                  eventCount: 1,
+                  firstEventAt: now,
+                  lastEventAt: now,
+                });
+              } else {
+                // Update existing relay state
+                next.set(relayUrl, {
+                  ...state,
+                  subscriptionState: "receiving",
+                  eventCount: state.eventCount + 1,
+                  firstEventAt: state.firstEventAt ?? now,
+                  lastEventAt: now,
+                });
+              }
+
               return next;
             });
           }
