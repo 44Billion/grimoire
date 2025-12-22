@@ -94,7 +94,10 @@ export function Kind9802Renderer({ event }: BaseEventProps) {
                 className="hover:underline hover:decoration-dotted cursor-crosshair text-xs line-clamp-1 break-words"
                 onClick={handleOpenEvent}
               >
-                <RichText content={sourcePreview} />
+                <RichText
+                  content={sourcePreview}
+                  options={{ showMedia: false, showEventEmbeds: false }}
+                />
               </div>
             )}
           </div>
