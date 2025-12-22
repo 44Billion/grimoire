@@ -45,7 +45,10 @@ export const PARAMETERIZED_REPLACEABLE_END = 40000; // exclusive: parameterized 
  * for consistency with NIP-01 terminology
  */
 export function isParameterizedReplaceableKind(kind: number): boolean {
-  return kind >= PARAMETERIZED_REPLACEABLE_START && kind < PARAMETERIZED_REPLACEABLE_END;
+  return (
+    kind >= PARAMETERIZED_REPLACEABLE_START &&
+    kind < PARAMETERIZED_REPLACEABLE_END
+  );
 }
 
 /**
@@ -64,9 +67,11 @@ export function isAddressableKind(kind: number): boolean {
 /**
  * Get the category of a kind for display purposes
  */
-export function getKindCategory(kind: number): 'regular' | 'replaceable' | 'ephemeral' | 'parameterized_replaceable' {
-  if (_isReplaceableKind(kind)) return 'replaceable';
-  if (_isEphemeralKind(kind)) return 'ephemeral';
-  if (isParameterizedReplaceableKind(kind)) return 'parameterized_replaceable';
-  return 'regular';
+export function getKindCategory(
+  kind: number,
+): "regular" | "replaceable" | "ephemeral" | "parameterized_replaceable" {
+  if (_isReplaceableKind(kind)) return "replaceable";
+  if (_isEphemeralKind(kind)) return "ephemeral";
+  if (isParameterizedReplaceableKind(kind)) return "parameterized_replaceable";
+  return "regular";
 }

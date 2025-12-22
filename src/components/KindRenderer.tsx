@@ -84,11 +84,11 @@ export default function KindRenderer({ kind }: { kind: number }) {
             : "Stored by relays"}
         </div>
         {isParameterizedReplaceableKind(kind) && (
-            <>
-              <div className="text-muted-foreground">Identifier</div>
-              <code className="font-mono text-xs">d-tag</code>
-            </>
-          )}
+          <>
+            <div className="text-muted-foreground">Identifier</div>
+            <code className="font-mono text-xs">d-tag</code>
+          </>
+        )}
         {kindInfo.nip && (
           <>
             <div className="text-muted-foreground">Defined in</div>

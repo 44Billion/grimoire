@@ -18,10 +18,7 @@ import { useMemo } from "react";
  * const stableFilters = useStableValue(filters);
  * ```
  */
-export function useStableValue<T>(
-  value: T,
-  serialize?: (v: T) => string
-): T {
+export function useStableValue<T>(value: T, serialize?: (v: T) => string): T {
   const serialized = serialize?.(value) ?? JSON.stringify(value);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => value, [serialized]);
