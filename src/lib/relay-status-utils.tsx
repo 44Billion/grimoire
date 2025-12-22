@@ -45,11 +45,14 @@ export function getConnectionIcon(relay: RelayState | undefined) {
 
 /**
  * Get authentication icon and label for a relay state
- * Returns null if no authentication is required
+ * Always returns an icon (including for unauthenticated relays)
  */
 export function getAuthIcon(relay: RelayState | undefined) {
-  if (!relay || relay.authStatus === "none") {
-    return null;
+  if (!relay) {
+    return {
+      icon: <Shield className="size-3 text-muted-foreground/40" />,
+      label: "Unknown",
+    };
   }
 
   const iconMap = {
@@ -74,8 +77,8 @@ export function getAuthIcon(relay: RelayState | undefined) {
       label: "Authentication Rejected",
     },
     none: {
-      icon: <Shield className="size-3 text-muted-foreground/60" />,
-      label: "No Authentication",
+      icon: <Shield className="size-3 text-muted-foreground/40" />,
+      label: "No Authentication Required",
     },
   };
   return iconMap[relay.authStatus] || iconMap.none;

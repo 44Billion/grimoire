@@ -14,11 +14,10 @@ import {
   Search,
   Code,
   Loader2,
-  Mail,
-  Send,
   Inbox,
   Sparkles,
   Link as LinkIcon,
+  Check,
 } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import { useReqTimelineEnhanced } from "@/hooks/useReqTimelineEnhanced";
@@ -1056,112 +1055,107 @@ export default function ReqViewer({
                   // Find NIP-65 info for this relay (if using outbox)
                   const nip65Info = reasoning?.find((r) => r.relay === url);
 
-                  return (
-                    <div
-                      key={url}
-                      className="flex items-center gap-2 text-xs py-1 px-3 hover:bg-accent/5"
-                    >
-                      {/* Left side: Inbox/Outbox indicators (if available) */}
-                      <div className="flex items-center gap-1 flex-shrink-0 text-muted-foreground/70">
-                        {nip65Info && nip65Info.readers.length > 0 && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="flex items-center gap-0.5">
-                                <Mail className="w-3 h-3" />
-                                <span className="text-[10px]">
-                                  {nip65Info.readers.length}
-                                </span>
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              Inbox for {nip65Info.readers.length} author
-                              {nip65Info.readers.length !== 1 ? "s" : ""}
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                        {nip65Info && nip65Info.writers.length > 0 && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="flex items-center gap-0.5">
-                                <Send className="w-3 h-3" />
-                                <span className="text-[10px]">
-                                  {nip65Info.writers.length}
-                                </span>
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              Outbox for {nip65Info.writers.length} author
-                              {nip65Info.writers.length !== 1 ? "s" : ""}
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
+                  // Build comprehensive tooltip content
+                  const tooltipContent = (
+                    <div className="space-y-1 text-xs">
+                      <div className="font-semibold border-b border-border pb-1">
+                        {url}
                       </div>
-
-                      {/* Relay URL */}
-                      <RelayLink
-                        url={url}
-                        showInboxOutbox={false}
-                        className="flex-1 min-w-0 truncate font-mono text-foreground/80"
-                      />
-
-                      {/* Right side: stats and status */}
-                      <div className="flex items-center gap-1.5 flex-shrink-0 text-muted-foreground">
-                        {/* Event count */}
-                        {reqState && reqState.eventCount > 0 && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="flex items-center gap-0.5">
-                                <FileText className="size-3" />
-                                <span className="text-[10px]">
-                                  {reqState.eventCount}
+                      <div className="space-y-0.5 text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <span className="w-20">Connection:</span>
+                          <span className="text-foreground">
+                            {connIcon.label}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="w-20">Auth:</span>
+                          <span className="text-foreground">
+                            {authIcon.label}
+                          </span>
+                        </div>
+                        {reqState && (
+                          <>
+                            <div className="flex items-center gap-2">
+                              <span className="w-20">Subscription:</span>
+                              <span className="text-foreground capitalize">
+                                {reqState.subscriptionState}
+                              </span>
+                            </div>
+                            {reqState.eventCount > 0 && (
+                              <div className="flex items-center gap-2">
+                                <span className="w-20">Events:</span>
+                                <span className="text-foreground">
+                                  {reqState.eventCount} received
                                 </span>
                               </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {reqState.eventCount} events received
-                            </TooltipContent>
-                          </Tooltip>
+                            )}
+                          </>
                         )}
-
-                        {/* EOSE indicator */}
-                        {reqState && reqState.subscriptionState === "eose" && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="flex items-center gap-0.5">
-                                <span className="text-[10px] text-muted-foreground">
-                                  EOSE
+                        {nip65Info && (
+                          <>
+                            {nip65Info.readers.length > 0 && (
+                              <div className="flex items-center gap-2">
+                                <span className="w-20">Inbox:</span>
+                                <span className="text-foreground">
+                                  {nip65Info.readers.length} author
+                                  {nip65Info.readers.length !== 1 ? "s" : ""}
                                 </span>
                               </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              End of stored events received
-                            </TooltipContent>
-                          </Tooltip>
+                            )}
+                            {nip65Info.writers.length > 0 && (
+                              <div className="flex items-center gap-2">
+                                <span className="w-20">Outbox:</span>
+                                <span className="text-foreground">
+                                  {nip65Info.writers.length} author
+                                  {nip65Info.writers.length !== 1 ? "s" : ""}
+                                </span>
+                              </div>
+                            )}
+                          </>
                         )}
-
-                        {/* Auth icon */}
-                        {authIcon && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="cursor-help">{authIcon.icon}</div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{authIcon.label}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-
-                        {/* Connection icon */}
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="cursor-help">{connIcon.icon}</div>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>{connIcon.label}</p>
-                          </TooltipContent>
-                        </Tooltip>
                       </div>
                     </div>
+                  );
+
+                  return (
+                    <Tooltip key={url}>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-2 text-xs py-1 px-3 hover:bg-accent/5 cursor-default">
+                          {/* Relay URL */}
+                          <RelayLink
+                            url={url}
+                            showInboxOutbox={false}
+                            className="flex-1 min-w-0 truncate font-mono text-foreground/80"
+                          />
+
+                          {/* Right side: compact status icons */}
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {/* Event count badge */}
+                            {reqState && reqState.eventCount > 0 && (
+                              <div className="text-[10px] text-muted-foreground font-medium">
+                                [{reqState.eventCount}]
+                              </div>
+                            )}
+
+                            {/* EOSE checkmark */}
+                            {reqState &&
+                              reqState.subscriptionState === "eose" && (
+                                <Check className="size-3 text-green-600/70" />
+                              )}
+
+                            {/* Auth icon (always visible) */}
+                            <div>{authIcon.icon}</div>
+
+                            {/* Connection icon (always visible) */}
+                            <div>{connIcon.icon}</div>
+                          </div>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="left" className="max-w-xs">
+                        {tooltipContent}
+                      </TooltipContent>
+                    </Tooltip>
                   );
                 };
 
