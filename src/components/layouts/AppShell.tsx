@@ -70,7 +70,9 @@ export function AppShell({ children }: AppShellProps) {
 
           <UserMenu />
         </header>
-        <section className="flex-1 relative overflow-hidden">{children}</section>
+        <section className="flex-1 relative overflow-hidden">
+          {children}
+        </section>
         <TabBar />
       </main>
     </AppShellContext.Provider>

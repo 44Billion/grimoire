@@ -51,7 +51,7 @@ export function GenericRepostCompactPreview({ event }: { event: NostrEvent }) {
             pubkey={repostedEvent.pubkey}
             className="text-sm shrink-0"
           />
-          <span className="truncate">
+          <span className="truncate line-clamp-1">
             <RichText
               content={preview || ""}
               className="inline text-sm leading-none"

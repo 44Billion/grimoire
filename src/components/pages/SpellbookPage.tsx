@@ -41,7 +41,7 @@ export default function SpellbookPage() {
   // 1. Resolve actor to pubkey
   useEffect(() => {
     if (!actor) {
-        // Should not happen in this route, but safe guard
+      // Should not happen in this route, but safe guard
       return;
     }
 
@@ -101,8 +101,10 @@ export default function SpellbookPage() {
   useEffect(() => {
     if (spellbookEvent && !hasLoadedSpellbook) {
       try {
-        const parsedSpellbook = parseSpellbook(spellbookEvent as SpellbookEvent);
-        
+        const parsedSpellbook = parseSpellbook(
+          spellbookEvent as SpellbookEvent,
+        );
+
         const isPreviewPath = location.pathname.startsWith("/preview/"); // Check if it's a preview route
 
         if (isPreviewPath) {
@@ -118,60 +120,58 @@ export default function SpellbookPage() {
           // Navigating to / (Home) will restore the user's dashboard.
           switchToTemporary(parsedSpellbook);
         }
-        
-        setHasLoadedSpellbook(true); // Mark as loaded, regardless of preview or direct load
 
+        setHasLoadedSpellbook(true); // Mark as loaded, regardless of preview or direct load
       } catch (e) {
         console.error("Failed to parse spellbook:", e);
         toast.error("Failed to load spellbook");
         setHasLoadedSpellbook(true); // Ensure we don't re-attempt on error
       }
     }
-  }, [spellbookEvent, hasLoadedSpellbook, switchToTemporary, applyTemporaryToPersistent, location.pathname]);
+  }, [
+    spellbookEvent,
+    hasLoadedSpellbook,
+    switchToTemporary,
+    applyTemporaryToPersistent,
+    location.pathname,
+  ]);
 
   // Cleanup when leaving the page (unmounting)
   // But wait, if we navigate to /, we want to discard.
   // If we apply, we navigate to / but we applied first.
   useEffect(() => {
-      return () => {
-          // If we are unmounting and still temporary, check if we need to cleanup?
-          // Actually, AppShell wraps this. If we navigate to /, DashboardPage mounts.
-          // DashboardPage doesn't enforce cleanup.
-          // So we should cleanup here if we leave this route without applying.
-          
-          // Ideally, we'd check if we are navigating to "Apply". 
-          // But applyTemporaryToPersistent clears temporary state internally? 
-          // No, it just merges it. 
-          
-          // Let's look at `useGrimoire`:
-          // applyTemporaryToPersistent -> dispatch({ type: "APPLY_TEMP" }) -> sets grimoireStateAtom = temp, internalTemporaryStateAtom = null.
-          
-          // So if we applied, isTemporary is false.
-          // If we navigate away without applying, isTemporary is true.
-          // But we can't easily check "isTemporary" in cleanup function because of closure staleness?
-          // Use a ref or rely on the next component to not show temporary state?
-          // Actually, the global state holds the temporary state.
-          // If the user clicks "Home", they expect their old state.
-          
-          // The previous logic in Home.tsx was:
-          // useEffect(() => { if (!actor && isTemporary) discardTemporary() }, [actor, isTemporary])
-          
-          // Since we are unmounting SpellbookPage, we are going somewhere else.
-          // If that somewhere else is NOT a spellbook page, we might want to discard.
-          // But maybe we want to keep it if we navigate to "Settings" (modal) or something? 
-          // But those are likely overlays.
-          
-          // For now, let's rely on the user explicitly discarding or applying via the banner,
-          // OR implement the "Guard" in DashboardPage to discard if it finds itself in temporary mode?
-          // Or just discard on unmount if we didn't apply?
-          // That's hard to track.
-          
-          // Let's implement the cleanup in DashboardPage!
-          // If DashboardPage mounts and isTemporary is true, it means we navigated back home.
-          // But wait, what if we "Applied"? Then isTemporary is false.
-          // So if DashboardPage mounts and isTemporary is TRUE, we should discard?
-          // Yes, that replicates the Home.tsx logic: "if (!actor) ... discard".
-      };
+    return () => {
+      // If we are unmounting and still temporary, check if we need to cleanup?
+      // Actually, AppShell wraps this. If we navigate to /, DashboardPage mounts.
+      // DashboardPage doesn't enforce cleanup.
+      // So we should cleanup here if we leave this route without applying.
+      // Ideally, we'd check if we are navigating to "Apply".
+      // But applyTemporaryToPersistent clears temporary state internally?
+      // No, it just merges it.
+      // Let's look at `useGrimoire`:
+      // applyTemporaryToPersistent -> dispatch({ type: "APPLY_TEMP" }) -> sets grimoireStateAtom = temp, internalTemporaryStateAtom = null.
+      // So if we applied, isTemporary is false.
+      // If we navigate away without applying, isTemporary is true.
+      // But we can't easily check "isTemporary" in cleanup function because of closure staleness?
+      // Use a ref or rely on the next component to not show temporary state?
+      // Actually, the global state holds the temporary state.
+      // If the user clicks "Home", they expect their old state.
+      // The previous logic in Home.tsx was:
+      // useEffect(() => { if (!actor && isTemporary) discardTemporary() }, [actor, isTemporary])
+      // Since we are unmounting SpellbookPage, we are going somewhere else.
+      // If that somewhere else is NOT a spellbook page, we might want to discard.
+      // But maybe we want to keep it if we navigate to "Settings" (modal) or something?
+      // But those are likely overlays.
+      // For now, let's rely on the user explicitly discarding or applying via the banner,
+      // OR implement the "Guard" in DashboardPage to discard if it finds itself in temporary mode?
+      // Or just discard on unmount if we didn't apply?
+      // That's hard to track.
+      // Let's implement the cleanup in DashboardPage!
+      // If DashboardPage mounts and isTemporary is true, it means we navigated back home.
+      // But wait, what if we "Applied"? Then isTemporary is false.
+      // So if DashboardPage mounts and isTemporary is TRUE, we should discard?
+      // Yes, that replicates the Home.tsx logic: "if (!actor) ... discard".
+    };
   }, []);
 
   const handleApplySpellbook = () => {
@@ -191,7 +191,7 @@ export default function SpellbookPage() {
     navigator.clipboard.writeText(link);
     toast.success("Link copied to clipboard");
   };
-  
+
   const formatTimestamp = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
     const now = Date.now();
@@ -213,68 +213,68 @@ export default function SpellbookPage() {
 
   return (
     <div className="flex flex-col h-full relative">
-       {/* Banner Layer */}
-       {showBanner && (
-          <div className="absolute top-0 left-0 right-0 bg-accent text-accent-foreground px-4 py-1.5 flex items-center justify-between text-sm font-medium animate-in slide-in-from-top duration-300 shadow-md z-50">
-            <div className="flex items-center gap-3">
-              <BookHeart className="size-4 flex-shrink-0" />
-              <div className="flex flex-col gap-0.5">
-                <span className="font-semibold">
-                  {spellbookEvent?.tags.find((t) => t[0] === "title")?.[1] ||
-                    "Spellbook"}
+      {/* Banner Layer */}
+      {showBanner && (
+        <div className="absolute top-0 left-0 right-0 bg-accent text-accent-foreground px-4 py-1.5 flex items-center justify-between text-sm font-medium animate-in slide-in-from-top duration-300 shadow-md z-50">
+          <div className="flex items-center gap-3">
+            <BookHeart className="size-4 flex-shrink-0" />
+            <div className="flex flex-col gap-0.5">
+              <span className="font-semibold">
+                {spellbookEvent?.tags.find((t) => t[0] === "title")?.[1] ||
+                  "Spellbook"}
+              </span>
+              {spellbookEvent && (
+                <span className="text-xs text-accent-foreground/70 flex items-center gap-2">
+                  {authorProfile?.name || resolvedPubkey?.slice(0, 8)}
+                  <span className="text-accent-foreground/50">•</span>
+                  {formatTimestamp(spellbookEvent.created_at)}
                 </span>
-                {spellbookEvent && (
-                  <span className="text-xs text-accent-foreground/70 flex items-center gap-2">
-                    {authorProfile?.name || resolvedPubkey?.slice(0, 8)}
-                    <span className="text-accent-foreground/50">•</span>
-                    {formatTimestamp(spellbookEvent.created_at)}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 hover:bg-black/10 text-accent-foreground"
-                onClick={handleCopyLink}
-                title="Copy share link"
-              >
-                <LinkIcon className="size-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 hover:bg-black/10 text-accent-foreground font-bold"
-                onClick={handleDiscardPreview}
-              >
-                <X className="size-3.5 mr-1" />
-                Discard
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="h-7 bg-white text-accent hover:bg-white/90 font-bold shadow-sm"
-                onClick={handleApplySpellbook}
-              >
-                <Check className="size-3.5 mr-1" />
-                Apply Spellbook
-              </Button>
+              )}
             </div>
           </div>
-        )}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 hover:bg-black/10 text-accent-foreground"
+              onClick={handleCopyLink}
+              title="Copy share link"
+            >
+              <LinkIcon className="size-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 hover:bg-black/10 text-accent-foreground font-bold"
+              onClick={handleDiscardPreview}
+            >
+              <X className="size-3.5 mr-1" />
+              Discard
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-7 bg-white text-accent hover:bg-white/90 font-bold shadow-sm"
+              onClick={handleApplySpellbook}
+            >
+              <Check className="size-3.5 mr-1" />
+              Apply Spellbook
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Loading States */}
       {isResolving && (
-         <div className="absolute top-0 left-0 right-0 z-40 bg-muted px-4 py-2 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            <span>Resolving {actor}...</span>
-          </div>
+        <div className="absolute top-0 left-0 right-0 z-40 bg-muted px-4 py-2 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" />
+          <span>Resolving {actor}...</span>
+        </div>
       )}
       {resolutionError && (
-         <div className="absolute top-0 left-0 right-0 z-40 bg-destructive/10 text-destructive px-4 py-2 flex items-center justify-center text-sm">
-            <span>Failed to resolve actor: {resolutionError}</span>
-          </div>
+        <div className="absolute top-0 left-0 right-0 z-40 bg-destructive/10 text-destructive px-4 py-2 flex items-center justify-center text-sm">
+          <span>Failed to resolve actor: {resolutionError}</span>
+        </div>
       )}
 
       {/* Main Content */}
@@ -283,7 +283,9 @@ export default function SpellbookPage() {
           <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground animate-in fade-in duration-500">
             <Loader2 className="size-8 animate-spin text-primary/50" />
             <div className="flex flex-col items-center gap-1">
-              <p className="font-medium text-foreground">Loading Spellbook...</p>
+              <p className="font-medium text-foreground">
+                Loading Spellbook...
+              </p>
               <p className="text-xs">Fetching from the relays</p>
             </div>
           </div>

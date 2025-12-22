@@ -76,7 +76,7 @@ export function DefaultCompactPreview({ event }: { event: NostrEvent }) {
       : title;
 
   return (
-    <span className="truncate text-muted-foreground text-sm">
+    <span className="truncate line-clamp-1 text-muted-foreground text-sm">
       <RichText
         content={displayText}
         className="inline text-sm leading-none"

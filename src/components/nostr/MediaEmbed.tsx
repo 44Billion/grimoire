@@ -363,7 +363,8 @@ export function MediaEmbed({
       <div
         className={cn(
           "flex items-center gap-3",
-          onAudioClick && "cursor-crosshair hover:opacity-80 transition-opacity",
+          onAudioClick &&
+            "cursor-crosshair hover:opacity-80 transition-opacity",
           className,
         )}
         onClick={onAudioClick ? handleAudioClick : undefined}

@@ -43,7 +43,7 @@ export function ShareSpellbookDialog({
 
       // Get relays from event or fallback to author's outbox relays
       let relays = event.tags.filter((t) => t[0] === "r").map((t) => t[1]);
-      
+
       if (relays.length === 0) {
         const authorRelays = await relayListCache.getOutboxRelays(event.pubkey);
         if (authorRelays) {
