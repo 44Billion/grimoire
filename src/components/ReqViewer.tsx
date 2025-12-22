@@ -1150,8 +1150,9 @@ export default function ReqViewer({
                           <div className="flex items-center gap-1.5 flex-shrink-0">
                             {/* Event count badge */}
                             {reqState && reqState.eventCount > 0 && (
-                              <div className="text-[10px] text-muted-foreground font-medium">
-                                [{reqState.eventCount}]
+                              <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-medium">
+                                <FileText className="size-2.5" />
+                                <span>{reqState.eventCount}</span>
                               </div>
                             )}
 
