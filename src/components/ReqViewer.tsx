@@ -977,13 +977,12 @@ export default function ReqViewer({
               align="end"
               className="w-80 max-h-96 overflow-y-auto"
             >
-              {/* Relay Status (condensed: connection + subscription + NIP-65) */}
-              {!relays && reasoning && reasoning.length > 0 ? (
-                /* NIP-65 Relay Selection with status */
-                <div className="py-2">
-                  <div className="px-3 py-1 text-xs font-semibold text-muted-foreground">
-                    Relay Selection
-                    {isOptimized && (
+              {/* Relay Status - shows ALL queried relays (outbox + fallback or explicit) */}
+              <div className="py-1">
+                <div className="px-3 py-1 text-xs font-semibold text-muted-foreground">
+                  {!relays && isOptimized ? (
+                    <>
+                      Relay Selection{" "}
                       <span className="ml-1.5 font-normal">
                         (
                         <button
@@ -997,210 +996,133 @@ export default function ReqViewer({
                         </button>
                         )
                       </span>
-                    )}
-                  </div>
+                    </>
+                  ) : (
+                    "Relay Status"
+                  )}
+                </div>
 
-                  {/* Relay list with connection, subscription, and NIP-65 info */}
-                  <div className="px-3 py-1 space-y-1">
-                    {reasoning.map((r, i) => {
-                      const globalState = relayStates[r.relay];
-                      const reqState = reqRelayStates.get(r.relay);
-                      const connIcon = getConnectionIcon(globalState);
-                      const authIcon = getAuthIcon(globalState);
-                      const badge = reqState
-                        ? getRelayStateBadge(reqState)
-                        : null;
+                {/* Always show ALL relays from finalRelays (what's actually queried) */}
+                <div className="px-3 py-1 space-y-1">
+                  {finalRelays.map((url) => {
+                    const globalState = relayStates[url];
+                    const reqState = reqRelayStates.get(url);
+                    const connIcon = getConnectionIcon(globalState);
+                    const authIcon = getAuthIcon(globalState);
+                    const badge = reqState
+                      ? getRelayStateBadge(reqState)
+                      : null;
 
-                      return (
-                        <div
-                          key={i}
-                          className="flex items-center gap-2 text-xs py-0.5"
-                        >
-                          <RelayLink
-                            url={r.relay}
-                            showInboxOutbox={false}
-                            className="flex-1 truncate font-mono text-foreground/80"
-                          />
-                          <div className="flex items-center gap-1.5 flex-shrink-0 text-muted-foreground">
-                            {/* Event count */}
-                            {reqState && reqState.eventCount > 0 && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center gap-0.5">
-                                    <FileText className="size-3" />
-                                    <span className="text-[10px]">
-                                      {reqState.eventCount}
-                                    </span>
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {reqState.eventCount} events received
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
+                    // Find NIP-65 info for this relay (if using outbox)
+                    const nip65Info = reasoning?.find((r) => r.relay === url);
 
-                            {/* Subscription state badge */}
-                            {badge && (
-                              <span className={`text-[10px] ${badge.color}`}>
-                                {badge.text}
-                              </span>
-                            )}
-
-                            {/* NIP-65 inbox/outbox indicators */}
-                            {r.readers.length > 0 && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center gap-0.5">
-                                    <Mail className="w-3 h-3" />
-                                    <span className="text-[10px]">
-                                      {r.readers.length}
-                                    </span>
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  Inbox relay for {r.readers.length} author
-                                  {r.readers.length !== 1 ? "s" : ""}
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
-                            {r.writers.length > 0 && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center gap-0.5">
-                                    <Send className="w-3 h-3" />
-                                    <span className="text-[10px]">
-                                      {r.writers.length}
-                                    </span>
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  Outbox relay for {r.writers.length} author
-                                  {r.writers.length !== 1 ? "s" : ""}
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
-
-                            {/* Fallback indicator */}
-                            {r.isFallback && (
-                              <span className="text-[10px] text-muted-foreground/60">
-                                fallback
-                              </span>
-                            )}
-
-                            {/* Auth icon */}
-                            {authIcon && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="cursor-help">
-                                    {authIcon.icon}
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>{authIcon.label}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
-
-                            {/* Connection icon */}
+                    return (
+                      <div
+                        key={url}
+                        className="flex items-center gap-2 text-xs py-0.5"
+                      >
+                        <RelayLink
+                          url={url}
+                          showInboxOutbox={false}
+                          className="flex-1 truncate font-mono text-foreground/80"
+                        />
+                        <div className="flex items-center gap-1.5 flex-shrink-0 text-muted-foreground">
+                          {/* Event count */}
+                          {reqState && reqState.eventCount > 0 && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <div className="cursor-help">
-                                  {connIcon.icon}
+                                <div className="flex items-center gap-0.5">
+                                  <FileText className="size-3" />
+                                  <span className="text-[10px]">
+                                    {reqState.eventCount}
+                                  </span>
                                 </div>
                               </TooltipTrigger>
                               <TooltipContent>
-                                <p>{connIcon.label}</p>
+                                {reqState.eventCount} events received
                               </TooltipContent>
                             </Tooltip>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : (
-                /* Explicit relays: show simple status list */
-                <div className="py-1">
-                  <div className="px-3 py-1 text-xs font-semibold text-muted-foreground">
-                    Relay Status
-                  </div>
-                  <div className="px-3 py-1 space-y-1">
-                    {finalRelays.map((url) => {
-                      const globalState = relayStates[url];
-                      const reqState = reqRelayStates.get(url);
-                      const connIcon = getConnectionIcon(globalState);
-                      const authIcon = getAuthIcon(globalState);
-                      const badge = reqState
-                        ? getRelayStateBadge(reqState)
-                        : null;
+                          )}
 
-                      return (
-                        <div
-                          key={url}
-                          className="flex items-center gap-2 text-xs py-0.5"
-                        >
-                          <RelayLink
-                            url={url}
-                            showInboxOutbox={false}
-                            className="flex-1 truncate font-mono text-foreground/80"
-                          />
-                          <div className="flex items-center gap-1.5 flex-shrink-0 text-muted-foreground">
-                            {/* Event count */}
-                            {reqState && reqState.eventCount > 0 && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center gap-0.5">
-                                    <FileText className="size-3" />
-                                    <span className="text-[10px]">
-                                      {reqState.eventCount}
-                                    </span>
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {reqState.eventCount} events received
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
+                          {/* Subscription state badge */}
+                          {badge && (
+                            <span className={`text-[10px] ${badge.color}`}>
+                              {badge.text}
+                            </span>
+                          )}
 
-                            {/* Subscription state badge */}
-                            {badge && (
-                              <span className={`text-[10px] ${badge.color}`}>
-                                {badge.text}
-                              </span>
-                            )}
-
-                            {/* Auth icon */}
-                            {authIcon && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="cursor-help">
-                                    {authIcon.icon}
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>{authIcon.label}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
-
-                            {/* Connection icon */}
+                          {/* NIP-65 inbox/outbox indicators (if available) */}
+                          {nip65Info && nip65Info.readers.length > 0 && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <div className="cursor-help">
-                                  {connIcon.icon}
+                                <div className="flex items-center gap-0.5">
+                                  <Mail className="w-3 h-3" />
+                                  <span className="text-[10px]">
+                                    {nip65Info.readers.length}
+                                  </span>
                                 </div>
                               </TooltipTrigger>
                               <TooltipContent>
-                                <p>{connIcon.label}</p>
+                                Inbox relay for {nip65Info.readers.length}{" "}
+                                author
+                                {nip65Info.readers.length !== 1 ? "s" : ""}
                               </TooltipContent>
                             </Tooltip>
-                          </div>
+                          )}
+                          {nip65Info && nip65Info.writers.length > 0 && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="flex items-center gap-0.5">
+                                  <Send className="w-3 h-3" />
+                                  <span className="text-[10px]">
+                                    {nip65Info.writers.length}
+                                  </span>
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                Outbox relay for {nip65Info.writers.length}{" "}
+                                author
+                                {nip65Info.writers.length !== 1 ? "s" : ""}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+
+                          {/* Fallback indicator */}
+                          {nip65Info && nip65Info.isFallback && (
+                            <span className="text-[10px] text-muted-foreground/60">
+                              fallback
+                            </span>
+                          )}
+
+                          {/* Auth icon */}
+                          {authIcon && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="cursor-help">
+                                  {authIcon.icon}
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{authIcon.label}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+
+                          {/* Connection icon */}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="cursor-help">{connIcon.icon}</div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{connIcon.label}</p>
+                            </TooltipContent>
+                          </Tooltip>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
+              </div>
             </DropdownMenuContent>
           </DropdownMenu>
 
