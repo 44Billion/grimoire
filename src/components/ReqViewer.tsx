@@ -72,12 +72,12 @@ import { useCopy } from "@/hooks/useCopy";
 import { CodeCopyButton } from "@/components/CodeCopyButton";
 import { SyntaxHighlight } from "@/components/SyntaxHighlight";
 import { getConnectionIcon, getAuthIcon } from "@/lib/relay-status-utils";
+import { normalizeRelayURL } from "@/lib/relay-url";
 import {
   getStatusText,
   getStatusTooltip,
   getStatusColor,
   shouldAnimate,
-  getRelayStateBadge,
 } from "@/lib/req-state-machine";
 import { resolveFilterAliases, getTagValues } from "@/lib/nostr-utils";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
@@ -712,7 +712,6 @@ export default function ReqViewer({
   const {
     relays: selectedRelays,
     reasoning,
-    isOptimized,
     phase: relaySelectionPhase,
   } = useOutboxRelays(resolvedFilter, outboxOptions);
 
@@ -733,6 +732,20 @@ export default function ReqViewer({
     return selectedRelays;
   }, [relays, relaySelectionPhase, selectedRelays]);
 
+  // Normalize relay URLs for consistent lookups in relayStates
+  // RelayStateManager normalizes all URLs (adds trailing slash, lowercase, etc.)
+  // so we must normalize here too to match the keys in relayStates
+  const normalizedRelays = useMemo(() => {
+    return finalRelays.map((url) => {
+      try {
+        return normalizeRelayURL(url);
+      } catch (err) {
+        console.warn("Failed to normalize relay URL:", url, err);
+        return url; // Fallback to original URL if normalization fails
+      }
+    });
+  }, [finalRelays]);
+
   // Streaming is the default behavior, closeOnEose inverts it
   const stream = !closeOnEose;
 
@@ -746,7 +759,7 @@ export default function ReqViewer({
   } = useReqTimelineEnhanced(
     `req-${JSON.stringify(filter)}-${closeOnEose}`,
     resolvedFilter,
-    finalRelays,
+    normalizedRelays,
     { limit: resolvedFilter.limit || 50, stream },
   );
 
@@ -978,16 +991,22 @@ export default function ReqViewer({
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              className="w-80 max-h-96 overflow-y-auto"
+              className="w-96 max-h-96 overflow-y-auto"
             >
-              {/* Relay Status - shows ALL queried relays (outbox + fallback or explicit) */}
-              <div className="py-1">
-                <div className="px-3 py-1 text-xs font-semibold text-muted-foreground">
-                  {!relays && isOptimized ? (
+              {/* Header: Relay Selection Strategy */}
+              <div className="px-3 py-2 border-b border-border">
+                <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                  {relays ? (
+                    // Explicit relays
                     <>
-                      Relay Selection{" "}
-                      <span className="ml-1.5 font-normal">
-                        (
+                      <LinkIcon className="size-3 text-muted-foreground/60" />
+                      <span>Explicit Relays ({finalRelays.length})</span>
+                    </>
+                  ) : reasoning && reasoning.some((r) => !r.isFallback) ? (
+                    // NIP-65 Outbox
+                    <>
+                      <Sparkles className="size-3 text-muted-foreground/60" />
+                      <span>
                         <button
                           className="text-accent underline decoration-dotted cursor-crosshair"
                           onClick={(e) => {
@@ -995,168 +1014,202 @@ export default function ReqViewer({
                             addWindow("nip", { number: "65" });
                           }}
                         >
-                          NIP-65
-                        </button>
-                        )
+                          NIP-65 Outbox
+                        </button>{" "}
+                        ({finalRelays.length} relays)
                       </span>
                     </>
                   ) : (
-                    "Relay Status"
+                    // Fallback relays
+                    <>
+                      <Inbox className="size-3 text-muted-foreground/60" />
+                      <span>Fallback Relays ({finalRelays.length})</span>
+                    </>
                   )}
                 </div>
+              </div>
 
-                {/* Always show ALL relays from finalRelays (what's actually queried) */}
-                <div className="px-3 py-1 space-y-1">
-                  {finalRelays.map((url) => {
-                    const globalState = relayStates[url];
-                    const reqState = reqRelayStates.get(url);
-                    const connIcon = getConnectionIcon(globalState);
-                    const authIcon = getAuthIcon(globalState);
-                    const badge = reqState
-                      ? getRelayStateBadge(reqState)
-                      : null;
+              {(() => {
+                // Group relays by connection status
+                // Use normalizedRelays for lookups to match RelayStateManager's keys
+                const onlineRelays: string[] = [];
+                const disconnectedRelays: string[] = [];
 
-                    // Find NIP-65 info for this relay (if using outbox)
-                    const nip65Info = reasoning?.find((r) => r.relay === url);
+                normalizedRelays.forEach((url) => {
+                  const globalState = relayStates[url];
+                  const isConnected =
+                    globalState?.connectionState === "connected";
 
-                    // Determine relay type
-                    const relayType = relays
-                      ? "explicit" // Explicitly specified relays
-                      : nip65Info && !nip65Info.isFallback
-                        ? "outbox" // NIP-65 outbox relay
-                        : "fallback"; // Fallback relay
+                  if (isConnected) {
+                    onlineRelays.push(url);
+                  } else {
+                    disconnectedRelays.push(url);
+                  }
+                });
 
-                    // Type indicator icon
-                    const typeIcon = {
-                      explicit: (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <LinkIcon className="size-3 text-blue-500" />
-                          </TooltipTrigger>
-                          <TooltipContent>Explicit relay</TooltipContent>
-                        </Tooltip>
-                      ),
-                      outbox: (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Sparkles className="size-3 text-purple-500" />
-                          </TooltipTrigger>
-                          <TooltipContent>NIP-65 Outbox relay</TooltipContent>
-                        </Tooltip>
-                      ),
-                      fallback: (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Inbox className="size-3 text-muted-foreground/60" />
-                          </TooltipTrigger>
-                          <TooltipContent>Fallback relay</TooltipContent>
-                        </Tooltip>
-                      ),
-                    }[relayType];
+                const renderRelay = (url: string) => {
+                  const globalState = relayStates[url];
+                  const reqState = reqRelayStates.get(url);
+                  const connIcon = getConnectionIcon(globalState);
+                  const authIcon = getAuthIcon(globalState);
 
-                    return (
-                      <div
-                        key={url}
-                        className="flex items-center gap-2 text-xs py-0.5"
-                      >
-                        <RelayLink
-                          url={url}
-                          showInboxOutbox={false}
-                          className="flex-1 truncate font-mono text-foreground/80"
-                        />
-                        <div className="flex items-center gap-1.5 flex-shrink-0 text-muted-foreground">
-                          {/* Relay type indicator */}
-                          {typeIcon}
+                  // Find NIP-65 info for this relay (if using outbox)
+                  const nip65Info = reasoning?.find((r) => r.relay === url);
 
-                          {/* Event count */}
-                          {reqState && reqState.eventCount > 0 && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div className="flex items-center gap-0.5">
-                                  <FileText className="size-3" />
-                                  <span className="text-[10px]">
-                                    {reqState.eventCount}
-                                  </span>
-                                </div>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {reqState.eventCount} events received
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
+                  // Determine relay type
+                  const relayType = relays
+                    ? "explicit"
+                    : nip65Info && !nip65Info.isFallback
+                      ? "outbox"
+                      : "fallback";
 
-                          {/* Subscription state badge */}
-                          {badge && (
-                            <span className={`text-[10px] ${badge.color}`}>
-                              {badge.text}
-                            </span>
-                          )}
+                  // Type indicator icon (smaller, on left)
+                  const typeIcon = {
+                    explicit: (
+                      <LinkIcon className="size-3 text-muted-foreground/60 flex-shrink-0" />
+                    ),
+                    outbox: (
+                      <Sparkles className="size-3 text-muted-foreground/60 flex-shrink-0" />
+                    ),
+                    fallback: (
+                      <Inbox className="size-3 text-muted-foreground/60 flex-shrink-0" />
+                    ),
+                  }[relayType];
 
-                          {/* NIP-65 inbox/outbox indicators (if available) */}
-                          {nip65Info && nip65Info.readers.length > 0 && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div className="flex items-center gap-0.5">
-                                  <Mail className="w-3 h-3" />
-                                  <span className="text-[10px]">
-                                    {nip65Info.readers.length}
-                                  </span>
-                                </div>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                Inbox relay for {nip65Info.readers.length}{" "}
-                                author
-                                {nip65Info.readers.length !== 1 ? "s" : ""}
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                          {nip65Info && nip65Info.writers.length > 0 && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div className="flex items-center gap-0.5">
-                                  <Send className="w-3 h-3" />
-                                  <span className="text-[10px]">
-                                    {nip65Info.writers.length}
-                                  </span>
-                                </div>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                Outbox relay for {nip65Info.writers.length}{" "}
-                                author
-                                {nip65Info.writers.length !== 1 ? "s" : ""}
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
+                  return (
+                    <div
+                      key={url}
+                      className="flex items-center gap-2 text-xs py-1 px-3 hover:bg-accent/5"
+                    >
+                      {/* Type icon on left */}
+                      {typeIcon}
 
-                          {/* Auth icon */}
-                          {authIcon && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div className="cursor-help">
-                                  {authIcon.icon}
-                                </div>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>{authIcon.label}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
+                      {/* Relay URL */}
+                      <RelayLink
+                        url={url}
+                        showInboxOutbox={false}
+                        className="flex-1 min-w-0 truncate font-mono text-foreground/80"
+                      />
 
-                          {/* Connection icon */}
+                      {/* Right side: stats and status */}
+                      <div className="flex items-center gap-1.5 flex-shrink-0 text-muted-foreground">
+                        {/* Event count */}
+                        {reqState && reqState.eventCount > 0 && (
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <div className="cursor-help">{connIcon.icon}</div>
+                              <div className="flex items-center gap-0.5">
+                                <FileText className="size-3" />
+                                <span className="text-[10px]">
+                                  {reqState.eventCount}
+                                </span>
+                              </div>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>{connIcon.label}</p>
+                              {reqState.eventCount} events received
                             </TooltipContent>
                           </Tooltip>
-                        </div>
+                        )}
+
+                        {/* EOSE indicator */}
+                        {reqState && reqState.subscriptionState === "eose" && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center gap-0.5">
+                                <span className="text-[10px] text-muted-foreground">
+                                  EOSE
+                                </span>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              End of stored events received
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+
+                        {/* NIP-65 inbox/outbox indicators (if available) */}
+                        {nip65Info && nip65Info.readers.length > 0 && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center gap-0.5">
+                                <Mail className="w-3 h-3" />
+                                <span className="text-[10px]">
+                                  {nip65Info.readers.length}
+                                </span>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Inbox for {nip65Info.readers.length} author
+                              {nip65Info.readers.length !== 1 ? "s" : ""}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        {nip65Info && nip65Info.writers.length > 0 && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center gap-0.5">
+                                <Send className="w-3 h-3" />
+                                <span className="text-[10px]">
+                                  {nip65Info.writers.length}
+                                </span>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Outbox for {nip65Info.writers.length} author
+                              {nip65Info.writers.length !== 1 ? "s" : ""}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+
+                        {/* Auth icon */}
+                        {authIcon && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="cursor-help">{authIcon.icon}</div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{authIcon.label}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+
+                        {/* Connection icon */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="cursor-help">{connIcon.icon}</div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{connIcon.label}</p>
+                          </TooltipContent>
+                        </Tooltip>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
+                    </div>
+                  );
+                };
+
+                return (
+                  <>
+                    {/* Online Section */}
+                    {onlineRelays.length > 0 && (
+                      <div className="py-2">
+                        <div className="px-3 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                          Online ({onlineRelays.length})
+                        </div>
+                        {onlineRelays.map(renderRelay)}
+                      </div>
+                    )}
+
+                    {/* Disconnected Section */}
+                    {disconnectedRelays.length > 0 && (
+                      <div className="py-2 border-t border-border">
+                        <div className="px-3 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                          Disconnected ({disconnectedRelays.length})
+                        </div>
+                        {disconnectedRelays.map(renderRelay)}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </DropdownMenuContent>
           </DropdownMenu>
 
