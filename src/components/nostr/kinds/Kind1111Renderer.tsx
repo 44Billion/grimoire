@@ -79,7 +79,7 @@ function ParentEventCard({
         pubkey={parentEvent.pubkey}
         className="text-accent font-semibold flex-shrink-0"
       />
-      <div className="text-muted-foreground truncate min-w-0 flex-1">
+      <div className="text-muted-foreground truncate line-clamp-1 min-w-0 flex-1">
         {getEventDisplayTitle(parentEvent, false) || (
           <RichText
             event={parentEvent}

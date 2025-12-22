@@ -51,7 +51,7 @@ export function ZapCompactPreview({ event }: { event: NostrEvent }) {
         {amountInSats.toLocaleString("en", { notation: "compact" })}
       </span>
       {zapMessage && (
-        <span className="flex-1">
+        <span className="flex-1 truncate line-clamp-1">
           <RichText
             content={zapMessage}
             className="inline text-sm leading-none"
@@ -65,7 +65,7 @@ export function ZapCompactPreview({ event }: { event: NostrEvent }) {
             pubkey={zappedEvent.pubkey}
             className="text-sm truncate line-clamp-1"
           />
-          <span className="text-muted-foreground truncate">
+          <span className="text-muted-foreground truncate line-clamp-1">
             <RichText
               content={preview || ""}
               className="inline text-sm leading-none"

@@ -390,13 +390,13 @@ export function SpellbooksViewer() {
           content: spellbook.content,
         }),
       );
-      
+
       if (event) {
         await publishEvent(event);
         // Only mark as published AFTER successful relay publish
         await markSpellbookPublished(spellbook.id, event as SpellbookEvent);
       }
-      
+
       toast.success("Spellbook published");
     } catch (error) {
       toast.error(

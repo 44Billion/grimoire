@@ -7,7 +7,7 @@ import { getKindName } from "@/constants/kinds";
 
 function EventPlaceholder({ kind }: { kind?: number }) {
   const name = kind !== undefined ? getKindName(kind) : "event";
-  return <span className="text-muted-foreground text-sm">[{name}]</span>;
+  return <span className="text-muted-foreground">[{name}]</span>;
 }
 
 interface MentionNodeProps {
