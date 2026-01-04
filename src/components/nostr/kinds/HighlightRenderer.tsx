@@ -49,11 +49,25 @@ export function Kind9802Renderer({ event }: BaseEventProps) {
     }
   };
 
+  // Create synthetic event for comment rendering (preserves emoji tags)
+  const commentEvent = comment
+    ? {
+        ...event,
+        content: comment,
+      }
+    : undefined;
+
   return (
     <BaseEventContainer event={event}>
       <div className="flex flex-col gap-2">
         {/* Comment */}
-        {comment && <p className="text-sm text-foreground">{comment}</p>}
+        {commentEvent && (
+          <RichText
+            event={commentEvent}
+            className="text-sm text-foreground"
+            options={{ showMedia: false, showEventEmbeds: false }}
+          />
+        )}
 
         {/* Highlighted text */}
         {highlightText && (
