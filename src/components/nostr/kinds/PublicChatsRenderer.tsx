@@ -1,5 +1,9 @@
+import { use$ } from "applesauce-react/hooks";
+import { map } from "rxjs/operators";
 import { BaseEventProps, BaseEventContainer } from "./BaseEventRenderer";
 import { GroupLink } from "../GroupLink";
+import eventStore from "@/services/event-store";
+import type { NostrEvent } from "@/types/nostr";
 
 /**
  * Extract group references from a kind 10009 event
@@ -27,9 +31,34 @@ function extractGroups(event: { tags: string[][] }): Array<{
  * Public Chats Renderer (Kind 10009)
  * NIP-51 list of NIP-29 groups
  * Displays each group as a clickable link with icon and name
+ * Batch-loads metadata for all groups to show their names
  */
 export function PublicChatsRenderer({ event }: BaseEventProps) {
   const groups = extractGroups(event);
+
+  // Batch-load metadata for all groups at once
+  // Filter out "_" which is the unmanaged relay group (doesn't have metadata)
+  const groupIds = groups.map((g) => g.groupId).filter((id) => id !== "_");
+
+  const groupMetadataMap = use$(
+    () =>
+      groupIds.length > 0
+        ? eventStore.timeline([{ kinds: [39000], "#d": groupIds }]).pipe(
+            map((events) => {
+              const metadataMap = new Map<string, NostrEvent>();
+              for (const evt of events) {
+                // Extract group ID from #d tag
+                const dTag = evt.tags.find((t) => t[0] === "d");
+                if (dTag && dTag[1]) {
+                  metadataMap.set(dTag[1], evt);
+                }
+              }
+              return metadataMap;
+            }),
+          )
+        : undefined,
+    [groupIds.join(",")],
+  );
 
   if (groups.length === 0) {
     return (
@@ -49,6 +78,7 @@ export function PublicChatsRenderer({ event }: BaseEventProps) {
             key={`${group.relayUrl}'${group.groupId}`}
             groupId={group.groupId}
             relayUrl={group.relayUrl}
+            metadata={groupMetadataMap?.get(group.groupId)}
           />
         ))}
       </div>

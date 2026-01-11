@@ -1,22 +1,21 @@
 import { MessageSquare } from "lucide-react";
 import { useGrimoire } from "@/core/state";
 import { cn } from "@/lib/utils";
-import { use$ } from "applesauce-react/hooks";
-import { map } from "rxjs/operators";
-import eventStore from "@/services/event-store";
 import { getTagValue } from "applesauce-core/helpers";
+import type { NostrEvent } from "@/types/nostr";
 
 /**
- * Format group identifier for display
- * Shows just the group-id part without the relay URL
+ * Format relay URL for display
+ * Removes protocol and trailing slash
  */
-function formatGroupIdForDisplay(groupId: string): string {
-  return groupId;
+function formatRelayForDisplay(url: string): string {
+  return url.replace(/^wss?:\/\//, "").replace(/\/$/, "");
 }
 
 export interface GroupLinkProps {
   groupId: string;
   relayUrl: string;
+  metadata?: NostrEvent; // Optional pre-loaded metadata
   className?: string;
   iconClassname?: string;
 }
@@ -25,35 +24,36 @@ export interface GroupLinkProps {
  * GroupLink - Clickable NIP-29 group component
  * Displays group name (from kind 39000 metadata) or group ID
  * Opens chat window on click
+ *
+ * Special case: "_" group ID represents the unmanaged relay top-level group
  */
 export function GroupLink({
   groupId,
   relayUrl,
+  metadata,
   className,
   iconClassname,
 }: GroupLinkProps) {
   const { addWindow } = useGrimoire();
 
-  // Try to fetch group metadata (kind 39000) from EventStore
-  // NIP-29 metadata events use #d tag with group ID
-  const groupMetadata = use$(
-    () =>
-      eventStore
-        .timeline([{ kinds: [39000], "#d": [groupId], limit: 1 }])
-        .pipe(map((events) => events[0])),
-    [groupId],
-  );
+  // Handle special case: "_" is the unmanaged relay top-level group
+  const isUnmanagedGroup = groupId === "_";
 
   // Extract group name from metadata if available
-  const groupName =
-    groupMetadata && groupMetadata.kind === 39000
-      ? getTagValue(groupMetadata, "name") || groupId
-      : groupId;
+  let groupName: string;
+  if (isUnmanagedGroup) {
+    // For "_" groups, show the relay name
+    groupName = formatRelayForDisplay(relayUrl);
+  } else if (metadata && metadata.kind === 39000) {
+    groupName = getTagValue(metadata, "name") || groupId;
+  } else {
+    groupName = groupId;
+  }
 
-  // Extract group icon if available
+  // Extract group icon if available (not applicable for "_" groups)
   const groupIcon =
-    groupMetadata && groupMetadata.kind === 39000
-      ? getTagValue(groupMetadata, "picture")
+    !isUnmanagedGroup && metadata && metadata.kind === 39000
+      ? getTagValue(metadata, "picture")
       : undefined;
 
   const handleClick = () => {
@@ -67,8 +67,6 @@ export function GroupLink({
       },
     });
   };
-
-  const displayName = formatGroupIdForDisplay(groupName);
 
   return (
     <div
@@ -93,7 +91,7 @@ export function GroupLink({
             )}
           />
         )}
-        <span className="text-xs truncate">{displayName}</span>
+        <span className="text-xs truncate">{groupName}</span>
       </div>
     </div>
   );

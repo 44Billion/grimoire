@@ -123,16 +123,9 @@ export function ChatViewer({
   return (
     <div className="flex h-full flex-col">
       {/* Header with conversation info and controls */}
-      <div className="px-1 border-b w-full">
+      <div className="px-4 border-b w-full py-0.5">
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-1 min-w-0 items-center gap-2">
-            {conversation.metadata?.icon && (
-              <img
-                src={conversation.metadata.icon}
-                alt={conversation.title}
-                className="h-4 w-4 object-cover flex-shrink-0"
-              />
-            )}
             <div className="flex-1 flex flex-row gap-2 items-baseline min-w-0">
               <h2 className="truncate text-base font-semibold">
                 {customTitle || conversation.title}
