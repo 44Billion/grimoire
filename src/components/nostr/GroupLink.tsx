@@ -57,9 +57,15 @@ export function GroupLink({
       : undefined;
 
   const handleClick = () => {
-    // Open chat with NIP-29 format: relay'group-id
-    const identifier = `${relayUrl}'${groupId}`;
-    addWindow("chat", { protocol: "nip-29", identifier });
+    // Open chat with properly structured ProtocolIdentifier
+    addWindow("chat", {
+      protocol: "nip-29",
+      identifier: {
+        type: "group",
+        value: groupId,
+        relays: [relayUrl],
+      },
+    });
   };
 
   const displayName = formatGroupIdForDisplay(groupName);
