@@ -590,7 +590,7 @@ export class Nip29Adapter extends ChatProtocolAdapter {
         content = "joined";
       } else if (event.kind === 9001) {
         // remove-user: admin removes someone
-        content = affectedPubkey === event.pubkey ? "left" : "was removed";
+        content = "left";
       }
 
       return {
