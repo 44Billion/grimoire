@@ -189,7 +189,7 @@ const MessageItem = memo(function MessageItem({
       undefined;
 
     return (
-      <div className="pl-2 mb-1">
+      <div className="pl-2 my-1">
         <div
           className="p-[1px] rounded"
           style={{
