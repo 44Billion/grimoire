@@ -2,16 +2,19 @@ import { useMemo, useState, memo, useCallback, useRef } from "react";
 import { use$ } from "applesauce-react/hooks";
 import { from } from "rxjs";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
-import { Reply } from "lucide-react";
+import { Reply, Zap } from "lucide-react";
+import { getZapRequest } from "applesauce-common/helpers/zap";
 import accountManager from "@/services/accounts";
 import eventStore from "@/services/event-store";
 import type {
   ChatProtocol,
   ProtocolIdentifier,
   Conversation,
+  LiveActivityMetadata,
 } from "@/types/chat";
 // import { NipC7Adapter } from "@/lib/chat/adapters/nip-c7-adapter";  // Coming soon
 import { Nip29Adapter } from "@/lib/chat/adapters/nip-29-adapter";
+import { Nip53Adapter } from "@/lib/chat/adapters/nip-53-adapter";
 import type { ChatProtocolAdapter } from "@/lib/chat/adapters/base-adapter";
 import type { Message } from "@/types/chat";
 import { UserName } from "./nostr/UserName";
@@ -20,6 +23,7 @@ import Timestamp from "./Timestamp";
 import { ReplyPreview } from "./chat/ReplyPreview";
 import { MembersDropdown } from "./chat/MembersDropdown";
 import { RelaysDropdown } from "./chat/RelaysDropdown";
+import { StatusBadge } from "./live/StatusBadge";
 import { useGrimoire } from "@/core/state";
 import { Button } from "./ui/button";
 import {
@@ -164,6 +168,55 @@ const MessageItem = memo(function MessageItem({
           * <UserName pubkey={message.author} className="text-xs" />{" "}
           {message.content}
         </span>
+      </div>
+    );
+  }
+
+  // Zap messages have special styling with gradient border
+  if (message.type === "zap") {
+    const zapRequest = message.event ? getZapRequest(message.event) : null;
+
+    return (
+      <div className="px-3 py-1">
+        <div
+          className="rounded-lg p-[1px]"
+          style={{
+            background:
+              "linear-gradient(to right, rgb(250 204 21), rgb(251 146 60), rgb(168 85 247), rgb(34 211 238))",
+          }}
+        >
+          <div className="rounded-lg bg-background px-3 py-1.5">
+            <div className="flex items-center gap-2">
+              <UserName
+                pubkey={message.author}
+                className="font-semibold text-sm"
+              />
+              <Zap className="size-4 fill-yellow-500 text-yellow-500" />
+              <span className="text-yellow-500 font-bold">
+                {(message.metadata?.zapAmount || 0).toLocaleString("en", {
+                  notation: "compact",
+                })}
+              </span>
+              {message.metadata?.zapRecipient && (
+                <UserName
+                  pubkey={message.metadata.zapRecipient}
+                  className="text-sm"
+                />
+              )}
+              <span className="text-xs text-muted-foreground">
+                <Timestamp timestamp={message.timestamp} />
+              </span>
+            </div>
+            {message.content && (
+              <RichText
+                content={message.content}
+                event={zapRequest || undefined}
+                className="mt-1 text-sm leading-tight break-words"
+                options={{ showMedia: false, showEventEmbeds: false }}
+              />
+            )}
+          </div>
+        </div>
       </div>
     );
   }
@@ -331,8 +384,46 @@ export function ChatViewer({
   const handleNipClick = useCallback(() => {
     if (conversation?.protocol === "nip-29") {
       addWindow("nip", { number: 29 });
+    } else if (conversation?.protocol === "nip-53") {
+      addWindow("nip", { number: 53 });
     }
   }, [conversation?.protocol, addWindow]);
+
+  // Get live activity metadata if this is a NIP-53 chat
+  const liveActivity = conversation?.metadata?.liveActivity as
+    | LiveActivityMetadata
+    | undefined;
+
+  // Derive participants from messages for live activities (unique pubkeys who have chatted)
+  const derivedParticipants = useMemo(() => {
+    if (conversation?.type !== "live-chat" || !messages) {
+      return conversation?.participants || [];
+    }
+
+    const hostPubkey = liveActivity?.hostPubkey;
+    const participants: { pubkey: string; role: "host" | "member" }[] = [];
+
+    // Host always first
+    if (hostPubkey) {
+      participants.push({ pubkey: hostPubkey, role: "host" });
+    }
+
+    // Add other participants from messages (excluding host)
+    const seen = new Set(hostPubkey ? [hostPubkey] : []);
+    for (const msg of messages) {
+      if (msg.type !== "system" && !seen.has(msg.author)) {
+        seen.add(msg.author);
+        participants.push({ pubkey: msg.author, role: "member" });
+      }
+    }
+
+    return participants;
+  }, [
+    conversation?.type,
+    conversation?.participants,
+    messages,
+    liveActivity?.hostPubkey,
+  ]);
 
   if (!conversation) {
     return (
@@ -348,11 +439,26 @@ export function ChatViewer({
       <div className="px-4 border-b w-full py-0.5">
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-1 min-w-0 items-center gap-2">
-            <div className="flex-1 flex flex-row gap-2 items-baseline min-w-0">
-              <h2 className="flex-1 text-base font-semibold">
+            <div className="flex-1 flex flex-row gap-2 items-center min-w-0">
+              <h2 className="text-base font-semibold truncate">
                 {customTitle || conversation.title}
               </h2>
-              {conversation.metadata?.description && (
+              {/* Live activity status badge - small, icon only */}
+              {liveActivity?.status && (
+                <StatusBadge status={liveActivity.status} size="sm" hideLabel />
+              )}
+              {/* Show host for live activities */}
+              {liveActivity?.hostPubkey && (
+                <span className="text-xs text-muted-foreground flex-shrink-0">
+                  by{" "}
+                  <UserName
+                    pubkey={liveActivity.hostPubkey}
+                    className="text-xs"
+                  />
+                </span>
+              )}
+              {/* Show description for groups */}
+              {!liveActivity && conversation.metadata?.description && (
                 <p className="text-xs text-muted-foreground line-clamp-1">
                   {conversation.metadata.description}
                 </p>
@@ -360,9 +466,10 @@ export function ChatViewer({
             </div>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground p-1">
-            <MembersDropdown participants={conversation.participants} />
+            <MembersDropdown participants={derivedParticipants} />
             <RelaysDropdown conversation={conversation} />
-            {conversation.type === "group" && (
+            {(conversation.type === "group" ||
+              conversation.type === "live-chat") && (
               <button
                 onClick={handleNipClick}
                 className="rounded bg-muted px-1.5 py-0.5 font-mono hover:bg-muted/80 transition-colors cursor-pointer"
@@ -461,7 +568,7 @@ export function ChatViewer({
 
 /**
  * Get the appropriate adapter for a protocol
- * Currently only NIP-29 (relay-based groups) is supported
+ * Currently NIP-29 (relay-based groups) and NIP-53 (live activity chat) are supported
  * Other protocols will be enabled in future phases
  */
 function getAdapter(protocol: ChatProtocol): ChatProtocolAdapter {
@@ -474,8 +581,8 @@ function getAdapter(protocol: ChatProtocol): ChatProtocolAdapter {
     //   return new Nip17Adapter();
     // case "nip-28":  // Phase 3 - Public channels (coming soon)
     //   return new Nip28Adapter();
-    // case "nip-53":  // Phase 5 - Live activity chat (coming soon)
-    //   return new Nip53Adapter();
+    case "nip-53":
+      return new Nip53Adapter();
     default:
       throw new Error(`Unsupported protocol: ${protocol}`);
   }
