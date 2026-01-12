@@ -349,7 +349,7 @@ export function ChatViewer({
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-1 min-w-0 items-center gap-2">
             <div className="flex-1 flex flex-row gap-2 items-baseline min-w-0">
-              <h2 className="truncate text-base font-semibold">
+              <h2 className="flex-1 text-base font-semibold">
                 {customTitle || conversation.title}
               </h2>
               {conversation.metadata?.description && (
