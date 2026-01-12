@@ -64,7 +64,10 @@ export const ReplyPreview = memo(function ReplyPreview({
         className="font-medium flex-shrink-0"
       />
       <div className="line-clamp-1 overflow-hidden flex-1 min-w-0">
-        <RichText event={replyEvent} />
+        <RichText
+          event={replyEvent}
+          options={{ showMedia: false, showEventEmbeds: false }}
+        />
       </div>
     </div>
   );
