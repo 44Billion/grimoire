@@ -1,7 +1,7 @@
-import { useState, useMemo, memo, useCallback } from "react";
+import { useState, useMemo, memo, useCallback, useEffect } from "react";
 import { use$ } from "applesauce-react/hooks";
 import { map } from "rxjs/operators";
-import { Loader2 } from "lucide-react";
+import { Loader2, PanelLeft } from "lucide-react";
 import eventStore from "@/services/event-store";
 import pool from "@/services/relay-pool";
 import accountManager from "@/services/accounts";
@@ -11,9 +11,29 @@ import type { NostrEvent } from "@/types/nostr";
 import type { ProtocolIdentifier, GroupListIdentifier } from "@/types/chat";
 import { cn } from "@/lib/utils";
 import Timestamp from "./Timestamp";
-import { useEffect } from "react";
 import { UserName } from "./nostr/UserName";
 import { RichText } from "./nostr/RichText";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import * as VisuallyHidden from "@radix-ui/react-visually-hidden";
+
+const MOBILE_BREAKPOINT = 768;
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState<boolean | undefined>(undefined);
+
+  useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+    const onChange = () => {
+      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    };
+    mql.addEventListener("change", onChange);
+    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+
+  return isMobile;
+}
 
 interface GroupInfo {
   groupId: string;
@@ -103,9 +123,11 @@ const MemoizedChatViewer = memo(
   function MemoizedChatViewer({
     groupId,
     relayUrl,
+    headerPrefix,
   }: {
     groupId: string;
     relayUrl: string;
+    headerPrefix?: React.ReactNode;
   }) {
     return (
       <ChatViewer
@@ -117,10 +139,12 @@ const MemoizedChatViewer = memo(
             relays: [relayUrl],
           } as ProtocolIdentifier
         }
+        headerPrefix={headerPrefix}
       />
     );
   },
   // Custom comparison: only re-render if group actually changed
+  // Note: headerPrefix is intentionally excluded - it's expected to be stable or change with isMobile
   (prev, next) =>
     prev.groupId === next.groupId && prev.relayUrl === next.relayUrl,
 );
@@ -149,15 +173,32 @@ export function GroupListViewer({ identifier }: GroupListViewerProps) {
   const targetIdentifier = identifier?.value.identifier || ""; // Empty string is default d-tag for kind 10009
   const targetRelays = identifier?.relays;
 
+  // Mobile detection
+  const isMobile = useIsMobile();
+
   // State for selected group
   const [selectedGroup, setSelectedGroup] = useState<{
     groupId: string;
     relayUrl: string;
   } | null>(null);
 
-  // State for sidebar width
+  // State for mobile sidebar sheet
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // State for sidebar width (desktop only)
   const [sidebarWidth, setSidebarWidth] = useState(280);
   const [isResizing, setIsResizing] = useState(false);
+
+  // Handle group selection - close sidebar on mobile
+  const handleGroupSelect = useCallback(
+    (group: { groupId: string; relayUrl: string }) => {
+      setSelectedGroup(group);
+      if (isMobile) {
+        setSidebarOpen(false);
+      }
+    },
+    [isMobile],
+  );
 
   // Handle resize with proper cleanup
   const handleMouseDown = useCallback(
@@ -410,6 +451,86 @@ export function GroupListViewer({ identifier }: GroupListViewerProps) {
     );
   }
 
+  // Group list content - reused in both mobile sheet and desktop sidebar
+  const groupListContent = (
+    <div className="flex-1 overflow-y-auto">
+      {groupsWithRecency.map((group) => (
+        <GroupListItem
+          key={`${group.relayUrl}'${group.groupId}`}
+          group={group}
+          isSelected={
+            selectedGroup?.groupId === group.groupId &&
+            selectedGroup?.relayUrl === group.relayUrl
+          }
+          onClick={() =>
+            handleGroupSelect({
+              groupId: group.groupId,
+              relayUrl: group.relayUrl,
+            })
+          }
+        />
+      ))}
+    </div>
+  );
+
+  // Sidebar toggle button for mobile - passed to ChatViewer's headerPrefix
+  const sidebarToggle = isMobile ? (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-7 w-7 flex-shrink-0"
+      onClick={() => setSidebarOpen(true)}
+    >
+      <PanelLeft className="size-4" />
+      <span className="sr-only">Toggle sidebar</span>
+    </Button>
+  ) : null;
+
+  // Chat view content
+  const chatContent = selectedGroup ? (
+    <MemoizedChatViewer
+      groupId={selectedGroup.groupId}
+      relayUrl={selectedGroup.relayUrl}
+      headerPrefix={sidebarToggle}
+    />
+  ) : (
+    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+      {isMobile ? (
+        <Button
+          variant="outline"
+          onClick={() => setSidebarOpen(true)}
+          className="gap-2"
+        >
+          <PanelLeft className="size-4" />
+          Select a group
+        </Button>
+      ) : (
+        "Select a group to view chat"
+      )}
+    </div>
+  );
+
+  // Mobile layout: Sheet-based sidebar
+  if (isMobile) {
+    return (
+      <div className="flex h-full flex-col">
+        {/* Mobile sheet sidebar */}
+        <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+          <SheetContent side="left" className="w-[280px] p-0">
+            <VisuallyHidden.Root>
+              <SheetTitle>Groups</SheetTitle>
+            </VisuallyHidden.Root>
+            <div className="flex h-full flex-col pt-10">{groupListContent}</div>
+          </SheetContent>
+        </Sheet>
+
+        {/* Chat content - takes full height, sidebar toggle is in ChatViewer header */}
+        <div className="flex-1 min-h-0">{chatContent}</div>
+      </div>
+    );
+  }
+
+  // Desktop layout: Resizable sidebar
   return (
     <div className="flex h-full">
       {/* Left sidebar: Group list */}
@@ -417,24 +538,7 @@ export function GroupListViewer({ identifier }: GroupListViewerProps) {
         className="flex flex-col border-r bg-background"
         style={{ width: sidebarWidth }}
       >
-        <div className="flex-1 overflow-y-auto">
-          {groupsWithRecency.map((group) => (
-            <GroupListItem
-              key={`${group.relayUrl}'${group.groupId}`}
-              group={group}
-              isSelected={
-                selectedGroup?.groupId === group.groupId &&
-                selectedGroup?.relayUrl === group.relayUrl
-              }
-              onClick={() =>
-                setSelectedGroup({
-                  groupId: group.groupId,
-                  relayUrl: group.relayUrl,
-                })
-              }
-            />
-          ))}
-        </div>
+        {groupListContent}
       </aside>
 
       {/* Resize handle */}
@@ -447,18 +551,7 @@ export function GroupListViewer({ identifier }: GroupListViewerProps) {
       />
 
       {/* Right panel: Chat view */}
-      <div className="flex-1 min-w-0">
-        {selectedGroup ? (
-          <MemoizedChatViewer
-            groupId={selectedGroup.groupId}
-            relayUrl={selectedGroup.relayUrl}
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            Select a group to view chat
-          </div>
-        )}
-      </div>
+      <div className="flex-1 min-w-0">{chatContent}</div>
     </div>
   );
 }
