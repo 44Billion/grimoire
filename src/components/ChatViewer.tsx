@@ -18,6 +18,8 @@ import { Nip29Adapter } from "@/lib/chat/adapters/nip-29-adapter";
 import { Nip53Adapter } from "@/lib/chat/adapters/nip-53-adapter";
 import type { ChatProtocolAdapter } from "@/lib/chat/adapters/base-adapter";
 import type { Message } from "@/types/chat";
+import type { ChatAction } from "@/types/chat-actions";
+import { parseSlashCommand } from "@/lib/chat/slash-command-parser";
 import { UserName } from "./nostr/UserName";
 import { RichText } from "./nostr/RichText";
 import Timestamp from "./Timestamp";
@@ -363,6 +365,22 @@ export function ChatViewer({
       ? conversationResult.conversation
       : null;
 
+  // Slash command search for action autocomplete
+  // Context-aware: only shows relevant actions based on membership status
+  const searchCommands = useCallback(
+    async (query: string) => {
+      const availableActions = adapter.getActions({
+        conversation: conversation || undefined,
+        activePubkey: activeAccount?.pubkey,
+      });
+      const lowerQuery = query.toLowerCase();
+      return availableActions.filter((action) =>
+        action.name.toLowerCase().includes(lowerQuery),
+      );
+    },
+    [adapter, conversation, activeAccount],
+  );
+
   // Cleanup subscriptions when conversation changes or component unmounts
   useEffect(() => {
     return () => {
@@ -437,6 +455,35 @@ export function ChatViewer({
   ) => {
     if (!conversation || !hasActiveAccount || isSending) return;
 
+    // Check if this is a slash command
+    const slashCmd = parseSlashCommand(content);
+    if (slashCmd) {
+      // Execute action instead of sending message
+      setIsSending(true);
+      try {
+        const result = await adapter.executeAction(slashCmd.command, {
+          activePubkey: activeAccount.pubkey,
+          activeSigner: activeAccount.signer,
+          conversation,
+        });
+
+        if (result.success) {
+          toast.success(result.message || "Action completed");
+        } else {
+          toast.error(result.message || "Action failed");
+        }
+      } catch (error) {
+        console.error("[Chat] Failed to execute action:", error);
+        const errorMessage =
+          error instanceof Error ? error.message : "Action failed";
+        toast.error(errorMessage);
+      } finally {
+        setIsSending(false);
+      }
+      return;
+    }
+
+    // Regular message sending
     setIsSending(true);
     try {
       await adapter.sendMessage(conversation, content, {
@@ -454,6 +501,36 @@ export function ChatViewer({
       setIsSending(false);
     }
   };
+
+  // Handle command execution from autocomplete
+  const handleCommandExecute = useCallback(
+    async (action: ChatAction) => {
+      if (!conversation || !hasActiveAccount || isSending) return;
+
+      setIsSending(true);
+      try {
+        const result = await adapter.executeAction(action.name, {
+          activePubkey: activeAccount.pubkey,
+          activeSigner: activeAccount.signer,
+          conversation,
+        });
+
+        if (result.success) {
+          toast.success(result.message || "Action completed");
+        } else {
+          toast.error(result.message || "Action failed");
+        }
+      } catch (error) {
+        console.error("[Chat] Failed to execute action:", error);
+        const errorMessage =
+          error instanceof Error ? error.message : "Action failed";
+        toast.error(errorMessage);
+      } finally {
+        setIsSending(false);
+      }
+    },
+    [conversation, hasActiveAccount, isSending, adapter, activeAccount],
+  );
 
   // Handle reply button click
   const handleReply = useCallback((messageId: string) => {
@@ -770,6 +847,8 @@ export function ChatViewer({
               placeholder="Type a message..."
               searchProfiles={searchProfiles}
               searchEmojis={searchEmojis}
+              searchCommands={searchCommands}
+              onCommandExecute={handleCommandExecute}
               onSubmit={(content, emojiTags) => {
                 if (content.trim()) {
                   handleSend(content, replyTo, emojiTags);
