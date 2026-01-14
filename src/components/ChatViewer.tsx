@@ -836,6 +836,7 @@ export function ChatViewer({
             data={messagesWithMarkers}
             initialTopMostItemIndex={messagesWithMarkers.length - 1}
             followOutput="smooth"
+            alignToBottom
             components={{
               Header: () =>
                 hasMore && conversationResult.status === "success" ? (
@@ -857,6 +858,7 @@ export function ChatViewer({
                     </Button>
                   </div>
                 ) : null,
+              Footer: () => <div className="h-1" />,
             }}
             itemContent={(_index, item) => {
               if (item.type === "day-marker") {
