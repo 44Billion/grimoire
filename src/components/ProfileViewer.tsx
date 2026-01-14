@@ -10,7 +10,6 @@ import {
   Send,
   Wifi,
   HardDrive,
-  ExternalLink,
 } from "lucide-react";
 import { kinds, nip19 } from "nostr-tools";
 import { useEventStore, use$ } from "applesauce-react/hooks";
@@ -33,6 +32,7 @@ import { useEffect, useState } from "react";
 import type { Subscription } from "rxjs";
 import { useGrimoire } from "@/core/state";
 import { USER_SERVER_LIST_KIND, getServersFromEvent } from "@/services/blossom";
+import blossomServerCache from "@/services/blossom-server-cache";
 
 export interface ProfileViewerProps {
   pubkey: string;
@@ -43,7 +43,7 @@ export interface ProfileViewerProps {
  * Shows profile metadata, inbox/outbox relays, and raw JSON
  */
 export function ProfileViewer({ pubkey }: ProfileViewerProps) {
-  const { state } = useGrimoire();
+  const { state, addWindow } = useGrimoire();
   const accountPubkey = state.activeAccount?.pubkey;
 
   // Resolve $me alias
@@ -129,40 +129,55 @@ export function ProfileViewer({ pubkey }: ProfileViewerProps) {
 
   // Fetch Blossom server list (kind 10063)
   useEffect(() => {
-    if (!resolvedPubkey) return;
+    if (!resolvedPubkey) {
+      setBlossomServers([]);
+      return;
+    }
 
-    let subscription: Subscription | null = null;
+    // First, check cache for instant display
+    blossomServerCache.getServers(resolvedPubkey).then((cachedServers) => {
+      if (cachedServers && cachedServers.length > 0) {
+        setBlossomServers(cachedServers);
+      }
+    });
 
-    // Check if we already have the event in store
+    // Check if we already have the event in EventStore
     const existingEvent = eventStore.getReplaceable(
       USER_SERVER_LIST_KIND,
       resolvedPubkey,
       "",
     );
     if (existingEvent) {
-      setBlossomServers(getServersFromEvent(existingEvent));
+      const servers = getServersFromEvent(existingEvent);
+      setBlossomServers(servers);
+      // Also update cache
+      blossomServerCache.set(existingEvent);
     }
 
-    // Also fetch from network
-    subscription = addressLoader({
+    // Subscribe to EventStore for reactive updates
+    const storeSubscription = eventStore
+      .replaceable(USER_SERVER_LIST_KIND, resolvedPubkey, "")
+      .subscribe((event) => {
+        if (event) {
+          const servers = getServersFromEvent(event);
+          setBlossomServers(servers);
+          // Also update cache
+          blossomServerCache.set(event);
+        } else {
+          setBlossomServers([]);
+        }
+      });
+
+    // Also fetch from network to get latest data
+    const networkSubscription = addressLoader({
       kind: USER_SERVER_LIST_KIND,
       pubkey: resolvedPubkey,
       identifier: "",
-    }).subscribe({
-      next: () => {
-        const event = eventStore.getReplaceable(
-          USER_SERVER_LIST_KIND,
-          resolvedPubkey,
-          "",
-        );
-        if (event) {
-          setBlossomServers(getServersFromEvent(event));
-        }
-      },
-    });
+    }).subscribe();
 
     return () => {
-      subscription?.unsubscribe();
+      storeSubscription.unsubscribe();
+      networkSubscription.unsubscribe();
     };
   }, [resolvedPubkey, eventStore]);
 
@@ -336,14 +351,25 @@ export function ProfileViewer({ pubkey }: ProfileViewerProps) {
                 {blossomServers.map((url) => (
                   <DropdownMenuItem
                     key={url}
-                    className="flex items-center justify-between gap-2"
-                    onClick={() => window.open(url, "_blank")}
+                    className="flex items-center justify-between gap-2 cursor-crosshair"
+                    onClick={() => {
+                      if (resolvedPubkey) {
+                        addWindow(
+                          "blossom",
+                          {
+                            subcommand: "list",
+                            pubkey: resolvedPubkey,
+                            serverUrl: url,
+                          },
+                          `Files on ${url}`,
+                        );
+                      }
+                    }}
                   >
                     <div className="flex items-center gap-1.5 flex-1 min-w-0">
                       <HardDrive className="size-3 text-muted-foreground flex-shrink-0" />
                       <span className="font-mono text-xs truncate">{url}</span>
                     </div>
-                    <ExternalLink className="size-3 text-muted-foreground flex-shrink-0" />
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
