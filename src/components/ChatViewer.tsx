@@ -23,6 +23,7 @@ import type {
   Conversation,
   LiveActivityMetadata,
 } from "@/types/chat";
+import { CHAT_KINDS } from "@/types/chat";
 // import { NipC7Adapter } from "@/lib/chat/adapters/nip-c7-adapter";  // Coming soon
 import { Nip29Adapter } from "@/lib/chat/adapters/nip-29-adapter";
 import { Nip53Adapter } from "@/lib/chat/adapters/nip-53-adapter";
@@ -269,6 +270,20 @@ const MessageItem = memo(function MessageItem({
       zapRequest?.tags.find((t) => t[0] === "e")?.[1] ||
       undefined;
 
+    // Check if the replied-to event exists and is a chat kind
+    const replyEvent = use$(
+      () => (zapReplyTo ? eventStore.event(zapReplyTo) : undefined),
+      [zapReplyTo],
+    );
+
+    // Only show reply preview if:
+    // 1. The event exists in our store
+    // 2. The event is a chat kind (includes messages, nutzaps, live chat, and zap receipts)
+    const shouldShowReplyPreview =
+      zapReplyTo &&
+      replyEvent &&
+      (CHAT_KINDS as readonly number[]).includes(replyEvent.kind);
+
     return (
       <div className="pl-2 my-1">
         <div
@@ -300,7 +315,7 @@ const MessageItem = memo(function MessageItem({
                 <Timestamp timestamp={message.timestamp} />
               </span>
             </div>
-            {zapReplyTo && (
+            {shouldShowReplyPreview && (
               <ReplyPreview
                 replyToId={zapReplyTo}
                 adapter={adapter}
