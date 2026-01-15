@@ -67,6 +67,16 @@ import { ZapstoreAppSetDetailRenderer } from "./ZapstoreAppSetDetailRenderer";
 import { ZapstoreReleaseRenderer } from "./ZapstoreReleaseRenderer";
 import { ZapstoreReleaseDetailRenderer } from "./ZapstoreReleaseDetailRenderer";
 import { GroupMetadataRenderer } from "./GroupMetadataRenderer";
+import {
+  RelayMembersRenderer,
+  RelayMembersDetailRenderer,
+} from "./RelayMembersRenderer";
+import {
+  AddUserRenderer,
+  AddUserDetailRenderer,
+  RemoveUserRenderer,
+  RemoveUserDetailRenderer,
+} from "./RelayUserChangeRenderer";
 // NIP-51 List Renderers
 import { MuteListRenderer, MuteListDetailRenderer } from "./MuteListRenderer";
 import { PinListRenderer, PinListDetailRenderer } from "./PinListRenderer";
@@ -159,6 +169,8 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   1621: IssueRenderer, // Issue (NIP-34)
   9735: Kind9735Renderer, // Zap Receipt
   9802: Kind9802Renderer, // Highlight
+  8000: AddUserRenderer, // Add User (NIP-43)
+  8001: RemoveUserRenderer, // Remove User (NIP-43)
   777: SpellRenderer, // Spell (Grimoire)
   10000: MuteListRenderer, // Mute List (NIP-51)
   10001: PinListRenderer, // Pin List (NIP-51)
@@ -178,6 +190,7 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   10101: WikiAuthorsRenderer, // Good Wiki Authors (NIP-51)
   10102: WikiRelaysRenderer, // Good Wiki Relays (NIP-51)
   10317: Kind10317Renderer, // User Grasp List (NIP-34)
+  13534: RelayMembersRenderer, // Relay Members (NIP-43)
   30000: FollowSetRenderer, // Follow Sets (NIP-51)
   30002: GenericRelayListRenderer, // Relay Sets (NIP-51)
   30003: BookmarkSetRenderer, // Bookmark Sets (NIP-51)
@@ -255,6 +268,8 @@ const detailRenderers: Record<
   1618: PullRequestDetailRenderer, // Pull Request Detail (NIP-34)
   1621: IssueDetailRenderer, // Issue Detail (NIP-34)
   9802: Kind9802DetailRenderer, // Highlight Detail
+  8000: AddUserDetailRenderer, // Add User Detail (NIP-43)
+  8001: RemoveUserDetailRenderer, // Remove User Detail (NIP-43)
   10000: MuteListDetailRenderer, // Mute List Detail (NIP-51)
   10001: PinListDetailRenderer, // Pin List Detail (NIP-51)
   10002: Kind10002DetailRenderer, // Relay List Detail (NIP-65)
@@ -268,6 +283,7 @@ const detailRenderers: Record<
   10101: WikiAuthorsDetailRenderer, // Good Wiki Authors Detail (NIP-51)
   10102: WikiRelaysDetailRenderer, // Good Wiki Relays Detail (NIP-51)
   10317: Kind10317DetailRenderer, // User Grasp List Detail (NIP-34)
+  13534: RelayMembersDetailRenderer, // Relay Members Detail (NIP-43)
   30000: FollowSetDetailRenderer, // Follow Sets Detail (NIP-51)
   30003: BookmarkSetDetailRenderer, // Bookmark Sets Detail (NIP-51)
   30004: ArticleCurationSetDetailRenderer, // Article Curation Sets Detail (NIP-51)
