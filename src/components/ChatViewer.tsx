@@ -37,6 +37,7 @@ import Timestamp from "./Timestamp";
 import { ReplyPreview } from "./chat/ReplyPreview";
 import { MembersDropdown } from "./chat/MembersDropdown";
 import { RelaysDropdown } from "./chat/RelaysDropdown";
+import { MessageReactions } from "./chat/MessageReactions";
 import { StatusBadge } from "./live/StatusBadge";
 import { ChatMessageContextMenu } from "./chat/ChatMessageContextMenu";
 import { useGrimoire } from "@/core/state";
@@ -132,6 +133,24 @@ function isLiveActivityMetadata(value: unknown): value is LiveActivityMetadata {
     Array.isArray(obj.hashtags) &&
     Array.isArray(obj.relays)
   );
+}
+
+/**
+ * Get relay URLs for a conversation based on protocol
+ * Used for fetching protocol-specific data like reactions
+ */
+function getConversationRelays(conversation: Conversation): string[] {
+  // NIP-53 live chats: Use full relay list from liveActivity metadata
+  if (conversation.protocol === "nip-53") {
+    const liveActivity = conversation.metadata?.liveActivity;
+    if (isLiveActivityMetadata(liveActivity) && liveActivity.relays) {
+      return liveActivity.relays;
+    }
+  }
+
+  // NIP-29 groups and fallback: Use single relay URL
+  const relayUrl = conversation.metadata?.relayUrl;
+  return relayUrl ? [relayUrl] : [];
 }
 
 /**
@@ -248,6 +267,12 @@ const MessageItem = memo(function MessageItem({
   canReply: boolean;
   onScrollToMessage?: (messageId: string) => void;
 }) {
+  // Get relays for this conversation (memoized to prevent unnecessary re-subscriptions)
+  const relays = useMemo(
+    () => getConversationRelays(conversation),
+    [conversation],
+  );
+
   // System messages (join/leave) have special styling
   if (message.type === "system") {
     return (
@@ -314,6 +339,8 @@ const MessageItem = memo(function MessageItem({
               <span className="text-xs text-muted-foreground">
                 <Timestamp timestamp={message.timestamp} />
               </span>
+              {/* Reactions display - inline after timestamp */}
+              <MessageReactions messageId={message.id} relays={relays} />
             </div>
             {shouldShowReplyPreview && (
               <ReplyPreview
@@ -345,6 +372,8 @@ const MessageItem = memo(function MessageItem({
           <span className="text-xs text-muted-foreground">
             <Timestamp timestamp={message.timestamp} />
           </span>
+          {/* Reactions display - inline after timestamp */}
+          <MessageReactions messageId={message.id} relays={relays} />
           {canReply && onReply && (
             <button
               onClick={() => onReply(message.id)}
@@ -383,6 +412,8 @@ const MessageItem = memo(function MessageItem({
       <ChatMessageContextMenu
         event={message.event}
         onReply={canReply && onReply ? () => onReply(message.id) : undefined}
+        conversation={conversation}
+        adapter={adapter}
       >
         {messageContent}
       </ChatMessageContextMenu>
