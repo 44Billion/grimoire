@@ -142,6 +142,12 @@ import { NostrEvent } from "@/types/nostr";
 import { BaseEventContainer, type BaseEventProps } from "./BaseEventRenderer";
 import { P2pOrderRenderer } from "./P2pOrderRenderer";
 import { P2pOrderDetailRenderer } from "./P2pOrderDetailRenderer";
+import { BadgeDefinitionRenderer } from "./BadgeDefinitionRenderer";
+import { BadgeDefinitionDetailRenderer } from "./BadgeDefinitionDetailRenderer";
+import { BadgeAwardRenderer } from "./BadgeAwardRenderer";
+import { BadgeAwardDetailRenderer } from "./BadgeAwardDetailRenderer";
+import { ProfileBadgesRenderer } from "./ProfileBadgesRenderer";
+import { ProfileBadgesDetailRenderer } from "./ProfileBadgesDetailRenderer";
 
 /**
  * Registry of kind-specific renderers
@@ -153,6 +159,7 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   3: Kind3Renderer, // Contact List
   6: RepostRenderer, // Repost
   7: Kind7Renderer, // Reaction
+  8: BadgeAwardRenderer, // Badge Award (NIP-58)
   9: Kind9Renderer, // Chat Message (NIP-C7)
   11: Kind1Renderer, // Public Thread Reply (NIP-10)
   16: RepostRenderer, // Generic Repost
@@ -200,6 +207,8 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   30005: VideoCurationSetRenderer, // Video Curation Sets (NIP-51)
   30006: PictureCurationSetRenderer, // Picture Curation Sets (NIP-51)
   30007: KindMuteSetRenderer, // Kind Mute Sets (NIP-51)
+  30008: ProfileBadgesRenderer, // Profile Badges (NIP-58)
+  30009: BadgeDefinitionRenderer, // Badge (NIP-58)
   30015: InterestSetRenderer, // Interest Sets (NIP-51)
   30023: Kind30023Renderer, // Long-form Article
   30030: EmojiSetRenderer, // Emoji Sets (NIP-30)
@@ -265,6 +274,7 @@ const detailRenderers: Record<
 > = {
   0: Kind0DetailRenderer, // Profile Metadata Detail
   3: Kind3DetailView, // Contact List Detail
+  8: BadgeAwardDetailRenderer, // Badge Award Detail (NIP-58)
   777: SpellDetailRenderer, // Spell Detail
   1337: Kind1337DetailRenderer, // Code Snippet Detail (NIP-C0)
   1617: PatchDetailRenderer, // Patch Detail (NIP-34)
@@ -293,6 +303,8 @@ const detailRenderers: Record<
   30005: VideoCurationSetDetailRenderer, // Video Curation Sets Detail (NIP-51)
   30006: PictureCurationSetDetailRenderer, // Picture Curation Sets Detail (NIP-51)
   30007: KindMuteSetDetailRenderer, // Kind Mute Sets Detail (NIP-51)
+  30008: ProfileBadgesDetailRenderer, // Profile Badges Detail (NIP-58)
+  30009: BadgeDefinitionDetailRenderer, // Badge Detail (NIP-58)
   30015: InterestSetDetailRenderer, // Interest Sets Detail (NIP-51)
   30023: Kind30023DetailRenderer, // Long-form Article Detail
   30030: EmojiSetDetailRenderer, // Emoji Sets Detail (NIP-30)
