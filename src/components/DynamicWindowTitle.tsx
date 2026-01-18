@@ -303,6 +303,34 @@ function generateRawCommand(appId: string, props: any): string {
     case "spells":
       return "spells";
 
+    case "zap":
+      if (props.recipientPubkey) {
+        try {
+          const npub = nip19.npubEncode(props.recipientPubkey);
+          let result = `zap ${npub}`;
+          if (props.eventPointer) {
+            if ("id" in props.eventPointer) {
+              const nevent = nip19.neventEncode({ id: props.eventPointer.id });
+              result += ` ${nevent}`;
+            } else if (
+              "kind" in props.eventPointer &&
+              "pubkey" in props.eventPointer
+            ) {
+              const naddr = nip19.naddrEncode({
+                kind: props.eventPointer.kind,
+                pubkey: props.eventPointer.pubkey,
+                identifier: props.eventPointer.identifier || "",
+              });
+              result += ` ${naddr}`;
+            }
+          }
+          return result;
+        } catch {
+          return `zap ${props.recipientPubkey.slice(0, 16)}...`;
+        }
+      }
+      return "zap";
+
     default:
       return appId;
   }
@@ -445,6 +473,23 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
 
   const countHashtags =
     appId === "count" && props.filter?.["#t"] ? props.filter["#t"] : [];
+
+  // Zap titles
+  const zapRecipientPubkey = appId === "zap" ? props.recipientPubkey : null;
+  const zapRecipientProfile = useProfile(zapRecipientPubkey || "");
+  const zapTitle = useMemo(() => {
+    if (appId !== "zap" || !zapRecipientPubkey) return null;
+
+    if (zapRecipientProfile) {
+      const name =
+        zapRecipientProfile.display_name ||
+        zapRecipientProfile.name ||
+        `${zapRecipientPubkey.slice(0, 8)}...`;
+      return `Zap ${name}`;
+    }
+
+    return `Zap ${zapRecipientPubkey.slice(0, 8)}...`;
+  }, [appId, zapRecipientPubkey, zapRecipientProfile]);
 
   // REQ titles
   const reqTitle = useMemo(() => {
@@ -755,7 +800,11 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
     }
 
     // Priority order for title selection (dynamic titles based on data)
-    if (profileTitle) {
+    if (zapTitle) {
+      title = zapTitle;
+      icon = getCommandIcon("zap");
+      tooltip = rawCommand;
+    } else if (profileTitle) {
       title = profileTitle;
       icon = getCommandIcon("profile");
       tooltip = rawCommand;
@@ -829,6 +878,7 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
     props,
     event,
     customTitle,
+    zapTitle,
     profileTitle,
     eventTitle,
     kindTitle,

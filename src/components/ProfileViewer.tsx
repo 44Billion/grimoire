@@ -10,6 +10,7 @@ import {
   Send,
   Wifi,
   HardDrive,
+  Zap,
 } from "lucide-react";
 import { kinds, nip19 } from "nostr-tools";
 import { useEventStore, use$ } from "applesauce-react/hooks";
@@ -440,7 +441,18 @@ export function ProfileViewer({ pubkey }: ProfileViewerProps) {
                 <div className="text-xs text-muted-foreground uppercase tracking-wide">
                   Lightning Address
                 </div>
-                <code className="text-sm font-mono">{profile.lud16}</code>
+                <button
+                  onClick={() =>
+                    addWindow("zap", { recipientPubkey: resolvedPubkey })
+                  }
+                  className="flex items-center gap-2 w-full text-left hover:bg-muted/50 rounded px-2 py-1 -mx-2 transition-colors group"
+                  title="Send zap"
+                >
+                  <Zap className="size-4 text-yellow-500 group-hover:text-yellow-600 transition-colors flex-shrink-0" />
+                  <code className="text-sm font-mono flex-1 min-w-0 truncate">
+                    {profile.lud16}
+                  </code>
+                </button>
               </div>
             )}
 
