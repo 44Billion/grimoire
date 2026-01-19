@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  ExternalLink,
 } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import { useWallet } from "@/hooks/useWallet";
@@ -95,6 +96,29 @@ interface InvoiceDetails {
 
 const BATCH_SIZE = 20;
 const PAYMENT_CHECK_INTERVAL = 5000; // Check every 5 seconds
+
+/**
+ * Helper: Detect if a transaction is a Bitcoin on-chain transaction
+ * Bitcoin transactions have a preimage that is a 64-character hex string (txid)
+ */
+function isBitcoinTransaction(transaction: Transaction): boolean {
+  if (!transaction.preimage) return false;
+  // Bitcoin txid is 64 hex characters (32 bytes)
+  return /^[0-9a-f]{64}$/i.test(transaction.preimage);
+}
+
+/**
+ * Helper: Get mempool.space URL for a Bitcoin transaction
+ */
+function getMempoolUrl(txid: string, network?: string): string {
+  const baseUrl =
+    network === "testnet"
+      ? "https://mempool.space/testnet"
+      : network === "signet"
+        ? "https://mempool.space/signet"
+        : "https://mempool.space";
+  return `${baseUrl}/tx/${txid}`;
+}
 
 /**
  * Helper: Format timestamp as a readable day marker
@@ -1302,27 +1326,64 @@ export default function WalletViewer() {
                       </div>
                     )}
 
-                  {selectedTransaction.payment_hash && (
-                    <div>
-                      <Label className="text-xs text-muted-foreground">
-                        Payment Hash
-                      </Label>
-                      <p className="text-xs font-mono break-all bg-muted p-2 rounded">
-                        {selectedTransaction.payment_hash}
-                      </p>
-                    </div>
-                  )}
+                  {(() => {
+                    const isBitcoin = isBitcoinTransaction(selectedTransaction);
 
-                  {selectedTransaction.preimage && (
-                    <div>
-                      <Label className="text-xs text-muted-foreground">
-                        Preimage
-                      </Label>
-                      <p className="text-xs font-mono break-all bg-muted p-2 rounded">
-                        {selectedTransaction.preimage}
-                      </p>
-                    </div>
-                  )}
+                    if (isBitcoin && selectedTransaction.preimage) {
+                      // Bitcoin on-chain transaction - show Transaction ID with mempool.space link
+                      return (
+                        <div>
+                          <Label className="text-xs text-muted-foreground">
+                            Transaction ID
+                          </Label>
+                          <div className="flex items-start gap-2">
+                            <p className="text-xs font-mono break-all bg-muted p-2 rounded flex-1">
+                              {selectedTransaction.preimage}
+                            </p>
+                            <a
+                              href={getMempoolUrl(
+                                selectedTransaction.preimage,
+                                walletInfo?.network,
+                              )}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-xs text-primary hover:underline mt-2 flex-shrink-0"
+                            >
+                              <ExternalLink className="size-3" />
+                              View on mempool.space
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // Lightning transaction - show payment hash and preimage
+                    return (
+                      <>
+                        {selectedTransaction.payment_hash && (
+                          <div>
+                            <Label className="text-xs text-muted-foreground">
+                              Payment Hash
+                            </Label>
+                            <p className="text-xs font-mono break-all bg-muted p-2 rounded">
+                              {selectedTransaction.payment_hash}
+                            </p>
+                          </div>
+                        )}
+
+                        {selectedTransaction.preimage && (
+                          <div>
+                            <Label className="text-xs text-muted-foreground">
+                              Preimage
+                            </Label>
+                            <p className="text-xs font-mono break-all bg-muted p-2 rounded">
+                              {selectedTransaction.preimage}
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {/* Zap Details (if this is a zap payment) */}
