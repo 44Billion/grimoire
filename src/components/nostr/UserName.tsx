@@ -3,7 +3,8 @@ import { getDisplayName } from "@/lib/nostr-utils";
 import { cn } from "@/lib/utils";
 import { useGrimoire } from "@/core/state";
 import { isGrimoireMember } from "@/lib/grimoire-members";
-import { BadgeCheck } from "lucide-react";
+import { BadgeCheck, Zap } from "lucide-react";
+import { useIsSupporter } from "@/hooks/useIsSupporter";
 
 interface UserNameProps {
   pubkey: string;
@@ -20,11 +21,15 @@ interface UserNameProps {
  * - Orange→Amber gradient for logged-in member
  * - Violet→Fuchsia gradient for other members
  * - BadgeCheck icon that scales with username size
+ * Shows Grimoire supporters (non-members who zapped):
+ * - Premium supporters (2.1k+ sats/month): Zap badge in their username color
+ * - Regular supporters: Yellow zap badge (no username color change)
  */
 export function UserName({ pubkey, isMention, className }: UserNameProps) {
   const { addWindow, state } = useGrimoire();
   const profile = useProfile(pubkey);
   const isGrimoire = isGrimoireMember(pubkey);
+  const { isSupporter, isPremiumSupporter } = useIsSupporter(pubkey);
   const displayName = getDisplayName(pubkey, profile);
 
   // Check if this is the logged-in user
@@ -64,6 +69,23 @@ export function UserName({ pubkey, isMention, className }: UserNameProps) {
             "inline-block w-[1em] h-[1em]",
             isActiveAccount ? "text-amber-500" : "text-fuchsia-500",
           )}
+        />
+      )}
+      {!isGrimoire && isSupporter && (
+        <Zap
+          className={cn(
+            "inline-block w-[0.85em] h-[0.85em]",
+            isPremiumSupporter
+              ? isActiveAccount
+                ? "text-highlight fill-highlight"
+                : "text-accent fill-accent"
+              : "text-yellow-500 fill-yellow-500",
+          )}
+          aria-label={
+            isPremiumSupporter
+              ? "Premium Grimoire Supporter"
+              : "Grimoire Supporter"
+          }
         />
       )}
     </span>

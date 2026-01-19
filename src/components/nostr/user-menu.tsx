@@ -7,6 +7,7 @@ import {
   RefreshCw,
   Eye,
   EyeOff,
+  Zap,
 } from "lucide-react";
 import accounts from "@/services/accounts";
 import { useProfile } from "@/hooks/useProfile";
@@ -14,6 +15,8 @@ import { use$ } from "applesauce-react/hooks";
 import { getDisplayName } from "@/lib/nostr-utils";
 import { useGrimoire } from "@/core/state";
 import { Button } from "@/components/ui/button";
+import { useLiveQuery } from "dexie-react-hooks";
+import db from "@/services/db";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,6 +46,12 @@ import { useState } from "react";
 import { useTheme } from "@/lib/themes";
 import { toast } from "sonner";
 import { useWallet } from "@/hooks/useWallet";
+import { Progress } from "@/components/ui/progress";
+import {
+  GRIMOIRE_DONATE_PUBKEY,
+  GRIMOIRE_LIGHTNING_ADDRESS,
+} from "@/lib/grimoire-members";
+import { MONTHLY_GOAL_SATS } from "@/services/supporters";
 
 function UserAvatar({ pubkey }: { pubkey: string }) {
   const profile = useProfile(pubkey);
@@ -86,6 +95,33 @@ export default function UserMenu() {
   const [showWalletInfo, setShowWalletInfo] = useState(false);
   const { themeId, setTheme, availableThemes } = useTheme();
 
+  // Calculate monthly donations reactively from DB (last 30 days)
+  const monthlyDonations =
+    useLiveQuery(async () => {
+      const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
+      let total = 0;
+      await db.grimoireZaps
+        .where("timestamp")
+        .aboveOrEqual(thirtyDaysAgo)
+        .each((zap) => {
+          total += zap.amountSats;
+        });
+      return total;
+    }, []) ?? 0;
+
+  // Calculate monthly donation progress
+  const goalProgress = (monthlyDonations / MONTHLY_GOAL_SATS) * 100;
+
+  // Format numbers for display
+  function formatSats(sats: number): string {
+    if (sats >= 1_000_000) {
+      return `${(sats / 1_000_000).toFixed(1)}M`;
+    } else if (sats >= 1_000) {
+      return `${Math.floor(sats / 1_000)}k`;
+    }
+    return sats.toString();
+  }
+
   // Get wallet service profile for display name, using wallet relays as hints
   const walletServiceProfile = useProfile(
     nwcConnection?.service,
@@ -111,6 +147,17 @@ export default function UserMenu() {
 
   function openWallet() {
     addWindow("wallet", {}, "Wallet");
+  }
+
+  function openDonate() {
+    addWindow(
+      "zap",
+      {
+        recipientPubkey: GRIMOIRE_DONATE_PUBKEY,
+        recipientLightningAddress: GRIMOIRE_LIGHTNING_ADDRESS,
+      },
+      "Support Grimoire",
+    );
   }
 
   async function logout() {
@@ -375,6 +422,28 @@ export default function UserMenu() {
               <span className="text-sm">Connect Wallet</span>
             </DropdownMenuItem>
           )}
+
+          {/* Support Grimoire Section */}
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <div
+              className="px-2 py-2 cursor-crosshair hover:bg-accent/50 transition-colors"
+              onClick={openDonate}
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                <Zap className="size-4 text-yellow-500" />
+                <span className="text-sm font-medium">Support Grimoire</span>
+              </div>
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="text-muted-foreground">Monthly goal</span>
+                <span className="font-medium">
+                  {formatSats(monthlyDonations)} /{" "}
+                  {formatSats(MONTHLY_GOAL_SATS)} sats
+                </span>
+              </div>
+              <Progress value={goalProgress} className="h-1.5" />
+            </div>
+          </DropdownMenuGroup>
 
           {account && (
             <>
