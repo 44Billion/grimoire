@@ -52,7 +52,7 @@ import {
 } from "@/components/ui/tooltip";
 import ConnectWalletDialog from "./ConnectWalletDialog";
 import { RelayLink } from "@/components/nostr/RelayLink";
-import { parseZapRequest } from "@/lib/wallet-utils";
+import { parseZapRequest, getInvoiceDescription } from "@/lib/wallet-utils";
 import { Zap } from "lucide-react";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
 import { KindRenderer } from "./nostr/kinds";
@@ -312,14 +312,14 @@ function ZapTransactionDetail({ transaction }: { transaction: Transaction }) {
 function TransactionLabel({ transaction }: { transaction: Transaction }) {
   const zapInfo = parseZapRequest(transaction);
 
-  // Not a zap - use original description or default label
+  // Not a zap - use original description, invoice description, or default label
   if (!zapInfo) {
-    return (
-      <span className="text-sm truncate">
-        {transaction.description ||
-          (transaction.type === "incoming" ? "Received" : "Payment")}
-      </span>
-    );
+    const description =
+      transaction.description ||
+      getInvoiceDescription(transaction) ||
+      (transaction.type === "incoming" ? "Received" : "Payment");
+
+    return <span className="text-sm truncate">{description}</span>;
   }
 
   // It's a zap! Show username + message on one line
@@ -1260,17 +1260,24 @@ export default function WalletViewer() {
                 </div>
 
                 <div className="space-y-2">
-                  {selectedTransaction.description &&
-                    !parseZapRequest(selectedTransaction) && (
-                      <div>
-                        <Label className="text-xs text-muted-foreground">
-                          Description
-                        </Label>
-                        <p className="text-sm">
-                          {selectedTransaction.description}
-                        </p>
-                      </div>
-                    )}
+                  {(() => {
+                    const description =
+                      selectedTransaction.description ||
+                      getInvoiceDescription(selectedTransaction);
+                    const isZap = parseZapRequest(selectedTransaction);
+
+                    return (
+                      description &&
+                      !isZap && (
+                        <div>
+                          <Label className="text-xs text-muted-foreground">
+                            Description
+                          </Label>
+                          <p className="text-sm">{description}</p>
+                        </div>
+                      )
+                    );
+                  })()}
 
                   <div>
                     <Label className="text-xs text-muted-foreground">
