@@ -131,6 +131,16 @@ function isBitcoinTransaction(transaction: Transaction): boolean {
 }
 
 /**
+ * Helper: Extract txid from preimage field
+ * Bitcoin preimage format: "txid" or "txid:outputIndex"
+ * We only need the txid part for mempool.space
+ */
+function extractTxid(preimage: string): string {
+  // Remove output index if present (e.g., "txid:0" -> "txid")
+  return preimage.split(":")[0];
+}
+
+/**
  * Helper: Get mempool.space URL for a Bitcoin transaction
  */
 function getMempoolUrl(txid: string, network?: string): string {
@@ -1354,21 +1364,19 @@ export default function WalletViewer() {
 
                     if (isBitcoin) {
                       // Bitcoin on-chain transaction - show Transaction ID with mempool.space link
-                      // For Bitcoin txs, payment_hash contains the txid (preimage is also the txid)
-                      const txid =
-                        selectedTransaction.payment_hash ||
-                        selectedTransaction.preimage;
-
-                      if (!txid) {
+                      // For Bitcoin txs, preimage contains the txid (possibly with :outputIndex)
+                      if (!selectedTransaction.preimage) {
                         return null;
                       }
+
+                      const txid = extractTxid(selectedTransaction.preimage);
 
                       return (
                         <div>
                           <Label className="text-xs text-muted-foreground">
                             Transaction ID
                           </Label>
-                          <div className="flex items-start gap-2">
+                          <div className="flex items-center gap-2">
                             <p className="text-xs font-mono break-all bg-muted p-2 rounded flex-1">
                               {txid}
                             </p>
@@ -1376,10 +1384,10 @@ export default function WalletViewer() {
                               href={getMempoolUrl(txid, walletInfo?.network)}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="flex items-center gap-1 text-xs text-primary hover:underline mt-2 flex-shrink-0"
+                              className="text-primary hover:text-primary/80 transition-colors flex-shrink-0"
+                              title="View on mempool.space"
                             >
-                              <ExternalLink className="size-3" />
-                              View on mempool.space
+                              <ExternalLink className="size-4" />
                             </a>
                           </div>
                         </div>
