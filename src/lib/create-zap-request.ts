@@ -21,14 +21,21 @@ export interface ZapRequestParams {
   amountMillisats: number;
   /** Optional comment/message */
   comment?: string;
-  /** Optional event being zapped */
-  eventPointer?: EventPointer | AddressPointer;
+  /** Optional event being zapped (adds e-tag) */
+  eventPointer?: EventPointer;
+  /** Optional addressable event context (adds a-tag, e.g., live activity) */
+  addressPointer?: AddressPointer;
   /** Relays where zap receipt should be published */
   relays?: string[];
   /** LNURL for the recipient */
   lnurl?: string;
   /** NIP-30 custom emoji tags */
   emojiTags?: EmojiTag[];
+  /**
+   * Custom tags to include in the zap request (beyond standard p/amount/relays)
+   * Used for additional protocol-specific tagging
+   */
+  customTags?: string[][];
 }
 
 /**
@@ -50,12 +57,53 @@ export async function createZapRequest(
   }
 
   // Get relays for zap receipt publication
-  let relays = params.relays;
+  // Priority: explicit params.relays > semantic author relays > sender read relays > aggregators
+  let relays: string[] | undefined = params.relays
+    ? [...new Set(params.relays)] // Deduplicate explicit relays
+    : undefined;
+
   if (!relays || relays.length === 0) {
-    // Use sender's read relays (where they want to receive zap receipts)
-    const senderReadRelays =
-      (await relayListCache.getInboxRelays(account.pubkey)) || [];
-    relays = senderReadRelays.length > 0 ? senderReadRelays : AGGREGATOR_RELAYS;
+    const collectedRelays: string[] = [];
+
+    // Collect outbox relays from semantic authors (event author and/or addressable event pubkey)
+    const authorsToQuery: string[] = [];
+    if (params.eventPointer?.author) {
+      authorsToQuery.push(params.eventPointer.author);
+    }
+    if (params.addressPointer?.pubkey) {
+      authorsToQuery.push(params.addressPointer.pubkey);
+    }
+
+    // Deduplicate authors
+    const uniqueAuthors = [...new Set(authorsToQuery)];
+
+    // Fetch outbox relays for each author
+    for (const authorPubkey of uniqueAuthors) {
+      const authorOutboxes =
+        (await relayListCache.getOutboxRelays(authorPubkey)) || [];
+      collectedRelays.push(...authorOutboxes);
+    }
+
+    // Include relay hints from pointers
+    if (params.eventPointer?.relays) {
+      collectedRelays.push(...params.eventPointer.relays);
+    }
+    if (params.addressPointer?.relays) {
+      collectedRelays.push(...params.addressPointer.relays);
+    }
+
+    // Deduplicate collected relays
+    const uniqueRelays = [...new Set(collectedRelays)];
+
+    if (uniqueRelays.length > 0) {
+      relays = uniqueRelays;
+    } else {
+      // Fallback to sender's read relays (where they want to receive zap receipts)
+      const senderReadRelays =
+        (await relayListCache.getInboxRelays(account.pubkey)) || [];
+      relays =
+        senderReadRelays.length > 0 ? senderReadRelays : AGGREGATOR_RELAYS;
+    }
   }
 
   // Build tags
@@ -70,27 +118,31 @@ export async function createZapRequest(
     tags.push(["lnurl", params.lnurl]);
   }
 
-  // Add event reference if zapping an event
+  // Add event reference if zapping an event (e-tag)
   if (params.eventPointer) {
-    if ("id" in params.eventPointer) {
-      // Regular event (e tag)
-      tags.push(["e", params.eventPointer.id]);
-      // Include author if available
-      if (params.eventPointer.author) {
-        tags.push(["p", params.eventPointer.author]);
-      }
-      // Include relay hints
-      if (params.eventPointer.relays && params.eventPointer.relays.length > 0) {
-        tags.push(["e", params.eventPointer.id, params.eventPointer.relays[0]]);
-      }
+    const relayHint = params.eventPointer.relays?.[0] || "";
+    if (relayHint) {
+      tags.push(["e", params.eventPointer.id, relayHint]);
     } else {
-      // Addressable event (a tag)
-      const coordinate = `${params.eventPointer.kind}:${params.eventPointer.pubkey}:${params.eventPointer.identifier}`;
+      tags.push(["e", params.eventPointer.id]);
+    }
+  }
+
+  // Add addressable event reference (a-tag) - for NIP-53 live activities, etc.
+  if (params.addressPointer) {
+    const coordinate = `${params.addressPointer.kind}:${params.addressPointer.pubkey}:${params.addressPointer.identifier}`;
+    const relayHint = params.addressPointer.relays?.[0] || "";
+    if (relayHint) {
+      tags.push(["a", coordinate, relayHint]);
+    } else {
       tags.push(["a", coordinate]);
-      // Include relay hint if available
-      if (params.eventPointer.relays && params.eventPointer.relays.length > 0) {
-        tags.push(["a", coordinate, params.eventPointer.relays[0]]);
-      }
+    }
+  }
+
+  // Add custom tags (protocol-specific like NIP-53 live activity references)
+  if (params.customTags) {
+    for (const tag of params.customTags) {
+      tags.push(tag);
     }
   }
 

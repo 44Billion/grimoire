@@ -54,10 +54,19 @@ import { getSemanticAuthor } from "@/lib/semantic-author";
 export interface ZapWindowProps {
   /** Recipient pubkey (who receives the zap) */
   recipientPubkey: string;
-  /** Optional event being zapped (adds context) */
-  eventPointer?: EventPointer | AddressPointer;
+  /** Optional event being zapped (adds e-tag for context) */
+  eventPointer?: EventPointer;
+  /** Optional addressable event context (adds a-tag, e.g., live activity) */
+  addressPointer?: AddressPointer;
   /** Callback to close the window */
   onClose?: () => void;
+  /**
+   * Custom tags to include in the zap request
+   * Used for protocol-specific tagging like NIP-53 live activity references
+   */
+  customTags?: string[][];
+  /** Relays where the zap receipt should be published */
+  relays?: string[];
 }
 
 // Default preset amounts in sats
@@ -83,20 +92,15 @@ function formatAmount(amount: number): string {
 export function ZapWindow({
   recipientPubkey: initialRecipientPubkey,
   eventPointer,
+  addressPointer,
   onClose,
+  customTags,
+  relays: propsRelays,
 }: ZapWindowProps) {
-  // Load event if we have a pointer and no recipient pubkey (derive from event author)
+  // Load event if we have an eventPointer and no recipient pubkey (derive from event author)
   const event = use$(() => {
     if (!eventPointer) return undefined;
-    if ("id" in eventPointer) {
-      return eventStore.event(eventPointer.id);
-    }
-    // AddressPointer
-    return eventStore.replaceable(
-      eventPointer.kind,
-      eventPointer.pubkey,
-      eventPointer.identifier,
-    );
+    return eventStore.event(eventPointer.id);
   }, [eventPointer]);
 
   // Resolve recipient: use provided pubkey or derive from semantic author
@@ -357,8 +361,11 @@ export function ZapWindow({
         amountMillisats,
         comment,
         eventPointer,
+        addressPointer,
+        relays: propsRelays,
         lnurl: lud16 || undefined,
         emojiTags,
+        customTags,
       });
 
       const serializedZapRequest = serializeZapRequest(zapRequest);
