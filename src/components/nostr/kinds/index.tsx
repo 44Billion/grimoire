@@ -236,6 +236,7 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
 /**
  * Default renderer for kinds without custom implementations
  * Shows basic event info with raw content
+ * Right-click or tap menu button to access event menu
  */
 function DefaultKindRenderer({ event }: BaseEventProps) {
   return (
@@ -355,6 +356,7 @@ export {
   BaseEventContainer,
   EventAuthor,
   EventMenu,
+  EventContextMenu,
 } from "./BaseEventRenderer";
 export type { BaseEventProps } from "./BaseEventRenderer";
 export { Kind1Renderer } from "./NoteRenderer";
