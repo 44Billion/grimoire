@@ -42,8 +42,6 @@ export interface RichEditorProps {
     content: string,
     emojiTags: EmojiTag[],
     blobAttachments: BlobAttachment[],
-    mentions: string[],
-    eventRefs: string[],
     addressRefs: Array<{ kind: number; pubkey: string; identifier: string }>,
   ) => void;
   onChange?: () => void;
@@ -156,12 +154,15 @@ const EmojiMention = Mention.extend({
 
 /**
  * Serialize editor content to plain text with nostr: URIs
+ * Note: hashtags, mentions, and event quotes are extracted automatically by applesauce's
+ * NoteBlueprint from the text content, so we only need to extract what it doesn't handle:
+ * - Custom emojis (for emoji tags)
+ * - Blob attachments (for imeta tags)
+ * - Address references (naddr - not yet supported by applesauce)
  */
 function serializeContent(editor: any): SerializedContent {
   const emojiTags: EmojiTag[] = [];
   const blobAttachments: BlobAttachment[] = [];
-  const mentions = new Set<string>();
-  const eventRefs = new Set<string>();
   const addressRefs: Array<{
     kind: number;
     pubkey: string;
@@ -171,10 +172,11 @@ function serializeContent(editor: any): SerializedContent {
   const seenBlobs = new Set<string>();
   const seenAddrs = new Set<string>();
 
-  // Get plain text representation
-  const text = editor.getText();
+  // Get plain text representation with single newline between blocks
+  // (TipTap's default is double newline which adds extra blank lines)
+  const text = editor.getText({ blockSeparator: "\n" });
 
-  // Walk the document to collect emoji, blob, mention, and event data
+  // Walk the document to collect emoji, blob, and address reference data
   editor.state.doc.descendants((node: any) => {
     if (node.type.name === "emoji") {
       const { id, url, source } = node.attrs;
@@ -190,20 +192,11 @@ function serializeContent(editor: any): SerializedContent {
         seenBlobs.add(sha256);
         blobAttachments.push({ url, sha256, mimeType, size, server });
       }
-    } else if (node.type.name === "mention") {
-      // Extract pubkey from @mentions for p tags
-      const { id } = node.attrs;
-      if (id) {
-        mentions.add(id);
-      }
     } else if (node.type.name === "nostrEventPreview") {
-      // Extract event/address references for e/a tags
+      // Extract address references (naddr) for manual a tags
+      // Note: applesauce handles note/nevent automatically from nostr: URIs
       const { type, data } = node.attrs;
-      if (type === "note" && data) {
-        eventRefs.add(data);
-      } else if (type === "nevent" && data?.id) {
-        eventRefs.add(data.id);
-      } else if (type === "naddr" && data) {
+      if (type === "naddr" && data) {
         const addrKey = `${data.kind}:${data.pubkey}:${data.identifier || ""}`;
         if (!seenAddrs.has(addrKey)) {
           seenAddrs.add(addrKey);
@@ -221,8 +214,6 @@ function serializeContent(editor: any): SerializedContent {
     text,
     emojiTags,
     blobAttachments,
-    mentions: Array.from(mentions),
-    eventRefs: Array.from(eventRefs),
     addressRefs,
   };
 }
@@ -398,8 +389,6 @@ export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(
             serialized.text,
             serialized.emojiTags,
             serialized.blobAttachments,
-            serialized.mentions,
-            serialized.eventRefs,
             serialized.addressRefs,
           );
           // Don't clear content here - let the parent component decide when to clear
@@ -545,15 +534,13 @@ export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(
       () => ({
         focus: () => editor?.commands.focus(),
         clear: () => editor?.commands.clearContent(),
-        getContent: () => editor?.getText() || "",
+        getContent: () => editor?.getText({ blockSeparator: "\n" }) || "",
         getSerializedContent: () => {
           if (!editor)
             return {
               text: "",
               emojiTags: [],
               blobAttachments: [],
-              mentions: [],
-              eventRefs: [],
               addressRefs: [],
             };
           return serializeContent(editor);
