@@ -2,6 +2,7 @@ import { Observable, firstValueFrom, combineLatest } from "rxjs";
 import { map, first, toArray } from "rxjs/operators";
 import type { Filter } from "nostr-tools";
 import { nip19 } from "nostr-tools";
+import type { EventPointer, AddressPointer } from "nostr-tools/nip19";
 import {
   ChatProtocolAdapter,
   type SendMessageOptions,
@@ -21,7 +22,9 @@ import pool from "@/services/relay-pool";
 import { publishEventToRelays } from "@/services/hub";
 import accountManager from "@/services/accounts";
 import { AGGREGATOR_RELAYS } from "@/services/loaders";
-import { normalizeURL } from "applesauce-core/helpers";
+import { mergeRelaySets } from "applesauce-core/helpers";
+import { getOutboxes } from "applesauce-core/helpers/mailboxes";
+import { getEventPointerFromETag } from "applesauce-core/helpers/pointers";
 import { EventFactory } from "applesauce-core/event-factory";
 import {
   NoteReplyBlueprint,
@@ -489,12 +492,22 @@ export class Nip10Adapter extends ChatProtocolAdapter {
   }
 
   /**
-   * Load a replied-to message by ID
+   * Load a replied-to message by pointer
    */
   async loadReplyMessage(
     conversation: Conversation,
-    eventId: string,
+    pointer: EventPointer | AddressPointer,
   ): Promise<NostrEvent | null> {
+    // Extract event ID from pointer (EventPointer has 'id', AddressPointer doesn't)
+    const eventId = "id" in pointer ? pointer.id : null;
+
+    if (!eventId) {
+      console.warn(
+        "[NIP-10] AddressPointer not supported for loadReplyMessage",
+      );
+      return null;
+    }
+
     // First check EventStore - might already be loaded
     const cachedEvent = await eventStore
       .event(eventId)
@@ -504,8 +517,10 @@ export class Nip10Adapter extends ChatProtocolAdapter {
       return cachedEvent;
     }
 
-    // Not in store, fetch from conversation relays
-    const relays = conversation.metadata?.relays || [];
+    // Build relay list: conversation relays + pointer relay hints (deduplicated and normalized)
+    const conversationRelays = conversation.metadata?.relays || [];
+    const relays = mergeRelaySets(conversationRelays, pointer.relays || []);
+
     if (relays.length === 0) {
       console.warn("[NIP-10] No relays for loading reply message");
       return null;
@@ -614,52 +629,38 @@ export class Nip10Adapter extends ChatProtocolAdapter {
     providedEvent: NostrEvent,
     providedRelays: string[],
   ): Promise<string[]> {
-    const relays = new Set<string>();
+    const relaySets: string[][] = [];
 
-    // 1. Provided relay hints
-    providedRelays.forEach((r) => relays.add(normalizeURL(r)));
+    // 1. Provided relay hints (highest priority)
+    relaySets.push(providedRelays);
 
-    // 2. Root author's outbox relays (NIP-65) - highest priority
+    // 2. Root author's outbox relays (NIP-65)
     try {
       const rootOutbox = await this.getOutboxRelays(rootEvent.pubkey);
-      rootOutbox.slice(0, 3).forEach((r) => relays.add(normalizeURL(r)));
+      relaySets.push(rootOutbox.slice(0, 3));
     } catch (err) {
       console.warn("[NIP-10] Failed to get root author outbox:", err);
     }
 
     // 3. Collect unique participant pubkeys from both events' p-tags
     const participantPubkeys = new Set<string>();
-
-    // Add p-tags from root event
     for (const tag of rootEvent.tags) {
-      if (tag[0] === "p" && tag[1]) {
-        participantPubkeys.add(tag[1]);
-      }
+      if (tag[0] === "p" && tag[1]) participantPubkeys.add(tag[1]);
     }
-
-    // Add p-tags from provided event
     for (const tag of providedEvent.tags) {
-      if (tag[0] === "p" && tag[1]) {
-        participantPubkeys.add(tag[1]);
-      }
+      if (tag[0] === "p" && tag[1]) participantPubkeys.add(tag[1]);
     }
-
-    // Add provided event author if different from root
     if (providedEvent.pubkey !== rootEvent.pubkey) {
       participantPubkeys.add(providedEvent.pubkey);
     }
 
     // 4. Fetch outbox relays from participant subset (limit to avoid slowdown)
-    // Take first 5 participants to get relay diversity without excessive fetching
     const participantsToCheck = Array.from(participantPubkeys).slice(0, 5);
     for (const pubkey of participantsToCheck) {
       try {
         const outbox = await this.getOutboxRelays(pubkey);
-        // Add 1 relay from each participant for diversity
-        if (outbox.length > 0) {
-          relays.add(normalizeURL(outbox[0]));
-        }
-      } catch (_err) {
+        if (outbox.length > 0) relaySets.push([outbox[0]]);
+      } catch {
         // Silently continue if participant has no relay list
       }
     }
@@ -669,19 +670,22 @@ export class Nip10Adapter extends ChatProtocolAdapter {
     if (activePubkey && !participantPubkeys.has(activePubkey)) {
       try {
         const userOutbox = await this.getOutboxRelays(activePubkey);
-        userOutbox.slice(0, 2).forEach((r) => relays.add(normalizeURL(r)));
+        relaySets.push(userOutbox.slice(0, 2));
       } catch (err) {
         console.warn("[NIP-10] Failed to get user outbox:", err);
       }
     }
 
+    // Merge all relay sets (handles deduplication and normalization)
+    let relays = mergeRelaySets(...relaySets);
+
     // 6. Fallback to aggregator relays if we have too few
-    if (relays.size < 3) {
-      AGGREGATOR_RELAYS.forEach((r) => relays.add(r));
+    if (relays.length < 3) {
+      relays = mergeRelaySets(relays, AGGREGATOR_RELAYS);
     }
 
     // Limit to 10 relays max for performance
-    return Array.from(relays).slice(0, 10);
+    return relays.slice(0, 10);
   }
 
   /**
@@ -695,15 +699,8 @@ export class Nip10Adapter extends ChatProtocolAdapter {
 
     if (!relayList) return [];
 
-    // Extract write relays (r tags with "write" or no marker)
-    return relayList.tags
-      .filter((t) => {
-        if (t[0] !== "r") return false;
-        const marker = t[2];
-        return !marker || marker === "write";
-      })
-      .map((t) => normalizeURL(t[1]))
-      .slice(0, 5); // Limit to 5
+    // Use applesauce helper to extract write relays
+    return getOutboxes(relayList).slice(0, 5);
   }
 
   /**
@@ -831,18 +828,18 @@ export class Nip10Adapter extends ChatProtocolAdapter {
     if (event.kind === 1) {
       const refs = getNip10References(event);
 
-      // Determine what this reply is responding to
-      let replyTo: string | undefined;
+      // Determine what this reply is responding to (as full EventPointer with relay hints)
+      let replyTo: EventPointer | undefined;
 
       if (refs.reply?.e) {
-        // Replying to another reply
-        replyTo = refs.reply.e.id;
+        // Replying to another reply - use the full EventPointer
+        replyTo = refs.reply.e;
       } else if (refs.root?.e) {
-        // Replying directly to root
-        replyTo = refs.root.e.id;
+        // Replying directly to root - use the full EventPointer
+        replyTo = refs.root.e;
       } else {
-        // Malformed or legacy reply - assume replying to root
-        replyTo = rootEventId;
+        // Malformed or legacy reply - assume replying to root (no relay hints)
+        replyTo = { id: rootEventId };
       }
 
       return {
@@ -880,9 +877,11 @@ export class Nip10Adapter extends ChatProtocolAdapter {
     // Convert from msats to sats
     const amountInSats = amount ? Math.floor(amount / 1000) : 0;
 
-    // Find what event is being zapped (e-tag in zap receipt)
+    // Find what event is being zapped (e-tag in zap receipt) - use full pointer with relay hints
     const eTag = zapReceipt.tags.find((t) => t[0] === "e");
-    const replyTo = eTag?.[1];
+    const replyTo = eTag
+      ? (getEventPointerFromETag(eTag) ?? undefined)
+      : undefined;
 
     // Get zap request event for comment
     const zapRequestTag = zapReceipt.tags.find((t) => t[0] === "description");
@@ -920,9 +919,11 @@ export class Nip10Adapter extends ChatProtocolAdapter {
     repostEvent: NostrEvent,
     conversationId: string,
   ): Message {
-    // Find what event is being reposted (e-tag)
+    // Find what event is being reposted (e-tag) - use full pointer with relay hints
     const eTag = repostEvent.tags.find((t) => t[0] === "e");
-    const replyTo = eTag?.[1];
+    const replyTo = eTag
+      ? (getEventPointerFromETag(eTag) ?? undefined)
+      : undefined;
 
     return {
       id: repostEvent.id,
