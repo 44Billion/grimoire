@@ -19,7 +19,7 @@ import eventStore from "@/services/event-store";
 import pool from "@/services/relay-pool";
 import { publishEventToRelays, publishEvent } from "@/services/hub";
 import accountManager from "@/services/accounts";
-import { getTagValues, getQuotePointer } from "@/lib/nostr-utils";
+import { getQuotePointer } from "@/lib/nostr-utils";
 import { getEventPointerFromETag } from "applesauce-core/helpers/pointers";
 import { mergeRelaySets } from "applesauce-core/helpers";
 import { normalizeRelayURL } from "@/lib/relay-url";
