@@ -114,11 +114,12 @@ const text = getHighlightText(event);
 **Available Helpers** (split between packages in applesauce v5):
 
 *From `applesauce-core/helpers` (protocol-level):*
-- **Tags**: `getTagValue(event, name)` - get single tag value (searches hidden tags first)
+- **Tags**: `getTagValue(event, name)` - get single tag value (returns first match)
 - **Profile**: `getProfileContent(event)`, `getDisplayName(metadata, fallback)`
-- **Pointers**: `parseCoordinate(aTag)`, `getEventPointerFromETag`, `getAddressPointerFromATag`, `getProfilePointerFromPTag`
+- **Pointers**: `parseReplaceableAddress(address)` (from `applesauce-core/helpers/pointers`), `getEventPointerFromETag`, `getAddressPointerFromATag`, `getProfilePointerFromPTag`
 - **Filters**: `isFilterEqual(a, b)`, `matchFilter(filter, event)`, `mergeFilters(...filters)`
 - **Relays**: `getSeenRelays`, `mergeRelaySets`, `getInboxes`, `getOutboxes`
+- **Caching**: `getOrComputeCachedValue(event, symbol, compute)` - cache computed values on event objects
 - **URL**: `normalizeURL`
 
 *From `applesauce-common/helpers` (social/NIP-specific):*
@@ -131,18 +132,62 @@ const text = getHighlightText(event);
 - **Lists**: `getRelaysFromList`
 
 **Custom Grimoire Helpers** (not in applesauce):
-- `getTagValues(event, name)` - plural version to get array of tag values (src/lib/nostr-utils.ts)
+- `getTagValues(event, name)` - get ALL values for a tag name as array (applesauce only has singular `getTagValue`)
 - `resolveFilterAliases(filter, pubkey, contacts)` - resolves `$me`/`$contacts` aliases (src/lib/nostr-utils.ts)
 - `getDisplayName(pubkey, metadata)` - enhanced version with pubkey fallback (src/lib/nostr-utils.ts)
-- NIP-34 git helpers (src/lib/nip34-helpers.ts) - wraps `getTagValue` for repository, issue, patch metadata
+- NIP-34 git helpers (src/lib/nip34-helpers.ts) - uses `getOrComputeCachedValue` for repository, issue, patch metadata
 - NIP-C0 code snippet helpers (src/lib/nip-c0-helpers.ts) - wraps `getTagValue` for code metadata
+
+**Important**: `getTagValue` vs `getTagValues`:
+- `getTagValue(event, "t")` → returns first "t" tag value (string or undefined) - FROM APPLESAUCE
+- `getTagValues(event, "t")` → returns ALL "t" tag values (string[]) - GRIMOIRE CUSTOM (src/lib/nostr-utils.ts)
 
 **When to use `useMemo`**:
 - ✅ Complex transformations not using applesauce helpers (sorting, filtering, mapping)
 - ✅ Creating objects/arrays for dependency tracking (options, configurations)
 - ✅ Expensive computations that don't call applesauce helpers
 - ❌ Direct calls to applesauce helpers (they cache internally)
-- ❌ Grimoire helpers that wrap `getTagValue` (caching propagates)
+- ❌ Grimoire helpers that use `getOrComputeCachedValue` (they cache internally)
+
+### Writing Helper Libraries for Nostr Events
+
+When creating helper functions that compute derived values from Nostr events, **always use `getOrComputeCachedValue`** from applesauce-core to cache results on the event object:
+
+```typescript
+import { getOrComputeCachedValue, getTagValue } from "applesauce-core/helpers";
+import type { NostrEvent } from "nostr-tools";
+
+// Define a unique symbol for caching at module scope
+const MyComputedValueSymbol = Symbol("myComputedValue");
+
+export function getMyComputedValue(event: NostrEvent): string[] {
+  return getOrComputeCachedValue(event, MyComputedValueSymbol, () => {
+    // Expensive computation that iterates over tags, parses content, etc.
+    return event.tags
+      .filter((t) => t[0] === "myTag" && t[1])
+      .map((t) => t[1]);
+  });
+}
+
+// For simple single-value extraction, just use getTagValue (no caching wrapper needed)
+export function getMyTitle(event: NostrEvent): string | undefined {
+  return getTagValue(event, "title");
+}
+```
+
+**Why this matters**:
+- Event objects are often accessed multiple times during rendering
+- Without caching, the same computation runs repeatedly (e.g., on every re-render)
+- `getOrComputeCachedValue` stores the result on the event object using the symbol as a key
+- Subsequent calls return the cached value instantly without recomputation
+- Components don't need `useMemo` when calling these helpers
+
+**Best practices for helper libraries**:
+1. Use `getOrComputeCachedValue` for any function that iterates tags, parses content, or does regex matching
+2. Define symbols at module scope (not inside functions) for proper caching
+3. Simple `getTagValue()` calls don't need additional caching - just call directly
+4. For getting ALL values of a tag, use the custom `getTagValues` from `src/lib/nostr-utils.ts`
+5. Group related helpers in NIP-specific files (e.g., `nip34-helpers.ts`, `nip88-helpers.ts`)
 
 ## Major Hooks
 
@@ -237,6 +282,18 @@ if (canSign) {
 - **Path Alias**: `@/` = `./src/`
 - **Styling**: Tailwind + HSL CSS variables (theme tokens defined in `index.css`)
 - **Types**: Prefer types from `applesauce-core`, extend in `src/types/` when needed
+- **Locale-Aware Formatting** (`src/hooks/useLocale.ts`): All date, time, number, and currency formatting MUST use the user's locale:
+  - **`useLocale()` hook**: Returns `{ locale, language, region, timezone, timeFormat }` - use in components that need locale config
+  - **`formatTimestamp(timestamp, style)`**: Preferred utility for all timestamp formatting:
+    - `"relative"` → "2h ago", "3d ago"
+    - `"long"` → "January 15, 2025" (human-readable date)
+    - `"date"` → "01/15/2025" (short date)
+    - `"datetime"` → "January 15, 2025, 2:30 PM" (date with time)
+    - `"absolute"` → "2025-01-15 14:30" (ISO-8601 style)
+    - `"time"` → "14:30"
+  - Use `Intl.NumberFormat` for numbers and currencies
+  - NEVER hardcode locale strings like "en-US" or date formats like "MM/DD/YYYY"
+  - Example: `formatTimestamp(event.created_at, "long")` instead of manual `toLocaleDateString()`
 - **File Organization**: By domain (`nostr/`, `ui/`, `services/`, `hooks/`, `lib/`)
 - **State Logic**: All UI state mutations go through `src/core/logic.ts` pure functions
 

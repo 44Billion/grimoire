@@ -3,6 +3,7 @@ import { GitBranch, Tag, Copy, CopyCheck } from "lucide-react";
 import { UserName } from "../UserName";
 import { MarkdownContent } from "../MarkdownContent";
 import { useCopy } from "@/hooks/useCopy";
+import { formatTimestamp } from "@/hooks/useLocale";
 import type { NostrEvent } from "@/types/nostr";
 import {
   getPullRequestSubject,
@@ -12,46 +13,121 @@ import {
   getPullRequestCloneUrls,
   getPullRequestMergeBase,
   getPullRequestRepositoryAddress,
+  getRepositoryRelays,
+  getStatusType,
+  getValidStatusAuthors,
+  findCurrentStatus,
 } from "@/lib/nip34-helpers";
+import { parseReplaceableAddress } from "applesauce-core/helpers/pointers";
+import { getOutboxes } from "applesauce-core/helpers";
 import { Label } from "@/components/ui/label";
 import { RepositoryLink } from "../RepositoryLink";
+import { StatusIndicator } from "../StatusIndicator";
+import { useTimeline } from "@/hooks/useTimeline";
+import { useNostrEvent } from "@/hooks/useNostrEvent";
+import { AGGREGATOR_RELAYS } from "@/services/loaders";
 
 /**
  * Detail renderer for Kind 1618 - Pull Request
- * Displays full PR content with markdown rendering
+ * Displays full PR content with markdown rendering and status
  */
 export function PullRequestDetailRenderer({ event }: { event: NostrEvent }) {
   const { copy, copied } = useCopy();
 
-  const subject = useMemo(() => getPullRequestSubject(event), [event]);
-  const labels = useMemo(() => getPullRequestLabels(event), [event]);
-  const commitId = useMemo(() => getPullRequestCommitId(event), [event]);
-  const branchName = useMemo(() => getPullRequestBranchName(event), [event]);
-  const cloneUrls = useMemo(() => getPullRequestCloneUrls(event), [event]);
-  const mergeBase = useMemo(() => getPullRequestMergeBase(event), [event]);
-  const repoAddress = useMemo(
-    () => getPullRequestRepositoryAddress(event),
-    [event],
+  const subject = getPullRequestSubject(event);
+  const labels = getPullRequestLabels(event);
+  const commitId = getPullRequestCommitId(event);
+  const branchName = getPullRequestBranchName(event);
+  const cloneUrls = getPullRequestCloneUrls(event);
+  const mergeBase = getPullRequestMergeBase(event);
+  const repoAddress = getPullRequestRepositoryAddress(event);
+
+  // Parse repository address for fetching repo event
+  const parsedRepo = useMemo(
+    () => (repoAddress ? parseReplaceableAddress(repoAddress) : null),
+    [repoAddress],
   );
 
-  // Format created date
-  const createdDate = new Date(event.created_at * 1000).toLocaleDateString(
-    "en-US",
-    {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    },
+  // Fetch repository event to get maintainers list
+  const repoPointer = useMemo(() => {
+    if (!parsedRepo) return undefined;
+    return {
+      kind: parsedRepo.kind,
+      pubkey: parsedRepo.pubkey,
+      identifier: parsedRepo.identifier,
+    };
+  }, [parsedRepo]);
+
+  const repositoryEvent = useNostrEvent(repoPointer);
+
+  // Fetch repo author's relay list for fallback
+  const repoAuthorRelayListPointer = useMemo(() => {
+    if (!parsedRepo?.pubkey) return undefined;
+    return { kind: 10002, pubkey: parsedRepo.pubkey, identifier: "" };
+  }, [parsedRepo?.pubkey]);
+
+  const repoAuthorRelayList = useNostrEvent(repoAuthorRelayListPointer);
+
+  // Build relay list with fallbacks
+  const statusRelays = useMemo(() => {
+    if (repositoryEvent) {
+      const repoRelays = getRepositoryRelays(repositoryEvent);
+      if (repoRelays.length > 0) return repoRelays;
+    }
+    if (repoAuthorRelayList) {
+      const authorOutbox = getOutboxes(repoAuthorRelayList);
+      if (authorOutbox.length > 0) return authorOutbox;
+    }
+    return AGGREGATOR_RELAYS;
+  }, [repositoryEvent, repoAuthorRelayList]);
+
+  // Fetch status events
+  const statusFilter = useMemo(
+    () => ({
+      kinds: [1630, 1631, 1632, 1633],
+      "#e": [event.id],
+    }),
+    [event.id],
   );
+
+  const { events: statusEvents, loading: statusLoading } = useTimeline(
+    `pr-status-${event.id}`,
+    statusFilter,
+    statusRelays,
+    { limit: 20 },
+  );
+
+  // Get valid status authors
+  const validAuthors = useMemo(
+    () => getValidStatusAuthors(event, repositoryEvent),
+    [event, repositoryEvent],
+  );
+
+  // Get the most recent valid status event
+  const currentStatus = useMemo(
+    () => findCurrentStatus(statusEvents, validAuthors),
+    [statusEvents, validAuthors],
+  );
+
+  // Format created date using locale utility
+  const createdDate = formatTimestamp(event.created_at, "long");
 
   return (
     <div className="flex flex-col gap-4 p-4 max-w-3xl mx-auto">
       {/* PR Header */}
-      <header className="flex flex-col gap-4 pb-4 border-b border-border">
+      <header className="flex flex-col gap-3 pb-4 border-b border-border">
         {/* Title */}
-        <h1 className="text-3xl font-bold">
+        <h1 className="text-2xl font-bold">
           {subject || "Untitled Pull Request"}
         </h1>
+
+        {/* Status Badge (below title) */}
+        <StatusIndicator
+          statusKind={currentStatus?.kind}
+          loading={statusLoading}
+          eventType="pr"
+          variant="badge"
+        />
 
         {/* Repository Link */}
         {repoAddress && (
@@ -200,6 +276,33 @@ export function PullRequestDetailRenderer({ event }: { event: NostrEvent }) {
         <p className="text-sm text-muted-foreground italic">
           (No description provided)
         </p>
+      )}
+
+      {/* Status History */}
+      {currentStatus && (
+        <section className="flex flex-col gap-2 pt-4 border-t border-border">
+          <h2 className="text-sm font-semibold text-muted-foreground">
+            Last Status Update
+          </h2>
+          <div className="flex items-center gap-2 text-sm">
+            <UserName pubkey={currentStatus.pubkey} />
+            <span className="text-muted-foreground">
+              {currentStatus.kind === 1631
+                ? "merged"
+                : getStatusType(currentStatus.kind) || "updated"}{" "}
+              this pull request
+            </span>
+            <span className="text-muted-foreground">•</span>
+            <time className="text-muted-foreground">
+              {formatTimestamp(currentStatus.created_at, "date")}
+            </time>
+          </div>
+          {currentStatus.content && (
+            <div className="text-sm mt-1">
+              <MarkdownContent content={currentStatus.content} />
+            </div>
+          )}
+        </section>
       )}
     </div>
   );

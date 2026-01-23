@@ -1,8 +1,10 @@
 import { useMemo } from "react";
 import { GitCommit, User, Copy, CopyCheck } from "lucide-react";
 import { UserName } from "../UserName";
+import { MarkdownContent } from "../MarkdownContent";
 import { CodeCopyButton } from "@/components/CodeCopyButton";
 import { useCopy } from "@/hooks/useCopy";
+import { formatTimestamp } from "@/hooks/useLocale";
 import { SyntaxHighlight } from "@/components/SyntaxHighlight";
 import type { NostrEvent } from "@/types/nostr";
 import {
@@ -13,56 +15,130 @@ import {
   getPatchRepositoryAddress,
   isPatchRoot,
   isPatchRootRevision,
+  getRepositoryRelays,
+  getStatusType,
+  getValidStatusAuthors,
+  findCurrentStatus,
 } from "@/lib/nip34-helpers";
+import { parseReplaceableAddress } from "applesauce-core/helpers/pointers";
+import { getOutboxes } from "applesauce-core/helpers";
 import { RepositoryLink } from "../RepositoryLink";
+import { StatusIndicator } from "../StatusIndicator";
+import { useTimeline } from "@/hooks/useTimeline";
+import { useNostrEvent } from "@/hooks/useNostrEvent";
+import { AGGREGATOR_RELAYS } from "@/services/loaders";
 
 /**
  * Detail renderer for Kind 1617 - Patch
- * Displays full patch metadata and content
+ * Displays full patch metadata and content with status
  */
 export function PatchDetailRenderer({ event }: { event: NostrEvent }) {
   const { copy, copied } = useCopy();
 
-  const subject = useMemo(() => getPatchSubject(event), [event]);
-  const commitId = useMemo(() => getPatchCommitId(event), [event]);
-  const parentCommit = useMemo(() => getPatchParentCommit(event), [event]);
-  const committer = useMemo(() => getPatchCommitter(event), [event]);
-  const repoAddress = useMemo(() => getPatchRepositoryAddress(event), [event]);
-  const isRoot = useMemo(() => isPatchRoot(event), [event]);
-  const isRootRevision = useMemo(() => isPatchRootRevision(event), [event]);
+  const subject = getPatchSubject(event);
+  const commitId = getPatchCommitId(event);
+  const parentCommit = getPatchParentCommit(event);
+  const committer = getPatchCommitter(event);
+  const repoAddress = getPatchRepositoryAddress(event);
+  const isRoot = isPatchRoot(event);
+  const isRootRevision = isPatchRootRevision(event);
 
-  // Format created date
-  const createdDate = new Date(event.created_at * 1000).toLocaleDateString(
-    "en-US",
-    {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    },
+  // Parse repository address for fetching repo event
+  const parsedRepo = useMemo(
+    () => (repoAddress ? parseReplaceableAddress(repoAddress) : null),
+    [repoAddress],
   );
+
+  // Fetch repository event to get maintainers list
+  const repoPointer = useMemo(() => {
+    if (!parsedRepo) return undefined;
+    return {
+      kind: parsedRepo.kind,
+      pubkey: parsedRepo.pubkey,
+      identifier: parsedRepo.identifier,
+    };
+  }, [parsedRepo]);
+
+  const repositoryEvent = useNostrEvent(repoPointer);
+
+  // Fetch repo author's relay list for fallback
+  const repoAuthorRelayListPointer = useMemo(() => {
+    if (!parsedRepo?.pubkey) return undefined;
+    return { kind: 10002, pubkey: parsedRepo.pubkey, identifier: "" };
+  }, [parsedRepo?.pubkey]);
+
+  const repoAuthorRelayList = useNostrEvent(repoAuthorRelayListPointer);
+
+  // Build relay list with fallbacks
+  const statusRelays = useMemo(() => {
+    if (repositoryEvent) {
+      const repoRelays = getRepositoryRelays(repositoryEvent);
+      if (repoRelays.length > 0) return repoRelays;
+    }
+    if (repoAuthorRelayList) {
+      const authorOutbox = getOutboxes(repoAuthorRelayList);
+      if (authorOutbox.length > 0) return authorOutbox;
+    }
+    return AGGREGATOR_RELAYS;
+  }, [repositoryEvent, repoAuthorRelayList]);
+
+  // Fetch status events
+  const statusFilter = useMemo(
+    () => ({
+      kinds: [1630, 1631, 1632, 1633],
+      "#e": [event.id],
+    }),
+    [event.id],
+  );
+
+  const { events: statusEvents, loading: statusLoading } = useTimeline(
+    `patch-status-${event.id}`,
+    statusFilter,
+    statusRelays,
+    { limit: 20 },
+  );
+
+  // Get valid status authors
+  const validAuthors = useMemo(
+    () => getValidStatusAuthors(event, repositoryEvent),
+    [event, repositoryEvent],
+  );
+
+  // Get the most recent valid status event
+  const currentStatus = useMemo(
+    () => findCurrentStatus(statusEvents, validAuthors),
+    [statusEvents, validAuthors],
+  );
+
+  // Format created date using locale utility
+  const createdDate = formatTimestamp(event.created_at, "long");
 
   return (
     <div className="flex flex-col gap-4 p-4 max-w-3xl mx-auto">
       {/* Patch Header */}
-      <header className="flex flex-col gap-4 pb-4 border-b border-border">
+      <header className="flex flex-col gap-3 pb-4 border-b border-border">
         {/* Title */}
-        <h1 className="text-3xl font-bold">{subject || "Untitled Patch"}</h1>
+        <h1 className="text-2xl font-bold">{subject || "Untitled Patch"}</h1>
 
-        {/* Status Badges */}
-        {(isRoot || isRootRevision) && (
-          <div className="flex flex-wrap items-center gap-2">
-            {isRoot && (
-              <span className="px-3 py-1 bg-accent/20 text-accent text-sm border border-accent/30">
-                Root Patch
-              </span>
-            )}
-            {isRootRevision && (
-              <span className="px-3 py-1 bg-primary/20 text-primary text-sm border border-primary/30">
-                Root Revision
-              </span>
-            )}
-          </div>
-        )}
+        {/* Status and Root badges (below title) */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <StatusIndicator
+            statusKind={currentStatus?.kind}
+            loading={statusLoading}
+            eventType="patch"
+            variant="badge"
+          />
+          {isRoot && (
+            <span className="px-2 py-1 bg-accent/20 text-accent text-xs border border-accent/30 rounded-sm">
+              Root Patch
+            </span>
+          )}
+          {isRootRevision && (
+            <span className="px-2 py-1 bg-primary/20 text-primary text-xs border border-primary/30 rounded-sm">
+              Root Revision
+            </span>
+          )}
+        </div>
 
         {/* Repository Link */}
         {repoAddress && (
@@ -173,6 +249,33 @@ export function PatchDetailRenderer({ event }: { event: NostrEvent }) {
               label="Copy patch"
             />
           </div>
+        </section>
+      )}
+
+      {/* Status History */}
+      {currentStatus && (
+        <section className="flex flex-col gap-2 pt-4 border-t border-border">
+          <h2 className="text-sm font-semibold text-muted-foreground">
+            Last Status Update
+          </h2>
+          <div className="flex items-center gap-2 text-sm">
+            <UserName pubkey={currentStatus.pubkey} />
+            <span className="text-muted-foreground">
+              {currentStatus.kind === 1631
+                ? "merged"
+                : getStatusType(currentStatus.kind) || "updated"}{" "}
+              this patch
+            </span>
+            <span className="text-muted-foreground">•</span>
+            <time className="text-muted-foreground">
+              {formatTimestamp(currentStatus.created_at, "date")}
+            </time>
+          </div>
+          {currentStatus.content && (
+            <div className="text-sm mt-1">
+              <MarkdownContent content={currentStatus.content} />
+            </div>
+          )}
         </section>
       )}
     </div>
