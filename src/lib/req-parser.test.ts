@@ -1402,6 +1402,30 @@ describe("parseReqCommand", () => {
     });
   });
 
+  describe("follow flag (-f, --follow)", () => {
+    it("should parse -f flag", () => {
+      const result = parseReqCommand(["-f"]);
+      expect(result.follow).toBe(true);
+    });
+
+    it("should parse --follow flag", () => {
+      const result = parseReqCommand(["--follow"]);
+      expect(result.follow).toBe(true);
+    });
+
+    it("should default to false when not provided", () => {
+      const result = parseReqCommand(["-k", "1"]);
+      expect(result.follow).toBe(false);
+    });
+
+    it("should work with other flags", () => {
+      const result = parseReqCommand(["-k", "1", "-f", "-l", "50"]);
+      expect(result.filter.kinds).toEqual([1]);
+      expect(result.follow).toBe(true);
+      expect(result.filter.limit).toBe(50);
+    });
+  });
+
   describe("complex scenarios", () => {
     it("should handle multiple flags together", () => {
       const hex = "a".repeat(64);

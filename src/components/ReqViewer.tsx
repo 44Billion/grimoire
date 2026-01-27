@@ -117,6 +117,7 @@ interface ReqViewerProps {
   relays?: string[];
   closeOnEose?: boolean;
   view?: ViewMode;
+  follow?: boolean; // Auto-refresh mode (like tail -f)
   nip05Authors?: string[];
   nip05PTags?: string[];
   domainAuthors?: string[];
@@ -713,6 +714,7 @@ export default function ReqViewer({
   relays,
   closeOnEose = false,
   view = "list",
+  follow = false,
   nip05Authors,
   nip05PTags,
   domainAuthors,
@@ -846,8 +848,11 @@ export default function ReqViewer({
   const [isFrozen, setIsFrozen] = useState(false);
   const virtuosoRef = useRef<any>(null);
 
-  // Freeze timeline after EOSE in streaming mode
+  // Freeze timeline after EOSE in streaming mode (skip if follow mode enabled)
   useEffect(() => {
+    // Don't freeze in follow mode - show events as they arrive
+    if (follow) return;
+
     // Freeze after EOSE in streaming mode
     if (eoseReceived && stream && !isFrozen && events.length > 0) {
       setFreezePoint(events[0].id);
@@ -859,7 +864,7 @@ export default function ReqViewer({
       setFreezePoint(null);
       setIsFrozen(false);
     }
-  }, [eoseReceived, stream, isFrozen, events]);
+  }, [follow, eoseReceived, stream, isFrozen, events]);
 
   // Filter events based on freeze point
   const { visibleEvents, newEventCount } = useMemo(() => {
@@ -1343,8 +1348,8 @@ export default function ReqViewer({
       {/* Results */}
       {(!needsAccount || accountPubkey) && (
         <div className="flex-1 overflow-y-auto relative">
-          {/* Floating "New Events" Button */}
-          {isFrozen && newEventCount > 0 && (
+          {/* Floating "New Events" Button (hidden in follow mode) */}
+          {isFrozen && newEventCount > 0 && !follow && (
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
               <Button
                 onClick={handleUnfreeze}

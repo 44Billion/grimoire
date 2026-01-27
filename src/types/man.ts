@@ -235,6 +235,11 @@ export const manPages: Record<string, ManPageEntry> = {
           "Display mode for results. 'list' shows full event cards, 'compact' shows condensed single-line rows. Defaults to 'list'.",
       },
       {
+        flag: "-f, --follow",
+        description:
+          "Auto-refresh mode (like tail -f). Automatically displays new events instead of buffering them behind a 'X new events' button. Refreshes every second.",
+      },
+      {
         flag: "[relay...]",
         description:
           "Relay URLs to query (wss://relay.com or shorthand: relay.com)",
@@ -272,6 +277,8 @@ export const manPages: Record<string, ManPageEntry> = {
       "req --search bitcoin -k 1            							    Search notes for 'bitcoin'",
       "req -k 1 theforest.nostr1.com relay.damus.io                                                 Query specific relays (overrides auto-selection)",
       "req -k 1 -l 100 --view compact                                                                 Get notes in compact view mode",
+      "req -k 1 -f                                                                                    Follow mode: auto-display new notes (1s refresh)",
+      "req -k 1 -a $contacts -f                                                                       Follow your contacts' notes in real-time",
     ],
     seeAlso: ["kind", "nip"],
     appId: "req",
