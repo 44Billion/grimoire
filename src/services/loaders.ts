@@ -6,7 +6,11 @@ import {
 } from "applesauce-loaders/loaders";
 import type { EventPointer } from "nostr-tools/nip19";
 import { Observable } from "rxjs";
-import { getSeenRelays, mergeRelaySets } from "applesauce-core/helpers/relays";
+import {
+  getSeenRelays,
+  mergeRelaySets,
+  isSafeRelayURL,
+} from "applesauce-core/helpers/relays";
 import {
   getEventPointerFromETag,
   getAddressPointerFromATag,
@@ -31,13 +35,17 @@ function extractRelayContext(event: NostrEvent): {
   // Get relays where this event was seen (tracked by applesauce)
   const seenRelays = getSeenRelays(event);
 
-  // Extract all "r" tags (URL references per NIP-01)
+  // Extract relay URLs from "r" tags (URL references per NIP-01)
+  // Only include valid relay URLs (ws:// or wss://) - filter out http/https links
   const rTags = event.tags
     .filter((t) => t[0] === "r")
     .map((t) => t[1])
-    .filter(Boolean);
+    .filter(
+      (url): url is string => typeof url === "string" && isSafeRelayURL(url),
+    );
 
   // Extract relay hints from all "e" tags using applesauce helper
+  // Filter to only valid relay URLs
   const eTagRelays = event.tags
     .filter((t) => t[0] === "e")
     .map((tag) => {
@@ -45,17 +53,22 @@ function extractRelayContext(event: NostrEvent): {
       // v5: returns null for invalid tags instead of throwing
       return pointer?.relays?.[0]; // First relay hint from the pointer
     })
-    .filter((relay): relay is string => relay !== undefined);
+    .filter(
+      (url): url is string => typeof url === "string" && isSafeRelayURL(url),
+    );
 
   // Extract relay hints from all "a" tags (addressable event references)
   // This includes both lowercase "a" (reply) and uppercase "A" (root) tags
+  // Filter to only valid relay URLs
   const aTagRelays = event.tags
     .filter((t) => t[0] === "a" || t[0] === "A")
     .map((tag) => {
       const pointer = getAddressPointerFromATag(tag);
       return pointer?.relays?.[0]; // First relay hint from the pointer
     })
-    .filter((relay): relay is string => relay !== undefined);
+    .filter(
+      (url): url is string => typeof url === "string" && isSafeRelayURL(url),
+    );
 
   // Extract first "p" tag as author hint using applesauce helper
   const authorHint = getTagValue(event, "p");
