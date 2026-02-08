@@ -1,0 +1,304 @@
+name: Publish Napp On Upstream Change
+
+# ------------------------------------------------------------------------------
+# WORKFLOW CONFIGURATION & SECRETS
+# ------------------------------------------------------------------------------
+# This workflow requires the following Repository Secret to be set:
+#
+# 1. NOSTR_SECRET_KEY
+#    - Description: The Nostr secret key (starting with 'nsec' or hex) used to
+#      sign and publish the application via 'nappup'.
+#    - How to set: Go to Settings > Secrets and variables > Actions > New repository secret
+#
+# 2. NAPPUP_DIST_PATH (Optional)
+#    - Description: The path to the build output directory.
+#    - Default: dist
+#    - How to set: Go to Settings > Secrets and variables > Actions > New repository variable
+#
+# Note: GITHUB_TOKEN is automatically provided by GitHub Actions and does not
+# need to be manually configured.
+# ------------------------------------------------------------------------------
+
+on:
+  push:
+    branches:
+      - napp
+  # This file must exist in the default branch to enable scheduled runs
+  # Settings > General > Default branch > Switch to Another Branch Button > Select "napp" branch > Update > Confirm
+  schedule:
+    # Runs daily at 11:23 UTC
+    # Randomize this when copying and avoid the start of every hour"
+    - cron: '23 11 * * *'
+  workflow_dispatch:
+    inputs:
+      upstream_branch:
+        description: 'Upstream branch to pull from (leave empty to auto-detect)'
+        required: false
+      origin_branch:
+        description: 'Origin branch to rebase'
+        default: 'napp'
+        required: false
+      base_branch:
+        description: 'Base branch to update (leave empty to use upstream branch name)'
+        required: false
+
+jobs:
+  sync-rebase-build-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    env:
+      REBASE_FAILED: 'false'
+      BUILD_FAILED: 'false'
+      PUBLISH_FAILED: 'false'
+      SKIP_SYNC: 'false'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Configure Variables
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_UPSTREAM_BRANCH: ${{ github.event.inputs.upstream_branch }}
+          INPUT_BASE_BRANCH: ${{ github.event.inputs.base_branch }}
+          INPUT_ORIGIN_BRANCH: ${{ github.event.inputs.origin_branch }}
+        run: |
+          # 1. Detect Upstream URL and Default Branch
+          echo "Detecting upstream repository info..."
+          REPO_INFO=$(gh api "repos/$GITHUB_REPOSITORY" --jq '{parent_url: .parent.clone_url, parent_branch: .parent.default_branch}')
+
+          DETECTED_URL=$(echo "$REPO_INFO" | jq -r .parent_url)
+          DETECTED_BRANCH=$(echo "$REPO_INFO" | jq -r .parent_branch)
+
+          if [ "$DETECTED_URL" == "null" ] || [ -z "$DETECTED_URL" ]; then
+            echo "Upstream not detected (not a fork?). Using defaults."
+            UPSTREAM_URL="https://github.com/dtonon/fevela.git"
+            DETECTED_BRANCH="main"
+          else
+            UPSTREAM_URL="$DETECTED_URL"
+            echo "Detected upstream: $UPSTREAM_URL ($DETECTED_BRANCH)"
+          fi
+
+          # 2. Determine UPSTREAM_BRANCH
+          if [ -n "$INPUT_UPSTREAM_BRANCH" ]; then
+            UPSTREAM_BRANCH="$INPUT_UPSTREAM_BRANCH"
+          else
+            UPSTREAM_BRANCH="$DETECTED_BRANCH"
+          fi
+
+          # 3. Determine BASE_BRANCH
+          # Defaults to UPSTREAM_BRANCH if not provided
+          if [ -n "$INPUT_BASE_BRANCH" ]; then
+            BASE_BRANCH="$INPUT_BASE_BRANCH"
+          else
+            BASE_BRANCH="$UPSTREAM_BRANCH"
+          fi
+
+          # 4. Determine ORIGIN_BRANCH
+          if [ -n "$INPUT_ORIGIN_BRANCH" ]; then
+            ORIGIN_BRANCH="$INPUT_ORIGIN_BRANCH"
+          else
+            ORIGIN_BRANCH="napp"
+          fi
+
+          # 5. Determine NOTIFY_USER
+          REPO_OWNER="${{ github.repository_owner }}"
+
+          echo "Determining notification user for repository owner: $REPO_OWNER"
+
+          OWNER_TYPE=$(gh api "users/$REPO_OWNER" --jq '.type' || echo "Unknown")
+
+          if [ "$OWNER_TYPE" == "Organization" ]; then
+            echo "$REPO_OWNER is an Organization. Fetching an admin..."
+            # Try to get the first admin member
+            NOTIFY_USER=$(gh api "orgs/$REPO_OWNER/members?role=admin&per_page=1" --jq '.[0].login' || echo "")
+            if [ -z "$NOTIFY_USER" ]; then
+               echo "Could not fetch org admin (permissions?). Falling back to actor."
+               NOTIFY_USER="${{ github.actor }}"
+            fi
+          elif [ "$OWNER_TYPE" == "User" ]; then
+            echo "$REPO_OWNER is a User."
+            NOTIFY_USER="$REPO_OWNER"
+          else
+            echo "Could not determine owner type. Falling back to actor."
+            NOTIFY_USER="${{ github.actor }}"
+          fi
+
+          # Export to GITHUB_ENV
+          echo "UPSTREAM_URL=$UPSTREAM_URL" >> $GITHUB_ENV
+          echo "UPSTREAM_BRANCH=$UPSTREAM_BRANCH" >> $GITHUB_ENV
+          echo "BASE_BRANCH=$BASE_BRANCH" >> $GITHUB_ENV
+          echo "ORIGIN_BRANCH=$ORIGIN_BRANCH" >> $GITHUB_ENV
+          echo "NOTIFY_USER=$NOTIFY_USER" >> $GITHUB_ENV
+
+          echo "Final Configuration:"
+          echo "  UPSTREAM_URL: $UPSTREAM_URL"
+          echo "  UPSTREAM_BRANCH: $UPSTREAM_BRANCH"
+          echo "  BASE_BRANCH: $BASE_BRANCH"
+          echo "  ORIGIN_BRANCH: $ORIGIN_BRANCH"
+          echo "  NOTIFY_USER: $NOTIFY_USER"
+
+          # Sync with Upstream
+          echo "Syncing with upstream..."
+          git remote add upstream "$UPSTREAM_URL" || git remote set-url upstream "$UPSTREAM_URL"
+          git fetch upstream
+
+          # Ensure we are on the base branch and it tracks origin
+          git checkout -B "$BASE_BRANCH" "origin/$BASE_BRANCH"
+          OLD_HASH=$(git rev-parse HEAD)
+
+          # Merge upstream changes
+          git merge "upstream/$UPSTREAM_BRANCH"
+          NEW_HASH=$(git rev-parse HEAD)
+
+          if [ "$OLD_HASH" == "$NEW_HASH" ] && [[ "${{ github.event_name }}" == "schedule" || "${{ github.event_name }}" == "push" ]]; then
+            echo "No new changes from upstream on ${{ github.event_name }} run. Skipping remaining steps."
+            echo "SKIP_SYNC=true" >> $GITHUB_ENV
+          fi
+
+          # Push updated base branch
+          git push origin "$BASE_BRANCH"
+
+      - name: Rebase Napp
+        if: env.SKIP_SYNC != 'true'
+        id: rebase
+        run: |
+          echo "Rebasing $ORIGIN_BRANCH onto $BASE_BRANCH..."
+          git checkout -B $ORIGIN_BRANCH origin/$ORIGIN_BRANCH
+
+          if ! git rebase $BASE_BRANCH; then
+            echo "::error::Rebase failed"
+            echo "REBASE_FAILED=true" >> $GITHUB_ENV
+            git rebase --abort
+            exit 1
+          fi
+
+      - name: Notify Rebase Failure
+        if: failure() && env.REBASE_FAILED == 'true'
+        run: |
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "Automatic Rebase Failed" \
+            --body "@$NOTIFY_USER The automatic rebase of \`$ORIGIN_BRANCH\` onto \`$BASE_BRANCH\` failed due to conflicts. Please resolve them manually." \
+            --assignee "$NOTIFY_USER" || \
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "Automatic Rebase Failed" \
+            --body "@$NOTIFY_USER The automatic rebase of \`$ORIGIN_BRANCH\` onto \`$BASE_BRANCH\` failed due to conflicts. Please resolve them manually."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        if: success() && env.SKIP_SYNC != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '*'
+
+      - name: Install Dependencies
+        if: success() && env.SKIP_SYNC != 'true'
+        run: npm ci
+
+      - name: Build
+        if: success() && env.SKIP_SYNC != 'true'
+        id: build
+        env:
+          NAPPUP_DIST_PATH: ${{ vars.NAPPUP_DIST_PATH }}
+        run: |
+          # Determine project folder name (assuming it matches the repo folder name)
+          PROJECT_NAME=$(basename $PWD)
+          echo "PROJECT_NAME=$PROJECT_NAME" >> $GITHUB_ENV
+
+          if [ -n "$NAPPUP_DIST_PATH" ]; then
+            DIST_PATH="$NAPPUP_DIST_PATH"
+          else
+            DIST_PATH="dist"
+          fi
+
+          echo "Expected dist path: $DIST_PATH"
+
+          # Clean existing dist
+          if [ -d "$DIST_PATH" ]; then
+            echo "Cleaning $DIST_PATH..."
+            rm -rf "$DIST_PATH"
+          fi
+
+          # Run build
+          if ! npm run build; then
+             echo "::error::Build failed"
+             echo "BUILD_FAILED=true" >> $GITHUB_ENV
+             exit 1
+          fi
+
+          # Verify build output
+          if [ ! -d "$DIST_PATH" ]; then
+            echo "::error::Build finished but $DIST_PATH not found"
+            echo "BUILD_FAILED=true" >> $GITHUB_ENV
+            exit 1
+          fi
+
+          echo "DIST_PATH=$DIST_PATH" >> $GITHUB_ENV
+
+      - name: Notify Build Failure
+        if: failure() && env.BUILD_FAILED == 'true'
+        run: |
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "Automatic Build Failed" \
+            --body "@$NOTIFY_USER The build on branch \`$ORIGIN_BRANCH\` failed. Please check the logs." \
+            --assignee "$NOTIFY_USER" || \
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "Automatic Build Failed" \
+            --body "@$NOTIFY_USER The build on branch \`$ORIGIN_BRANCH\` failed. Please check the logs."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish
+        if: success() && env.SKIP_SYNC != 'true'
+        env:
+          NOSTR_SECRET_KEY: ${{ secrets.NOSTR_SECRET_KEY }}
+        run: |
+          if [ -z "$NOSTR_SECRET_KEY" ]; then
+            echo "::error::NOSTR_SECRET_KEY secret is not set"
+            echo "PUBLISH_FAILED=true" >> $GITHUB_ENV
+            exit 1
+          fi
+
+          echo "Publishing $DIST_PATH..."
+          # Using -y to accept npx and nappup prompts automatically
+          if ! npx -y nappup "$DIST_PATH" -y -s "$NOSTR_SECRET_KEY" -D "$PROJECT_NAME"; then
+            echo "::error::Publish failed"
+            echo "PUBLISH_FAILED=true" >> $GITHUB_ENV
+            exit 1
+          fi
+
+      - name: Notify Publish Failure
+        if: failure() && env.PUBLISH_FAILED == 'true'
+        run: |
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "Automatic Publish Failed" \
+            --body "@$NOTIFY_USER The publication of the app failed. Please check the logs." \
+            --assignee "$NOTIFY_USER" || \
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "Automatic Publish Failed" \
+            --body "@$NOTIFY_USER The publication of the app failed. Please check the logs."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Changes
+        if: success() && env.SKIP_SYNC != 'true'
+        run: |
+          echo "Pushing updated $ORIGIN_BRANCH..."
+          git push origin $ORIGIN_BRANCH --force
