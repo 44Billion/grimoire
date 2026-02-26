@@ -165,6 +165,11 @@ import { TrustedAssertionRenderer } from "./TrustedAssertionRenderer";
 import { TrustedAssertionDetailRenderer } from "./TrustedAssertionDetailRenderer";
 import { TrustedProviderListRenderer } from "./TrustedProviderListRenderer";
 import { TrustedProviderListDetailRenderer } from "./TrustedProviderListDetailRenderer";
+import {
+  MusicTrackRenderer,
+  MusicTrackDetailRenderer,
+} from "./MusicTrackRenderer";
+import { PlaylistRenderer, PlaylistDetailRenderer } from "./PlaylistRenderer";
 
 /**
  * Registry of kind-specific renderers
@@ -247,8 +252,10 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   30383: TrustedAssertionRenderer, // Event Assertion (NIP-85)
   30384: TrustedAssertionRenderer, // Address Assertion (NIP-85)
   30385: TrustedAssertionRenderer, // External Assertion (NIP-85)
+  34139: PlaylistRenderer, // Music Playlist
   34235: Kind21Renderer, // Horizontal Video (NIP-71 legacy)
   34236: Kind22Renderer, // Vertical Video (NIP-71 legacy)
+  36787: MusicTrackRenderer, // Music Track
   30617: RepositoryRenderer, // Repository (NIP-34)
   30618: RepositoryStateRenderer, // Repository State (NIP-34)
   30777: SpellbookRenderer, // Spellbook (Grimoire)
@@ -367,6 +374,8 @@ const detailRenderers: Record<
   31989: HandlerRecommendationDetailRenderer, // Handler Recommendation Detail (NIP-89)
   31990: ApplicationHandlerDetailRenderer, // Application Handler Detail (NIP-89)
   32267: ZapstoreAppDetailRenderer, // Zapstore App Detail
+  34139: PlaylistDetailRenderer, // Music Playlist Detail
+  36787: MusicTrackDetailRenderer, // Music Track Detail
   38383: P2pOrderDetailRenderer, // P2P Order Detail
   39089: StarterPackDetailRenderer, // Starter Pack Detail (NIP-51)
   39092: MediaStarterPackDetailRenderer, // Media Starter Pack Detail (NIP-51)
