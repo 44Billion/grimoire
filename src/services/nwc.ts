@@ -12,20 +12,24 @@
  */
 
 import { WalletConnect } from "applesauce-wallet-connect";
+import { RelayPool } from "applesauce-relay";
 import type { NWCConnection } from "@/types/app";
 import {
   type TransactionsState,
   INITIAL_TRANSACTIONS_STATE,
 } from "@/types/wallet";
-import pool from "./relay-pool";
 import { BehaviorSubject, Subscription, firstValueFrom, timeout } from "rxjs";
 
-// Configure the pool for wallet connect
-WalletConnect.pool = pool;
+// Dedicated relay pool for NWC — isolated from the shared app pool and relay
+// liveness tracking, which can deprioritize or skip the wallet relay
+const nwcPool = new RelayPool();
+WalletConnect.pool = nwcPool;
 
 // Internal state
 let notificationSubscription: Subscription | null = null;
 let notificationRetryTimeout: ReturnType<typeof setTimeout> | null = null;
+/** Persistent support$ subscription — keeps events$ relay subscription alive */
+let supportSubscription: Subscription | null = null;
 
 /**
  * Connection status for the NWC wallet
@@ -153,6 +157,8 @@ export function createWalletFromURI(connectionString: string): WalletConnect {
   const wallet = WalletConnect.fromConnectURI(connectionString);
   wallet$.next(wallet);
 
+  supportSubscription?.unsubscribe();
+  supportSubscription = wallet.support$.subscribe();
   subscribeToNotifications(wallet);
   refreshBalance(); // Fetch initial balance
 
@@ -176,6 +182,9 @@ export async function restoreWallet(
   });
 
   wallet$.next(wallet);
+
+  supportSubscription?.unsubscribe();
+  supportSubscription = wallet.support$.subscribe();
 
   // Show cached balance immediately while validating
   if (connection.balance !== undefined) {
@@ -214,7 +223,9 @@ export async function restoreWallet(
  * Disconnects and clears the wallet.
  */
 export function clearWallet(): void {
-  // Clean up subscription and pending retry
+  // Clean up subscriptions and pending retry
+  supportSubscription?.unsubscribe();
+  supportSubscription = null;
   notificationSubscription?.unsubscribe();
   notificationSubscription = null;
   if (notificationRetryTimeout) {
