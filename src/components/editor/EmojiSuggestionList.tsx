@@ -120,7 +120,10 @@ export const EmojiSuggestionList = forwardRef<
     );
   }
 
-  const listHeight = Math.min(items.length, MAX_VISIBLE) * ITEM_HEIGHT;
+  const listHeight = Math.max(
+    Math.min(items.length, MAX_VISIBLE) * ITEM_HEIGHT,
+    ITEM_HEIGHT + 8,
+  );
 
   return (
     <div
@@ -131,10 +134,8 @@ export const EmojiSuggestionList = forwardRef<
         ref={virtuosoRef}
         totalCount={items.length}
         fixedItemHeight={ITEM_HEIGHT}
-        style={{
-          height: listHeight,
-          overflow: items.length <= MAX_VISIBLE ? "hidden" : "auto",
-        }}
+        style={{ height: listHeight }}
+        className="overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/60 [&::-webkit-scrollbar-track]:bg-transparent"
         itemContent={renderItem}
       />
     </div>
