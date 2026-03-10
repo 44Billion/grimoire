@@ -327,7 +327,10 @@ export function ZapWindow({
           `Amount too small. Minimum: ${Math.ceil(lnurlData.minSendable / 1000)} sats`,
         );
       }
-      if (amountMillisats > lnurlData.maxSendable) {
+      if (
+        lnurlData.maxSendable > 0 &&
+        amountMillisats > lnurlData.maxSendable
+      ) {
         throw new Error(
           `Amount too large. Maximum: ${Math.floor(lnurlData.maxSendable / 1000)} sats`,
         );
