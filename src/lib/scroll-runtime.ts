@@ -385,6 +385,7 @@ export async function runScroll(
       if (stopped) return 0;
       const reqData = getReq(req);
       handles.delete(req); // consume the req handle
+      reqData.relays = Array.from(new Set(reqData.relays));
 
       const subHandle = allocHandle("sub", {
         rxSubscription: null,
