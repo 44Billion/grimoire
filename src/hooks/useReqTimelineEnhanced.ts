@@ -17,6 +17,9 @@ const MAX_STREAMING_EVENTS = 2000;
 
 /** Replaces applesauce v5's Relay.eoseTimeout, removed in v6. */
 const EOSE_TIMEOUT_MS = 15_000;
+
+/** Backoff before reopening a subscription the relay closed cleanly. */
+const RESUBSCRIBE_DELAY_MS = 5_000;
 /** Fraction of events to evict when cap is hit (evict oldest 25%) */
 const EVICTION_FRACTION = 0.25;
 
@@ -211,8 +214,10 @@ export function useReqTimelineEnhanced(
 
       return relay
         .subscription(filtersForRelay, {
-          reconnect: 5, // v5: retries renamed to reconnect
-          resubscribe: true,
+          reconnect: 5,
+          // Not `true`: applesauce turns that into repeat({ delay: of(null) }),
+          // which hammers a relay that closes the subscription after EOSE.
+          resubscribe: { delay: RESUBSCRIBE_DELAY_MS },
         })
         .subscribe(
           (response) => {

@@ -48,6 +48,21 @@ export default tseslint.config(
           message:
             "pool.subscription()/pool.request() need an options argument: pass { eventStore } so events reach the shared store (applesauce defaults to a throwaway one). For an EOSE signal use streamWithEose(), and for one-shot fetches requestEvents()/requestEvent(), from @/lib/relay-subscription.",
         },
+        {
+          // applesauce turns `true` into repeat({ delay: () => of(null) }) — a
+          // synchronous loop, measured at >20k REQ frames/sec against a relay
+          // that CLOSEs after EOSE.
+          selector: 'Property[key.name="resubscribe"][value.value=true]',
+          message:
+            "resubscribe: true has no backoff and floods relays that close after EOSE. Pass a delay instead, e.g. { delay: 5000 }.",
+        },
+        {
+          // Vite cannot statically analyse these: it warns, never emits the
+          // chunk, and the import fails in production while working in dev.
+          selector: 'ImportExpression > TemplateLiteral[expressions.length>0]',
+          message:
+            "Vite cannot analyse a template-literal dynamic import, so the chunk is never bundled and it fails in production. Use the library's own lazy registry or import.meta.glob.",
+        },
       ],
 
       // --- Rules newly promoted to error by eslint 10 / react-hooks 7 ---

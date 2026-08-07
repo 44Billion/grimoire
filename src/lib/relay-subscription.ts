@@ -15,6 +15,21 @@ export type RequestEventsOptions = GroupRequestOptions & {
 };
 
 /**
+ * Pull `timeout` out of the options and enforce it ourselves. applesauce accepts
+ * a `timeout` but applies it upstream of its EVENT filter, where the synchronous
+ * OPEN message disarms it — so passing it through would look like a bound while
+ * being none. See REQUEST_TIMEOUT_MS.
+ */
+function splitTimeout(options?: RequestEventsOptions) {
+  const { pool = defaultPool, timeout, ...rest } = options ?? {};
+  return {
+    pool,
+    bound: timeout ?? REQUEST_TIMEOUT_MS,
+    requestOptions: rest,
+  };
+}
+
+/**
  * Hard ceiling on a one-shot request.
  *
  * This is enforced with `takeUntil`, not the `timeout` option: applesauce
@@ -44,7 +59,7 @@ export async function requestEvents(
   filters: Filter[],
   options?: RequestEventsOptions,
 ): Promise<NostrEvent[]> {
-  const { pool = defaultPool, ...requestOptions } = options ?? {};
+  const { pool, bound, requestOptions } = splitTimeout(options);
 
   // Collect as we go so a timeout still yields what did arrive.
   const collected: NostrEvent[] = [];
@@ -56,7 +71,7 @@ export async function requestEvents(
         ...requestOptions,
       })
       .pipe(
-        takeUntil(timer(REQUEST_TIMEOUT_MS)),
+        takeUntil(timer(bound)),
         tap((event) => collected.push(event)),
         toArray(),
         catchError((error) => {
@@ -79,7 +94,7 @@ export async function requestEvent(
   filter: Filter,
   options?: RequestEventsOptions,
 ): Promise<NostrEvent | null> {
-  const { pool = defaultPool, ...requestOptions } = options ?? {};
+  const { pool, bound, requestOptions } = splitTimeout(options);
 
   return firstValueFrom(
     pool
@@ -88,7 +103,7 @@ export async function requestEvent(
         ...requestOptions,
       })
       .pipe(
-        takeUntil(timer(REQUEST_TIMEOUT_MS)),
+        takeUntil(timer(bound)),
         take(1),
         catchError((error) => {
           console.warn("[relay] event request failed:", error);
