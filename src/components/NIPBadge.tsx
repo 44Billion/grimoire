@@ -49,7 +49,7 @@ export function NIPBadge({
     );
   };
 
-  // External specs (Marmot, BUD-03, etc.) render as non-interactive labels
+  // External specs (Marmot, AMB, etc.) render as non-interactive labels
   if (isExternal && !communityNip) {
     return (
       <span

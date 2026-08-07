@@ -6,13 +6,17 @@ Sync NIP and event kind definitions with the upstream nostr-protocol/nips reposi
 curl -s https://raw.githubusercontent.com/nostr-protocol/nips/master/README.md
 ```
 
-Parse two tables from the README:
+Parse two sections from the README:
 
-1. **NIP list table** — rows like `| [01](01.md) | Basic protocol flow description | final |`
-   - Extract: NIP identifier (from link target, e.g. `01`, `7D`), title, status (`draft`/`final`/`deprecated`)
-2. **Event Kinds table** — rows like `| 0 | User Metadata | [01](01.md) |`
+1. **List** — a bullet list, e.g. `- [NIP-01: Basic protocol flow description](01.md)`
+   - Extract: NIP identifier from the link target (`01`, `7D`), title after the colon
+   - There is no status column. Deprecation is a struck-through row:
+     `- ~~[NIP-04: …](04.md) --- **unrecommended**: …~~`
+2. **Event Kinds table** — rows like ``| `0` | User Metadata | [01](01.md) |``
+   - Kind numbers are backticked; a regex that omits the backticks matches nothing
    - Extract: kind number, description, NIP reference
-   - Ranges like `5000-5999` are categories — do NOT expand into individual entries
+   - Ranges (`` `1630`-`1633` ``, `` `9000`-`9030` ``, `39000-9`) are categories — do
+     NOT expand into individual entries
 
 ## Step 2: Update `src/constants/nips.ts`
 
@@ -58,7 +62,7 @@ Read the current file, then apply changes carefully.
 - **Grimoire custom kinds**: 777, 10777, 30777 — identified by `nip: ""`
 - **Other custom kinds with `nip: ""`**: e.g., 32267, 34139, 36787
 - **Community NIPs**: any entry with `communityNip` field (e.g., 30142)
-- **Commented-out external specs**: Marmot, NKBIP, nostrocket, geocaching, Corny Chat, Lightning.Pub, Nostr Epoxy, Tidal, joinstr, Blossom (24242), etc.
+- **Commented-out external specs**: Marmot, NKBIP, nostrocket, Corny Chat, Lightning.Pub, Nostr Epoxy, Tidal, joinstr, etc. Uncomment a block only when its spec graduates to a real NIP — geocaching did (NIP-CC) and Blossom did (NIP-B7), both now active. Say so in the report.
 - **All existing `icon` assignments** — never change icons on existing entries
 - **Section comments**: `// Core protocol kinds`, `// Lists`, `// Channels`, etc.
 
@@ -76,54 +80,12 @@ Read the current file, then apply changes carefully.
 
 ## Step 5: Cross-reference validation
 
-- Every `nip` field in `EVENT_KINDS` should exist in `VALID_NIPS` (except empty strings `""` and external specs like `"BUD-03"`, `"AMB"`, `"Marmot"`)
+- Every `nip` field in `EVENT_KINDS` should exist in `VALID_NIPS` (except empty strings `""` and external or not-yet-merged specs like `"AMB"`, `"Marmot"`, `"5C"`)
 - Every NIP in `DEPRECATED_NIPS` should also be in `VALID_NIPS`
 - Every NIP in `VALID_NIPS` should have a corresponding entry in `NIP_METADATA` (`src/lib/nip-icons.ts`)
 - Flag and fix any inconsistencies
 
-## Step 6: Update the Nostr skill
-
-Using the upstream data fetched in Step 1, update the Nostr protocol skill files in `.claude/skills/nostr/`.
-
-### Update `references/event-kinds.md`
-
-Regenerate this file from the upstream Event Kinds table. For each kind:
-- Kind number, name, NIP reference
-- Replaceability behavior (based on kind range)
-- Brief description of purpose and key tags
-
-Preserve the existing document structure:
-- Section grouping: Core Events (0-999), Regular (1000-9999), Replaceable (10000-19999), Ephemeral (20000-29999), Parameterized Replaceable (30000-39999)
-- The "Event Kind Ranges Summary" table
-- The "Common Patterns" section with JSON examples for frequently-used kinds (kinds 0, 1, 7, 10002, 30023)
-- The "Event Kind Selection Guide" section
-
-### Update `references/nips-overview.md`
-
-Update NIP entries to match upstream:
-- Add new NIPs with a brief description of purpose and key details
-- Update titles/descriptions that changed upstream
-- Mark deprecated NIPs with their status
-- Maintain the existing grouping structure (Core Protocol, Social Features, Advanced, etc.)
-- Place new NIPs in the appropriate section based on their topic
-
-### Update the Key NIPs table in `SKILL.md`
-
-Update the "Key NIPs Reference" table in `.claude/skills/nostr/SKILL.md`:
-- Keep it as a curated summary (15-20 most important NIPs), not an exhaustive list
-- Add any newly-important NIPs (final status, widely implemented)
-- Remove deprecated NIPs from the table
-- Update descriptions if they changed upstream
-
-Also update the "Common kinds" one-liner in the "Event Kind Ranges" section if new widely-used kinds were added.
-
-### Do NOT change in `SKILL.md`:
-- The protocol fundamentals sections (event structure, tags, filters, WebSocket messages)
-- The nostr-tools code examples
-- The "Common Patterns" code examples
-- The "Security Essentials" section
-
-## Step 7: Verify
+## Step 6: Verify
 
 ```bash
 npm run lint && npm run test:run && npm run build
@@ -131,12 +93,11 @@ npm run lint && npm run test:run && npm run build
 
 Fix any lint/type/build issues before reporting.
 
-## Step 8: Report
+## Step 7: Report
 
 Summarize:
 - NIPs added / removed / title-updated
 - NIP icons added / updated in `nip-icons.ts`
 - Kinds added / updated (with icon choices explained for new ones)
-- Nostr skill files updated (which reference files changed, what was added/removed)
 - Inconsistencies found and resolved
 - Verification results (lint/test/build)

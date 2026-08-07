@@ -14,6 +14,7 @@ import {
   Cloud,
   Coins,
   Compass,
+  Database,
   Eye,
   EyeOff,
   FileCode,
@@ -43,6 +44,9 @@ import {
   ListMusic,
   Lock,
   Mail,
+  Map,
+  MapPin,
+  MapPinCheck,
   MessageCircle,
   MessageSquare,
   Mic,
@@ -50,6 +54,7 @@ import {
   Package,
   PackageOpen,
   Pin,
+  Podcast,
   Play,
   Presentation,
   Radio,
@@ -329,6 +334,15 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     icon: Eye,
   },
 
+  // Podcasts
+  54: {
+    kind: 54,
+    name: "Podcast Episode",
+    description: "Podcast Episode",
+    nip: "F4",
+    icon: Podcast,
+  },
+
   // Special events
   62: {
     kind: 62,
@@ -343,6 +357,13 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     description: "Chess (PGN)",
     nip: "64",
     icon: Package,
+  },
+  78: {
+    kind: 78,
+    name: "App Data",
+    description: "Application-specific Data",
+    nip: "78",
+    icon: Settings,
   },
 
   // Marmot Protocol - External spec, commented out
@@ -481,6 +502,13 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     description: "WebAssembly Scroll Program",
     nip: "5C",
     icon: ScrollText,
+  },
+  1234: {
+    kind: 1234,
+    name: "Draft Checkpoint",
+    description: "Draft Checkpoint",
+    nip: "37",
+    icon: FileEdit,
   },
   1311: {
     kind: 1311,
@@ -641,6 +669,15 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     icon: Users,
   },
 
+  // Nsites
+  5128: {
+    kind: 5128,
+    name: "Nsite Snapshot",
+    description: "nsite manifest snapshot",
+    nip: "5A",
+    icon: Globe,
+  },
+
   // Cashu
   7374: {
     kind: 7374,
@@ -664,21 +701,21 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     icon: Wallet,
   },
 
-  // Geocaching - External spec, commented out
-  // 7516: {
-  //   kind: 7516,
-  //   name: "Geocache Log",
-  //   description: "Geocache log",
-  //   nip: "geocaching",
-  //   icon: MapPin,
-  // },
-  // 7517: {
-  //   kind: 7517,
-  //   name: "Geocache Proof",
-  //   description: "Geocache proof of find",
-  //   nip: "geocaching",
-  //   icon: MapPinCheck,
-  // },
+  // Geocaching
+  7516: {
+    kind: 7516,
+    name: "Geocache Log",
+    description: "Geocache log",
+    nip: "CC",
+    icon: MapPin,
+  },
+  7517: {
+    kind: 7517,
+    name: "Geocache Proof",
+    description: "Geocache proof of find",
+    nip: "CC",
+    icon: MapPinCheck,
+  },
 
   // User management
   8000: {
@@ -912,12 +949,26 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     nip: "85",
     icon: Shield,
   },
+  10054: {
+    kind: 10054,
+    name: "Favorite Podcasts",
+    description: "Favorite podcasts list",
+    nip: "51",
+    icon: Star,
+  },
   10063: {
     kind: 10063,
     name: "Blossom Server List",
     description: "User's Blossom blob storage servers",
-    nip: "BUD-03",
+    nip: "B7",
     icon: HardDrive,
+  },
+  10064: {
+    kind: 10064,
+    name: "Authored Podcasts",
+    description: "Authored podcasts list",
+    nip: "51",
+    icon: Mic,
   },
   10096: {
     kind: 10096,
@@ -939,6 +990,13 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     description: "Good wiki relays",
     nip: "54",
     icon: Radio,
+  },
+  10154: {
+    kind: 10154,
+    name: "Podcast Metadata",
+    description: "Podcast Metadata",
+    nip: "F4",
+    icon: Podcast,
   },
   10166: {
     kind: 10166,
@@ -1054,13 +1112,13 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     nip: "46",
     icon: Key,
   },
-  // 24242: {
-  //   kind: 24242,
-  //   name: "Blossom Blobs",
-  //   description: "Blobs stored on mediaservers",
-  //   nip: "Blossom",
-  //   icon: Database,
-  // },
+  24242: {
+    kind: 24242,
+    name: "Blossom Blobs",
+    description: "Blobs stored on mediaservers",
+    nip: "B7",
+    icon: Database,
+  },
   27235: {
     kind: 27235,
     name: "HTTP Auth",
@@ -1594,13 +1652,20 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     nip: "",
     icon: Music,
   },
-  // 37516: {
-  //   kind: 37516,
-  //   name: "Geocache",
-  //   description: "Geocache listing",
-  //   nip: "geocaching",
-  //   icon: Map,
-  // },
+  37516: {
+    kind: 37516,
+    name: "Geocache",
+    description: "Geocache Listing",
+    nip: "CC",
+    icon: Map,
+  },
+  37517: {
+    kind: 37517,
+    name: "Geocache Curation",
+    description: "Geocache Curation List",
+    nip: "CC",
+    icon: ListFilter,
+  },
   38172: {
     kind: 38172,
     name: "Cashu Mint",

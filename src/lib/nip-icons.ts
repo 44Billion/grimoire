@@ -41,6 +41,9 @@ import {
   Radio,
   Compass,
   Gamepad2,
+  CheckCheck,
+  MapPin,
+  Podcast,
   type LucideIcon,
   Signature,
 } from "lucide-react";
@@ -72,6 +75,7 @@ export const NIP_METADATA: Record<string, NIPInfo> = {
     name: "OpenTimestamps Attestations for Events",
     description: "A proof of any event",
     icon: Signature,
+    deprecated: true,
   },
   "04": {
     id: "04",
@@ -91,6 +95,7 @@ export const NIP_METADATA: Record<string, NIPInfo> = {
     name: "Key Derivation",
     description: "Basic key derivation from mnemonic seed phrase",
     icon: Key,
+    deprecated: true,
   },
   "07": {
     id: "07",
@@ -140,6 +145,7 @@ export const NIP_METADATA: Record<string, NIPInfo> = {
     name: "Marketplace",
     description: "Marketplace (for resilient marketplaces)",
     icon: ShoppingCart,
+    deprecated: true,
   },
   "17": {
     id: "17",
@@ -197,6 +203,7 @@ export const NIP_METADATA: Record<string, NIPInfo> = {
     name: "Public Chat",
     description: "Public chat",
     icon: MessageSquare,
+    deprecated: true,
   },
   "29": {
     id: "29",
@@ -215,6 +222,7 @@ export const NIP_METADATA: Record<string, NIPInfo> = {
     name: "Unknown Events",
     description: "Dealing with unknown event kinds",
     icon: AlertCircle,
+    deprecated: true,
   },
   "32": { id: "32", name: "Labeling", description: "Labeling", icon: Tag },
   "34": { id: "34", name: "Git", description: "git stuff", icon: GitBranch },
@@ -239,8 +247,8 @@ export const NIP_METADATA: Record<string, NIPInfo> = {
   },
   "39": {
     id: "39",
-    name: "External Identity",
-    description: "External identities in profiles",
+    name: "Profile Links",
+    description: "Linking profiles to other platforms",
     icon: Globe,
   },
   "40": {
@@ -285,11 +293,16 @@ export const NIP_METADATA: Record<string, NIPInfo> = {
     description: "Wallet connect",
     icon: Wallet,
   },
-  "48": { id: "48", name: "Proxy Tags", description: "Proxy tags", icon: Tag },
+  "48": {
+    id: "48",
+    name: "Bridged Events",
+    description: "Bridged events",
+    icon: Tag,
+  },
   "49": {
     id: "49",
     name: "Private Key Encryption",
-    description: "Private key encryption",
+    description: "Private key encryption (ncryptsec)",
     icon: Lock,
   },
   "50": {
@@ -307,8 +320,8 @@ export const NIP_METADATA: Record<string, NIPInfo> = {
   },
   "53": {
     id: "53",
-    name: "Live Activities",
-    description: "Live Activities",
+    name: "Live Streaming",
+    description: "Live Streaming and Spaces",
     icon: Radio,
   },
   "54": { id: "54", name: "Wiki", description: "Wiki", icon: FileText },
@@ -353,6 +366,12 @@ export const NIP_METADATA: Record<string, NIPInfo> = {
     description: "Relay Discovery",
     icon: Compass,
   },
+  "67": {
+    id: "67",
+    name: "EOSE Hint",
+    description: "EOSE Completeness Hint",
+    icon: CheckCheck,
+  },
   "68": {
     id: "68",
     name: "Picture-first",
@@ -382,6 +401,7 @@ export const NIP_METADATA: Record<string, NIPInfo> = {
     name: "Moderation",
     description: "Moderated communities",
     icon: Shield,
+    deprecated: true,
   },
   "73": {
     id: "73",
@@ -423,7 +443,7 @@ export const NIP_METADATA: Record<string, NIPInfo> = {
   "87": {
     id: "87",
     name: "Ecash Mints",
-    description: "Ecash Mint Discoverability",
+    description: "Cashu and Fedimint Discoverability",
     icon: Coins,
   },
   "88": { id: "88", name: "Polls", description: "Polls", icon: Filter },
@@ -438,11 +458,12 @@ export const NIP_METADATA: Record<string, NIPInfo> = {
     name: "Data Vending",
     description: "Data Vending Machines",
     icon: Database,
+    deprecated: true,
   },
   "92": {
     id: "92",
     name: "Media Attachments",
-    description: "Media Attachments",
+    description: "Media Attachments Metadata (imeta)",
     icon: Image,
   },
   "94": {
@@ -475,13 +496,13 @@ export const NIP_METADATA: Record<string, NIPInfo> = {
   "5A": {
     id: "5A",
     name: "Static Websites",
-    description: "Pubkey Static Websites",
+    description: "Static Websites (nsites)",
     icon: Globe,
   },
   "7D": {
     id: "7D",
-    name: "Threads",
-    description: "Threads",
+    name: "Forum Threads",
+    description: "Forum Threads",
     icon: MessageSquare,
   },
   A0: {
@@ -508,6 +529,7 @@ export const NIP_METADATA: Record<string, NIPInfo> = {
     name: "BLE",
     description: "BLE Communications",
     icon: Radio,
+    deprecated: true,
   },
   C0: {
     id: "C0",
@@ -521,12 +543,24 @@ export const NIP_METADATA: Record<string, NIPInfo> = {
     description: "Chats",
     icon: MessageSquare,
   },
+  CC: {
+    id: "CC",
+    name: "Geocaching",
+    description: "Geocaching",
+    icon: MapPin,
+  },
   EE: {
     id: "EE",
     name: "E2EE MLS",
     description: "E2EE Messaging (MLS)",
     icon: Lock,
     deprecated: true,
+  },
+  F4: {
+    id: "F4",
+    name: "Podcasts",
+    description: "Podcasts",
+    icon: Podcast,
   },
 };
 

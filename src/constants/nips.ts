@@ -5,7 +5,21 @@
 /**
  * Deprecated NIPs that are no longer recommended for use
  */
-export const DEPRECATED_NIPS = ["04", "08", "26", "96", "EE"] as const;
+export const DEPRECATED_NIPS = [
+  "03",
+  "04",
+  "06",
+  "08",
+  "15",
+  "26",
+  "28",
+  "31",
+  "72",
+  "90",
+  "96",
+  "BE",
+  "EE",
+] as const;
 
 export const VALID_NIPS = [
   // Numeric NIPs
@@ -69,6 +83,7 @@ export const VALID_NIPS = [
   "64",
   "65",
   "66",
+  "67",
   "68",
   "69",
   "70",
@@ -100,7 +115,9 @@ export const VALID_NIPS = [
   "BE",
   "C0",
   "C7",
+  "CC",
   "EE",
+  "F4",
 ] as const;
 
 export type NipId = (typeof VALID_NIPS)[number];
@@ -122,7 +139,7 @@ export const NIP_TITLES: Record<string, string> = {
   "11": "Relay Information Document",
   "13": "Proof of Work",
   "14": "Subject tag in text events",
-  "15": "Nostr Marketplace",
+  "15": "Nostr Marketplace (for resilient marketplaces)",
   "17": "Private Direct Messages",
   "18": "Reposts",
   "19": "bech32-encoded entities",
@@ -143,7 +160,7 @@ export const NIP_TITLES: Record<string, string> = {
   "36": "Sensitive Content",
   "37": "Draft Events",
   "38": "User Statuses",
-  "39": "External Identities in Profiles",
+  "39": "Linking Profiles to Other Platforms",
   "40": "Expiration Timestamp",
   "42": "Authentication of clients to relays",
   "43": "Relay Access Metadata and Requests",
@@ -151,12 +168,12 @@ export const NIP_TITLES: Record<string, string> = {
   "45": "Counting results",
   "46": "Nostr Remote Signing",
   "47": "Nostr Wallet Connect",
-  "48": "Proxy Tags",
-  "49": "Private Key Encryption",
+  "48": "Bridged Events",
+  "49": "Private Key Encryption (ncryptsec)",
   "50": "Search Capability",
   "51": "Lists",
   "52": "Calendar Events",
-  "53": "Live Activities",
+  "53": "Live Streaming and Spaces",
   "54": "Wiki",
   "55": "Android Signer Application",
   "56": "Reporting",
@@ -169,6 +186,7 @@ export const NIP_TITLES: Record<string, string> = {
   "64": "Chess (PGN)",
   "65": "Relay List Metadata",
   "66": "Relay Discovery and Liveness Monitoring",
+  "67": "EOSE Completeness Hint",
   "68": "Picture-first feeds",
   "69": "Peer-to-peer Order events",
   "70": "Protected Events",
@@ -178,20 +196,20 @@ export const NIP_TITLES: Record<string, string> = {
   "75": "Zap Goals",
   "77": "Negentropy Syncing",
   "78": "Application-specific data",
-  "7D": "Threads",
+  "7D": "Forum Threads",
   "84": "Highlights",
   "85": "Trusted Assertions",
   "86": "Relay Management API",
-  "87": "Ecash Mint Discoverability",
+  "87": "Cashu and Fedimint Discoverability",
   "88": "Polls",
   "89": "Recommended Application Handlers",
   "90": "Data Vending Machines",
-  "92": "Media Attachments",
+  "92": "Media Attachments Metadata (imeta)",
   "94": "File Metadata",
   "96": "HTTP File Storage Integration",
   "98": "HTTP Auth",
   "99": "Classified Listings",
-  "5A": "Pubkey Static Websites",
+  "5A": "Static Websites (nsites)",
   A0: "Voice Messages",
   A4: "Public Messages",
   B0: "Web Bookmarks",
@@ -199,7 +217,9 @@ export const NIP_TITLES: Record<string, string> = {
   BE: "Nostr BLE Communications Protocol",
   C0: "Code Snippets",
   C7: "Chats",
+  CC: "Geocaching",
   EE: "E2EE Messaging using MLS Protocol",
+  F4: "Podcasts",
 };
 
 export const NIP_REPO_RAW_URL =
