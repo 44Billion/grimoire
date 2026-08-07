@@ -15,6 +15,8 @@ React 19, TypeScript, Vite, TailwindCSS, Jotai, Dexie, Applesauce
 
 ## Getting Started
 
+Requires Node 24 or newer (`.nvmrc` pins 26).
+
 ```bash
 npm install
 npm run dev
@@ -27,6 +29,8 @@ npm run dev
 | `npm run dev` | Start dev server |
 | `npm run build` | Build for production |
 | `npm test` | Run tests in watch mode |
+| `npm run test:run` | Run tests once |
+| `npm run typecheck` | Typecheck without emitting |
 | `npm run lint` | Lint code |
 | `npm run format` | Format code |
 
