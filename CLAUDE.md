@@ -238,7 +238,16 @@ timelines hung in `LOADING`. Nothing here executes the app. So also **run it**
 - the service worker or anything that caches modules
 
 Check the browser console, not just the screen — a shell can render while every
-subscription underneath it is dead.
+subscription underneath it is dead. `/smoke` walks the paths that have caught
+real bugs.
+
+When you verify something by hand, leave a test behind. `src/test/mock-relay.ts`
+serves the relay behaviours that break clients — `auth-required`, `silent`,
+`close-after-eose` — so cases that used to need a live misbehaving relay now run
+in milliseconds (`src/lib/relay-subscription.test.ts`). If the compiler can't
+see the invariant, add a `no-restricted-syntax` rule; the two already in
+`eslint.config.js` each came from a shipped bug, and one caught a second
+occurrence immediately.
 
 Lint must report **0 errors**. It does report warnings: a set of rules newly
 promoted by eslint 10 and `eslint-plugin-react-hooks` 7 (the React Compiler set:
@@ -249,6 +258,11 @@ violations — the current count is the ceiling.
 ## Slash Commands
 
 `/verify` · `/test` · `/lint-fix` · `/commit-push-pr` · `/review [PR#|branch]` · `/sync-nips`
+
+`/smoke` — drive the running app; use it whenever the verification section says a
+green pipeline isn't enough.
+`/adversarial-review [PR#|branch]` — spawn a reviewer tuned to report only
+merge blockers.
 
 ## Critical Notes
 
