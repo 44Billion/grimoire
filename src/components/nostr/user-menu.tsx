@@ -15,6 +15,7 @@ import accounts from "@/services/accounts";
 import { useProfile } from "@/hooks/useProfile";
 import { use$ } from "applesauce-react/hooks";
 import { getDisplayName } from "@/lib/nostr-utils";
+import { getAvatarShape } from "@/lib/avatar-shape";
 import { useGrimoire } from "@/core/state";
 import { Button } from "@/components/ui/button";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -53,7 +54,7 @@ import { MONTHLY_GOAL_SATS } from "@/services/supporters";
 function UserAvatar({ pubkey }: { pubkey: string }) {
   const profile = useProfile(pubkey);
   return (
-    <Avatar className="size-4">
+    <Avatar className="size-5" shape={getAvatarShape(profile)}>
       <AvatarImage
         src={profile?.picture}
         alt={getDisplayName(pubkey, profile)}
@@ -311,7 +312,7 @@ export default function UserMenu() {
           <Button
             size="sm"
             variant="link"
-            className="h-10 w-10 md:h-8 md:w-auto p-2 md:p-1"
+            className="h-10 w-10 md:h-8 md:w-auto p-2 md:p-1 cursor-crosshair"
             aria-label={account ? "User menu" : "Log in"}
           >
             {account ? (
