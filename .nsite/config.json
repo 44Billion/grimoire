@@ -3,7 +3,7 @@
     "wss://pyramid.fiatjaf.com",
     "wss://nostr.wine",
     "wss://nos.lol",
-    "wss://relay.primal.net",
+    "wss://relay.primal.net"
   ],
   "servers": [
     "https://nostr.download",
