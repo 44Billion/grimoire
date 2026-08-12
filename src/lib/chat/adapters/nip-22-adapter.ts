@@ -44,6 +44,10 @@ import {
 } from "applesauce-core/helpers/event";
 import { getOutboxes } from "applesauce-core/helpers/mailboxes";
 import { getEventPointerFromETag } from "applesauce-core/helpers/pointers";
+import {
+  getLooseCommentRoot,
+  withRootScopeTags,
+} from "@/lib/chat/comment-root-fallback";
 
 import {
   getCommentRootPointer,
@@ -390,7 +394,9 @@ export class Nip22Adapter extends ChatProtocolAdapter {
   ): Promise<Conversation> {
     const rootPointer = getCommentRootPointer(commentEvent);
     if (!rootPointer) {
-      throw new Error("NIP-22 comment missing root pointer");
+      // Some clients omit the uppercase K tag. The root kind is recoverable
+      // from the fetched root event (or the A tag), so don't reject the thread.
+      return this.resolveFromLooseRootTags(commentEvent, relayHints);
     }
 
     if (isCommentEventPointer(rootPointer)) {
@@ -425,6 +431,38 @@ export class Nip22Adapter extends ChatProtocolAdapter {
     }
 
     throw new Error("NIP-22: unknown root pointer type");
+  }
+
+  /**
+   * Fallback for comments whose root scope lacks the uppercase K tag.
+   * A/E/I alone still identify the root; the kind is derived downstream.
+   */
+  private async resolveFromLooseRootTags(
+    commentEvent: NostrEvent,
+    relayHints: string[],
+  ): Promise<Conversation> {
+    const root = getLooseCommentRoot(commentEvent);
+    if (!root) throw new Error("NIP-22 comment missing root pointer");
+
+    switch (root.type) {
+      case "address":
+        return this.resolveAddressConversation(
+          {
+            kind: root.address.kind,
+            pubkey: root.address.pubkey,
+            identifier: root.address.identifier,
+          },
+          mergeRelaySets(root.address.relays, relayHints),
+        );
+      case "event":
+        return this.resolveEventConversation(
+          root.id,
+          root.relay ? mergeRelaySets([root.relay], relayHints) : relayHints,
+          root.pubkey,
+        );
+      case "external":
+        return this.resolveExternalConversation(root.identifier, relayHints);
+    }
   }
 
   /**
@@ -616,8 +654,13 @@ export class Nip22Adapter extends ChatProtocolAdapter {
 
     let draft;
     if (parentEvent) {
-      // CommentFactory with the parent event
-      draft = CommentFactory.create(parentEvent, content, commentOptions);
+      // CommentFactory reads the parent's root scope; patch in the K tag when
+      // the parent comment omitted it, otherwise the factory throws.
+      draft = CommentFactory.create(
+        withRootScopeTags(parentEvent, meta?.commentRootKind),
+        content,
+        commentOptions,
+      );
     } else if (meta?.commentRootExternal) {
       // External root — create CommentPointer
       const pointer = this.buildExternalCommentPointer(meta);
