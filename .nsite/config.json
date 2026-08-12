@@ -1,4 +1,5 @@
 {
+  "id": "grimoire",
   "relays": [
     "wss://pyramid.fiatjaf.com",
     "wss://nostr.wine",
