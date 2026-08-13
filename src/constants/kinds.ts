@@ -1385,11 +1385,6 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
       identifier: "edufeed-amb",
       pubkey:
         "bdc21f93b1e2cb75608cecd7a0a00a779779d9367dc9798bd9f213f06c95bc48",
-      relayHints: [
-        "wss://relay.nostr.band",
-        "wss://nos.lol",
-        "wss://relay.damus.io",
-      ],
     },
   },
   30166: {
