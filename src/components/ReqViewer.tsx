@@ -1,4 +1,4 @@
-import { useState, memo, useCallback, useMemo, useRef, useEffect } from "react";
+import { useState, memo, useCallback, useMemo, useEffect } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -91,6 +91,7 @@ import { chunkFiltersByRelay } from "@/lib/relay-filter-chunking";
 import { useStableRelayFilterMap } from "@/hooks/useStable";
 
 import { useNostrEvent } from "@/hooks/useNostrEvent";
+import { useFeedHomeEnd } from "@/hooks/useFeedHomeEnd";
 import { MemoizedCompactEventRow } from "./nostr/CompactEventRow";
 import type { ViewMode } from "@/lib/req-parser";
 
@@ -976,7 +977,7 @@ export default function ReqViewer({
   // Freeze timeline after EOSE to prevent auto-scrolling on new events
   const [freezePoint, setFreezePoint] = useState<string | null>(null);
   const [isFrozen, setIsFrozen] = useState(false);
-  const virtuosoRef = useRef<any>(null);
+  const { ref: virtuosoRef, onKeyDown: handleFeedKeyDown } = useFeedHomeEnd();
 
   // Freeze timeline after EOSE in streaming mode (skip if follow mode enabled)
   useEffect(() => {
@@ -1022,7 +1023,7 @@ export default function ReqViewer({
         behavior: "smooth",
       });
     });
-  }, []);
+  }, [virtuosoRef]);
 
   /**
    * Export events to JSONL format with chunked processing for large datasets
@@ -1544,7 +1545,10 @@ export default function ReqViewer({
 
       {/* Results */}
       {(!needsAccount || accountPubkey) && (
-        <div className="flex-1 overflow-y-auto relative">
+        <div
+          className="flex-1 overflow-y-auto relative"
+          onKeyDown={handleFeedKeyDown}
+        >
           {/* Floating "New Events" Button (hidden in follow mode) */}
           {isFrozen && newEventCount > 0 && !follow && (
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">

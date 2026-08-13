@@ -28,6 +28,7 @@ import {
 import { Virtuoso } from "react-virtuoso";
 import { useWallet } from "@/hooks/useWallet";
 import { useCopy } from "@/hooks/useCopy";
+import { useFeedHomeEnd } from "@/hooks/useFeedHomeEnd";
 import { useGrimoire } from "@/core/state";
 import { decode as decodeBolt11 } from "light-bolt11-decoder";
 import { Button } from "@/components/ui/button";
@@ -377,6 +378,7 @@ function TransactionLabel({ transaction }: { transaction: Transaction }) {
 }
 
 export default function WalletViewer() {
+  const { ref: virtuosoRef, onKeyDown: handleFeedKeyDown } = useFeedHomeEnd();
   const {
     state,
     disconnectNWC: disconnectNWCFromState,
@@ -1079,7 +1081,10 @@ export default function WalletViewer() {
       )}
 
       {/* Transaction History */}
-      <div className="flex-1 overflow-hidden flex justify-center">
+      <div
+        className="flex-1 overflow-hidden flex justify-center"
+        onKeyDown={handleFeedKeyDown}
+      >
         <div className="w-full max-w-md">
           {walletMethods.includes("list_transactions") ? (
             txLoading ? (
@@ -1108,6 +1113,7 @@ export default function WalletViewer() {
               </div>
             ) : (
               <Virtuoso
+                ref={virtuosoRef}
                 data={transactionsWithMarkers}
                 endReached={loadMoreTransactions}
                 itemContent={(index, item) => {

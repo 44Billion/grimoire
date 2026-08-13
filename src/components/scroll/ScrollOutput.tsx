@@ -18,6 +18,7 @@ import { MemoizedCompactEventRow } from "@/components/nostr/CompactEventRow";
 import { CopyableJsonViewer } from "@/components/JsonViewer";
 import type { NostrEvent } from "@/types/nostr";
 import type { TraceEntry, SubscriptionInfo } from "@/lib/scroll-runtime";
+import { useFeedHomeEnd } from "@/hooks/useFeedHomeEnd";
 
 function TraceRow({ entry }: { entry: TraceEntry }) {
   const [expanded, setExpanded] = useState(false);
@@ -96,6 +97,11 @@ export function ScrollOutput({
   const [compact, setCompact] = useState(false);
   const openSubsCount = activeSubs.filter((s) => !s.closed).length;
 
+  // Each tab scrolls independently, so each gets its own handle
+  const { ref: resultsRef, onKeyDown: onResultsKeyDown } = useFeedHomeEnd();
+  const { ref: logsRef, onKeyDown: onLogsKeyDown } = useFeedHomeEnd();
+  const { ref: traceRef, onKeyDown: onTraceKeyDown } = useFeedHomeEnd();
+
   return (
     <Tabs defaultValue="results" className="flex flex-col flex-1 min-h-0">
       <div className="flex items-center border-b border-border">
@@ -162,7 +168,7 @@ export function ScrollOutput({
             </button>
           </div>
         </div>
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0" onKeyDown={onResultsKeyDown}>
           {displayedEvents.length === 0 ? (
             <EmptyState
               message={
@@ -173,6 +179,7 @@ export function ScrollOutput({
             />
           ) : (
             <Virtuoso
+              ref={resultsRef}
               style={{ height: "100%" }}
               data={displayedEvents}
               computeItemKey={(_index, ev) => ev.id}
@@ -188,13 +195,18 @@ export function ScrollOutput({
         </div>
       </TabsContent>
 
-      <TabsContent value="logs" className="flex-1 min-h-0 mt-0">
+      <TabsContent
+        value="logs"
+        className="flex-1 min-h-0 mt-0"
+        onKeyDown={onLogsKeyDown}
+      >
         {logEntries.length === 0 ? (
           <EmptyState
             message={isActive ? "Waiting for logs..." : "No log output"}
           />
         ) : (
           <Virtuoso
+            ref={logsRef}
             style={{ height: "100%" }}
             data={logEntries}
             followOutput="smooth"
@@ -265,13 +277,18 @@ export function ScrollOutput({
         )}
       </TabsContent>
 
-      <TabsContent value="trace" className="flex-1 min-h-0 mt-0">
+      <TabsContent
+        value="trace"
+        className="flex-1 min-h-0 mt-0"
+        onKeyDown={onTraceKeyDown}
+      >
         {traceEntries.length === 0 ? (
           <EmptyState
             message={isActive ? "Waiting for trace data..." : "No trace data"}
           />
         ) : (
           <Virtuoso
+            ref={traceRef}
             style={{ height: "100%" }}
             data={traceEntries}
             followOutput="smooth"

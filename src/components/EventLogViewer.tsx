@@ -38,6 +38,7 @@ import {
   type RelayStatusEntry,
 } from "@/services/event-log";
 import { formatTimestamp } from "@/hooks/useLocale";
+import { useFeedHomeEnd } from "@/hooks/useFeedHomeEnd";
 import { cn } from "@/lib/utils";
 import { KindBadge } from "./KindBadge";
 import { KindRenderer } from "./nostr/kinds";
@@ -496,6 +497,7 @@ function getTabCount(
 
 export function EventLogViewer() {
   const [activeTab, setActiveTab] = useState<TabFilter>("all");
+  const { ref: virtuosoRef, onKeyDown: handleFeedKeyDown } = useFeedHomeEnd();
 
   const filterTypes = useMemo(() => TAB_TYPE_MAP[activeTab], [activeTab]);
   const {
@@ -559,13 +561,14 @@ export function EventLogViewer() {
       </div>
 
       {/* Log entries */}
-      <div className="flex-1">
+      <div className="flex-1" onKeyDown={handleFeedKeyDown}>
         {entries.length === 0 ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
             <p className="text-xs">No events logged yet</p>
           </div>
         ) : (
           <Virtuoso
+            ref={virtuosoRef}
             data={entries}
             itemContent={renderItem}
             style={{ height: "100%" }}

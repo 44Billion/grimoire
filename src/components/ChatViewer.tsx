@@ -1,7 +1,7 @@
 import { useMemo, useState, memo, useCallback, useRef, useEffect } from "react";
 import { use$ } from "applesauce-react/hooks";
 import { from, catchError, of, map } from "rxjs";
-import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
+import { Virtuoso } from "react-virtuoso";
 import {
   Loader2,
   Reply,
@@ -61,6 +61,7 @@ import {
 import { useProfileSearch } from "@/hooks/useProfileSearch";
 import { useEmojiSearch } from "@/hooks/useEmojiSearch";
 import { useCopy } from "@/hooks/useCopy";
+import { useFeedHomeEnd } from "@/hooks/useFeedHomeEnd";
 import { useAccount } from "@/hooks/useAccount";
 import { useLocale } from "@/hooks/useLocale";
 import { Label } from "./ui/label";
@@ -777,8 +778,8 @@ export function ChatViewer({
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
-  // Ref to Virtuoso for programmatic scrolling
-  const virtuosoRef = useRef<VirtuosoHandle>(null);
+  // Ref to Virtuoso for programmatic scrolling; also wires up Home/End
+  const { ref: virtuosoRef, onKeyDown: handleFeedKeyDown } = useFeedHomeEnd();
 
   // Track if initial scroll has completed (to avoid smooth scroll on first load)
   const isInitialScrollDone = useRef(false);
@@ -914,7 +915,7 @@ export function ChatViewer({
         });
       }
     },
-    [messagesWithMarkers],
+    [messagesWithMarkers, virtuosoRef],
   );
 
   // Handle loading older messages
@@ -1191,7 +1192,7 @@ export function ChatViewer({
       </div>
 
       {/* Message timeline with virtualization */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden" onKeyDown={handleFeedKeyDown}>
         {messagesWithMarkers && messagesWithMarkers.length > 0 ? (
           <Virtuoso
             ref={virtuosoRef}
