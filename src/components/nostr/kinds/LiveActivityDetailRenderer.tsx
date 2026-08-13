@@ -5,7 +5,7 @@ import {
   getLiveStatus,
   getLiveHost,
 } from "@/lib/live-activity";
-import { VideoPlayer } from "@/components/live/VideoPlayer";
+import { LazyVideoPlayer } from "@/components/live/LazyVideoPlayer";
 import { StatusBadge } from "@/components/live/StatusBadge";
 import { UserName } from "../UserName";
 import { Label } from "@/components/ui/label";
@@ -34,7 +34,7 @@ export function LiveActivityDetailRenderer({
       {/* Video Section */}
       <div className="flex-shrink-0">
         {videoUrl ? (
-          <VideoPlayer
+          <LazyVideoPlayer
             url={videoUrl}
             title={activity.title || "Untitled Live Activity"}
           />

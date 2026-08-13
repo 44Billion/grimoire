@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import {
   MediaController,
   MediaControlBar,
@@ -10,9 +10,8 @@ import {
   MediaFullscreenButton,
   MediaPipButton,
 } from "media-chrome/react";
-import "hls-video-element";
 
-interface VideoPlayerProps {
+export interface VideoPlayerProps {
   url: string;
   title?: string;
   className?: string;
@@ -21,6 +20,23 @@ interface VideoPlayerProps {
 export function VideoPlayer({ url, title, className = "" }: VideoPlayerProps) {
   // Detect HLS format
   const isHLS = url.includes(".m3u8") || url.includes("application/x-mpegURL");
+
+  // hls-video-element pulls in hls.js (~1.3 MB). Register it only when the
+  // source actually needs it; plain files use the native <video>.
+  const [hlsReady, setHlsReady] = useState(() =>
+    Boolean(customElements.get("hls-video")),
+  );
+
+  useEffect(() => {
+    if (!isHLS) return;
+    let cancelled = false;
+    import("hls-video-element").then(() => {
+      if (!cancelled) setHlsReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isHLS]);
 
   return (
     <MediaController
@@ -40,17 +56,25 @@ export function VideoPlayer({ url, title, className = "" }: VideoPlayerProps) {
       }
     >
       {isHLS ? (
-        /* @ts-expect-error Web Component */
-        <hls-video
-          slot="media"
-          src={url}
-          playsInline={true}
-          title={title}
-          style={{ aspectRatio: "16 / 9" }}
-          config={{
-            lowLatencyMode: true,
-          }}
-        />
+        hlsReady ? (
+          /* @ts-expect-error Web Component */
+          <hls-video
+            slot="media"
+            src={url}
+            playsInline={true}
+            title={title}
+            style={{ aspectRatio: "16 / 9" }}
+            config={{
+              lowLatencyMode: true,
+            }}
+          />
+        ) : (
+          <div
+            slot="media"
+            style={{ aspectRatio: "16 / 9", width: "100%" }}
+            className="bg-muted/20"
+          />
+        )
       ) : (
         <video
           slot="media"

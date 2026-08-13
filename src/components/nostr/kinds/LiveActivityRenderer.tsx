@@ -7,7 +7,7 @@ import {
 } from "@/lib/live-activity";
 import { BaseEventContainer, ClickableEventTitle } from "./BaseEventRenderer";
 import { Label } from "@/components/ui/label";
-import { VideoPlayer } from "@/components/live/VideoPlayer";
+import { LazyVideoPlayer } from "@/components/live/LazyVideoPlayer";
 import { StatusBadge } from "@/components/live/StatusBadge";
 import { Users, Play, Circle, Calendar, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,9 +35,9 @@ export function LiveActivityRenderer({ event }: LiveActivityRendererProps) {
         <div className="relative">
           {/* Show video if live and user clicked to load */}
           {hasVideo && showVideo ? (
-            <VideoPlayer url={activity.streaming!} className="rounded" />
+            <LazyVideoPlayer url={activity.streaming!} className="rounded" />
           ) : hasRecording && showVideo ? (
-            <VideoPlayer url={activity.recording!} className="rounded" />
+            <LazyVideoPlayer url={activity.recording!} className="rounded" />
           ) : (
             // Show image or placeholder
             <div

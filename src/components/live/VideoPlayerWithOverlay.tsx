@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { VideoPlayer } from "./VideoPlayer";
+import { LazyVideoPlayer } from "./LazyVideoPlayer";
 import { StatusBadge } from "./StatusBadge";
 import { UserName } from "../nostr/UserName";
 import { Label } from "../ui/label";
@@ -56,7 +56,7 @@ export function VideoPlayerWithOverlay({
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
     >
-      <VideoPlayer url={url} title={title} />
+      <LazyVideoPlayer url={url} title={title} />
 
       {/* Live indicator - hides when playing */}
       {status === "live" && (
