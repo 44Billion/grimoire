@@ -130,6 +130,8 @@ function formatHashtags(prefix: string, hashtags: string[]): string | null {
 function generateRawCommand(appId: string, props: any): string {
   switch (appId) {
     case "profile":
+      // Aliases are the command as typed — don't try to bech32-encode them
+      if (props.pubkey === "$me") return "profile $me";
       if (props.pubkey) {
         try {
           const npub = nip19.npubEncode(props.pubkey);
@@ -353,18 +355,22 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
         .length
     : 0;
 
-  // Profile titles
-  const profilePubkey = appId === "profile" ? props.pubkey : null;
+  // Profile titles — props.pubkey may be the $me alias, which only resolves
+  // at render time so the window follows account changes
+  const rawProfilePubkey = appId === "profile" ? props.pubkey : null;
+  const profilePubkey =
+    rawProfilePubkey === "$me" ? accountPubkey || null : rawProfilePubkey;
   const profile = useProfile(profilePubkey || "");
   const profileTitle = useMemo(() => {
-    if (appId !== "profile" || !profilePubkey) return null;
+    if (appId !== "profile") return null;
+    if (!profilePubkey) return rawProfilePubkey === "$me" ? "Profile" : null;
 
     if (profile) {
       return profile.display_name || profile.name;
     }
 
     return `Profile ${profilePubkey.slice(0, 8)}...`;
-  }, [appId, profilePubkey, profile]);
+  }, [appId, profilePubkey, rawProfilePubkey, profile]);
 
   // Event titles - use unified title extraction
   const eventPointer: EventPointer | AddressPointer | undefined =
