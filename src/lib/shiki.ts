@@ -2,9 +2,9 @@ import {
   createHighlighterCore,
   createCssVariablesTheme,
   type HighlighterCore,
+  type LanguageRegistration,
 } from "shiki/core";
 import { createOnigurumaEngine } from "shiki/engine/oniguruma";
-import { bundledLanguages, type BundledLanguage } from "shiki/langs";
 
 // Singleton highlighter instance
 let highlighter: HighlighterCore | null = null;
@@ -167,6 +167,75 @@ const CORE_LANGUAGES = [
   "markdown",
 ] as const;
 
+type LanguageLoader = () => Promise<{ default: LanguageRegistration[] }>;
+
+/**
+ * Grammars we ship, one lazy chunk each.
+ *
+ * Deliberately an allowlist rather than shiki's `bundledLanguages` registry:
+ * that pulls all ~200 grammars into the build. Every entry here is a target of
+ * LANGUAGE_ALIASES above — keep the two in sync when adding a language. The
+ * import specifiers must stay literal so Vite can statically analyze them.
+ */
+const LANGUAGE_LOADERS: Record<string, LanguageLoader> = {
+  bash: () => import("shiki/langs/bash.mjs"),
+  c: () => import("shiki/langs/c.mjs"),
+  clojure: () => import("shiki/langs/clojure.mjs"),
+  cpp: () => import("shiki/langs/cpp.mjs"),
+  csharp: () => import("shiki/langs/csharp.mjs"),
+  css: () => import("shiki/langs/css.mjs"),
+  diff: () => import("shiki/langs/diff.mjs"),
+  dockerfile: () => import("shiki/langs/dockerfile.mjs"),
+  elixir: () => import("shiki/langs/elixir.mjs"),
+  erlang: () => import("shiki/langs/erlang.mjs"),
+  fish: () => import("shiki/langs/fish.mjs"),
+  go: () => import("shiki/langs/go.mjs"),
+  graphql: () => import("shiki/langs/graphql.mjs"),
+  groovy: () => import("shiki/langs/groovy.mjs"),
+  haskell: () => import("shiki/langs/haskell.mjs"),
+  hcl: () => import("shiki/langs/hcl.mjs"),
+  html: () => import("shiki/langs/html.mjs"),
+  ini: () => import("shiki/langs/ini.mjs"),
+  java: () => import("shiki/langs/java.mjs"),
+  javascript: () => import("shiki/langs/javascript.mjs"),
+  json: () => import("shiki/langs/json.mjs"),
+  json5: () => import("shiki/langs/json5.mjs"),
+  jsonc: () => import("shiki/langs/jsonc.mjs"),
+  jsx: () => import("shiki/langs/jsx.mjs"),
+  kotlin: () => import("shiki/langs/kotlin.mjs"),
+  latex: () => import("shiki/langs/latex.mjs"),
+  less: () => import("shiki/langs/less.mjs"),
+  lua: () => import("shiki/langs/lua.mjs"),
+  makefile: () => import("shiki/langs/makefile.mjs"),
+  markdown: () => import("shiki/langs/markdown.mjs"),
+  mdx: () => import("shiki/langs/mdx.mjs"),
+  nix: () => import("shiki/langs/nix.mjs"),
+  "objective-c": () => import("shiki/langs/objective-c.mjs"),
+  ocaml: () => import("shiki/langs/ocaml.mjs"),
+  perl: () => import("shiki/langs/perl.mjs"),
+  php: () => import("shiki/langs/php.mjs"),
+  powershell: () => import("shiki/langs/powershell.mjs"),
+  protobuf: () => import("shiki/langs/protobuf.mjs"),
+  python: () => import("shiki/langs/python.mjs"),
+  r: () => import("shiki/langs/r.mjs"),
+  ruby: () => import("shiki/langs/ruby.mjs"),
+  rust: () => import("shiki/langs/rust.mjs"),
+  sass: () => import("shiki/langs/sass.mjs"),
+  scala: () => import("shiki/langs/scala.mjs"),
+  scss: () => import("shiki/langs/scss.mjs"),
+  solidity: () => import("shiki/langs/solidity.mjs"),
+  sql: () => import("shiki/langs/sql.mjs"),
+  swift: () => import("shiki/langs/swift.mjs"),
+  toml: () => import("shiki/langs/toml.mjs"),
+  tsx: () => import("shiki/langs/tsx.mjs"),
+  typescript: () => import("shiki/langs/typescript.mjs"),
+  viml: () => import("shiki/langs/viml.mjs"),
+  wasm: () => import("shiki/langs/wasm.mjs"),
+  xml: () => import("shiki/langs/xml.mjs"),
+  yaml: () => import("shiki/langs/yaml.mjs"),
+  zig: () => import("shiki/langs/zig.mjs"),
+};
+
 /**
  * Normalize language identifier to Shiki language ID
  */
@@ -185,18 +254,7 @@ export async function getHighlighter(): Promise<HighlighterCore> {
   if (!highlighterPromise) {
     highlighterPromise = createHighlighterCore({
       themes: [cssVarsTheme],
-      langs: [
-        import("shiki/langs/javascript.mjs"),
-        import("shiki/langs/typescript.mjs"),
-        import("shiki/langs/json.mjs"),
-        import("shiki/langs/html.mjs"),
-        import("shiki/langs/css.mjs"),
-        import("shiki/langs/diff.mjs"),
-        import("shiki/langs/bash.mjs"),
-        import("shiki/langs/rust.mjs"),
-        import("shiki/langs/toml.mjs"),
-        import("shiki/langs/markdown.mjs"),
-      ],
+      langs: CORE_LANGUAGES.map((l) => LANGUAGE_LOADERS[l]()),
       engine: createOnigurumaEngine(import("shiki/wasm")),
     }).then((hl) => {
       highlighter = hl;
@@ -218,9 +276,7 @@ async function loadLanguage(lang: string): Promise<boolean> {
   const hl = await getHighlighter();
 
   try {
-    // Use shiki's own registry rather than a template-literal import, which
-    // Vite can't statically analyze (so it warns and never bundles the chunk).
-    const loader = bundledLanguages[lang as BundledLanguage];
+    const loader = LANGUAGE_LOADERS[lang];
     if (!loader) {
       failedLanguages.add(lang);
       return false;
