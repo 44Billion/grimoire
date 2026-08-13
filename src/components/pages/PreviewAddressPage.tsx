@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useNip19Decode } from "@/hooks/useNip19Decode";
-import { EventDetailViewer } from "../EventDetailViewer";
+import { PreviewDetail } from "./PreviewDetail";
 import { nip19 } from "nostr-tools";
 import { toast } from "sonner";
 
@@ -66,9 +66,5 @@ export default function PreviewAddressPage() {
   }
 
   // Show detail view for all other addressable events
-  return (
-    <div className="h-full overflow-auto">
-      <EventDetailViewer pointer={decoded.data} />
-    </div>
-  );
+  return <PreviewDetail pointer={decoded.data} />;
 }

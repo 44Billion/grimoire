@@ -2,7 +2,7 @@ import { useMemo, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useNip19Decode } from "@/hooks/useNip19Decode";
 import type { EventPointer } from "nostr-tools/nip19";
-import { EventDetailViewer } from "../EventDetailViewer";
+import { PreviewDetail } from "./PreviewDetail";
 import { toast } from "sonner";
 
 /**
@@ -63,9 +63,5 @@ export default function PreviewEventPage() {
     );
   }
 
-  return (
-    <div className="h-full overflow-auto">
-      <EventDetailViewer pointer={pointer} />
-    </div>
-  );
+  return <PreviewDetail pointer={pointer} />;
 }
