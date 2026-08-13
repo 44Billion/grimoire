@@ -621,7 +621,6 @@ export const manPages: Record<string, ManPageEntry> = {
       },
     ],
     examples: [
-      "profile fiatjaf.com                   Open profile by NIP-05 identifier",
       "profile $me                          Open your own profile",
       "profile nprofile1qyd8wumn8ghj7urewfsk66ty9enxjct5dfskvtnrdakj7qgmwaehxw309a6xsetxdaex2um59ehx7um5wgcjucm0d5hsz9mhwden5te0veex2mnn9ehx7um5wgcjucm0d5hszxrhwden5te0ve5kcar9wghxummnw3ezuamfdejj7qpq07jk7htfv243u0x5ynn43scq9wrxtaasmrwwa8lfu2ydwag6cx2q0al9p4  Open profile with relay hints",
       "profile 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d  Open profile by hex pubkey (64 chars)",
