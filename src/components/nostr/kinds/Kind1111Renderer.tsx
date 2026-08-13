@@ -120,9 +120,12 @@ function NostrEventContent({ nostrEvent }: { nostrEvent: NostrEvent }) {
   const hasStructuredTitle = title !== nostrEvent.content;
   return (
     <>
+      {/* text-inherit so the root icon tracks ScopeRow's color and hover,
+          matching the plain Reply icon on the parent row */}
       <KindBadge
         kind={nostrEvent.kind}
         variant="compact"
+        className="text-inherit"
         iconClassname="size-3"
       />
       <UserName
@@ -179,6 +182,7 @@ function RootScopeDisplay({
           <KindBadge
             kind={parseInt(root.kind, 10) || 0}
             variant="compact"
+            className="text-inherit"
             iconClassname="size-3"
           />
         }
