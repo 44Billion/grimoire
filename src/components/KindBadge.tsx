@@ -65,7 +65,7 @@ export function KindBadge({
   return (
     <div
       className={cn(style, interactiveStyle, className)}
-      title={`${kindInfo.description} (NIP-${kindInfo.nip})${clickable ? " - Click to view" : ""}`}
+      title={`${kindInfo.description}${kindInfo.nip ? ` (NIP-${kindInfo.nip})` : ""}${clickable ? " - Click to view" : ""}`}
       onClick={handleClick}
     >
       {showIcon && Icon && <Icon className={cn("size-4", iconClassname)} />}

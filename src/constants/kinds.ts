@@ -656,8 +656,14 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     kind: 3367,
     name: "Color Moment",
     description: "Color Moment",
-    nip: "",
+    nip: "CM",
     icon: Palette,
+    communityNip: {
+      title: "NIP-CM",
+      identifier: "nip-cm-color-moments",
+      pubkey:
+        "86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47",
+    },
   },
 
   // Community
@@ -1579,8 +1585,14 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     kind: 32267,
     name: "App",
     description: "Software Application",
-    nip: "",
+    nip: "82",
     icon: Package,
+    communityNip: {
+      title: "NIP-82",
+      identifier: "82",
+      pubkey:
+        "78ce6faa72264387284e647ba6938995735ec8c7d5c5a65737e55130f026307d",
+    },
   },
   // 32388: {
   //   kind: 32388,
