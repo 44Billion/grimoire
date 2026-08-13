@@ -1,9 +1,16 @@
-import { useMemo } from "react";
+import { Suspense, lazy, useMemo } from "react";
 import { Globe, Copy, Users, CopyCheck, Server } from "lucide-react";
 import { UserName } from "../UserName";
 import { RelayLink } from "../RelayLink";
 import { useCopy } from "@/hooks/useCopy";
-import { RepositoryFilesSection } from "./RepositoryFilesSection";
+
+// Browsing repo files pulls @fiatjaf/git-natural-api and fflate (~142 kB).
+// Only this renderer needs them, so keep them out of the shared renderer chunk.
+const RepositoryFilesSection = lazy(() =>
+  import("./RepositoryFilesSection").then((m) => ({
+    default: m.RepositoryFilesSection,
+  })),
+);
 import type { NostrEvent } from "@/types/nostr";
 import {
   getRepositoryName,
@@ -126,7 +133,18 @@ export function RepositoryDetailRenderer({ event }: { event: NostrEvent }) {
       )}
 
       {/* Files Section */}
-      {cloneUrls.length > 0 && <RepositoryFilesSection cloneUrls={cloneUrls} />}
+      {cloneUrls.length > 0 && (
+        <Suspense
+          fallback={
+            <div
+              className="h-24 animate-pulse rounded bg-muted/20"
+              aria-hidden
+            />
+          }
+        >
+          <RepositoryFilesSection cloneUrls={cloneUrls} />
+        </Suspense>
+      )}
     </div>
   );
 }
