@@ -156,6 +156,11 @@ export default function CommandLauncher({
       e.preventDefault();
       executeCommand();
     }
+    // cmdk's root keydown claims Home/End to jump the list selection. Keep
+    // them as caret movement — this is a command line, not a menu.
+    if (e.key === "Home" || e.key === "End") {
+      e.stopPropagation();
+    }
   };
 
   // Define category order: Nostr first, then Spells, then Documentation, then System
