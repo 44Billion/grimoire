@@ -57,7 +57,7 @@ export function ZapCompactPreview({ event }: { event: NostrEvent }) {
         <span className="truncate line-clamp-1 flex-shrink-0">
           <RichText
             event={zapRequest}
-            className="inline text-sm leading-none"
+            className="inline text-sm leading-none whitespace-normal"
             options={{ showMedia: false, showEventEmbeds: false }}
           />
         </span>
@@ -66,7 +66,7 @@ export function ZapCompactPreview({ event }: { event: NostrEvent }) {
         <span className="text-muted-foreground truncate line-clamp-1">
           <RichText
             event={zappedEventForPreview}
-            className="inline text-sm leading-none"
+            className="inline text-sm leading-none whitespace-normal"
             options={{ showMedia: false, showEventEmbeds: false }}
           />
         </span>

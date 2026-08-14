@@ -37,7 +37,7 @@ export function RepostCompactPreview({ event }: { event: NostrEvent }) {
           <span className="truncate line-clamp-1">
             <RichText
               event={repostedEvent}
-              className="inline text-sm leading-none"
+              className="inline text-sm leading-none whitespace-normal"
               options={{ showMedia: false, showEventEmbeds: false }}
             />
           </span>

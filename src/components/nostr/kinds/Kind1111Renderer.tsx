@@ -137,7 +137,7 @@ function NostrEventContent({ nostrEvent }: { nostrEvent: NostrEvent }) {
       ) : (
         <div className="text-muted-foreground truncate line-clamp-1 min-w-0 flex-1">
           <RichText
-            className="truncate line-clamp-1 text-xs [&_img]:size-3.5"
+            className="truncate line-clamp-1 text-xs whitespace-normal [&_img]:size-3.5"
             event={nostrEvent}
             options={{ showMedia: false, showEventEmbeds: false }}
           />
@@ -238,7 +238,7 @@ export function Kind1111Renderer({ event, depth = 0 }: BaseEventProps) {
               getEventDisplayTitle(replyEvent, false)
             ) : (
               <RichText
-                className="truncate line-clamp-1 text-xs [&_img]:size-3.5"
+                className="truncate line-clamp-1 text-xs whitespace-normal [&_img]:size-3.5"
                 event={replyEvent}
                 options={{ showMedia: false, showEventEmbeds: false }}
               />

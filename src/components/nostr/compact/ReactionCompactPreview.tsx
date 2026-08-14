@@ -124,7 +124,7 @@ export function ReactionCompactPreview({ event }: { event: NostrEvent }) {
           <span className="text-muted-foreground truncate">
             <RichText
               event={reactedEvent}
-              className="inline text-sm truncate line-clamp-1 leading-none"
+              className="inline text-sm truncate line-clamp-1 leading-none whitespace-normal"
               options={{ showMedia: false, showEventEmbeds: false }}
             />
           </span>

@@ -57,7 +57,7 @@ function ParentEventCard({
           getEventDisplayTitle(parentEvent, false)
         ) : (
           <RichText
-            className="truncate line-clamp-1"
+            className="truncate line-clamp-1 whitespace-normal"
             event={parentEvent}
             options={{ showMedia: false, showEventEmbeds: false }}
           />

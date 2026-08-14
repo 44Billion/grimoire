@@ -8,24 +8,8 @@ interface TextNodeProps {
   };
 }
 
+// Newlines and runs of spaces are preserved by `whitespace-pre-wrap` on the
+// RichText container, so the raw value can be rendered as-is.
 export function Text({ node }: TextNodeProps) {
-  const text = node.value;
-
-  // If no newlines, render as simple span
-  if (!text.includes("\n")) {
-    return <span dir="auto">{text}</span>;
-  }
-
-  // Multi-line text: split and render with <br /> between lines
-  const lines = text.split("\n");
-  return (
-    <>
-      {lines.map((line, idx) => (
-        <span key={idx} dir="auto">
-          {line}
-          {idx < lines.length - 1 && <br />}
-        </span>
-      ))}
-    </>
-  );
+  return <span dir="auto">{node.value}</span>;
 }

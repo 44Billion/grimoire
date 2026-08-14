@@ -49,7 +49,7 @@ function ParentPreview({
         <div className="text-muted-foreground truncate min-w-0 flex-1">
           <RichText
             event={parentEvent}
-            className="line-clamp-1"
+            className="line-clamp-1 whitespace-normal"
             options={{
               showMedia: false,
               showEventEmbeds: false,

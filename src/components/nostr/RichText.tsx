@@ -183,7 +183,12 @@ export function RichText({
         <EventContext.Provider value={event ?? null}>
           <div
             dir="auto"
-            className={cn("leading-relaxed break-words", className)}
+            className={cn(
+              // pre-wrap keeps the alignment of ASCII art and indented text;
+              // one-line previews override it with `whitespace-normal`
+              "leading-relaxed break-words whitespace-pre-wrap",
+              className,
+            )}
           >
             {children}
             {renderedContent}

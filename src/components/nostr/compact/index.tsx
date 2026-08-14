@@ -78,13 +78,13 @@ export function DefaultCompactPreview({ event }: { event: NostrEvent }) {
       {hasSpecificTitle ? (
         <RichText
           content={title}
-          className="inline text-sm leading-none"
+          className="inline text-sm leading-none whitespace-normal"
           options={{ showMedia: false, showEventEmbeds: false }}
         />
       ) : (
         <RichText
           event={event}
-          className="inline text-sm leading-none"
+          className="inline text-sm leading-none whitespace-normal"
           options={{ showMedia: false, showEventEmbeds: false }}
         />
       )}

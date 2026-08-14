@@ -117,7 +117,7 @@ function ReplyPreview({
     >
       <UserName pubkey={event.pubkey} className="font-medium" />
       <RichText
-        className="truncate line-clamp-1"
+        className="truncate line-clamp-1 whitespace-normal"
         event={event}
         options={{
           showEventEmbeds: false,
