@@ -3,6 +3,10 @@ import { profileLoader } from "@/services/loaders";
 import { ProfileContent, getProfileContent } from "applesauce-core/helpers";
 import { kinds } from "nostr-tools";
 import db from "@/services/db";
+import { getEmojiTags, type EmojiTag } from "@/lib/emoji-helpers";
+
+/** Profile metadata plus the kind 0 emoji tags its name may reference */
+export type ProfileWithEmojis = ProfileContent & { emojis?: EmojiTag[] };
 
 /**
  * Hook to fetch and cache user profile metadata
@@ -13,13 +17,13 @@ import db from "@/services/db";
  *
  * @param pubkey - The user's public key (hex)
  * @param relayHints - Optional relay URLs to try fetching from
- * @returns ProfileContent or undefined if loading/not found
+ * @returns profile metadata (with NIP-30 emoji tags) or undefined if loading/not found
  */
 export function useProfile(
   pubkey?: string,
   relayHints?: string[],
-): ProfileContent | undefined {
-  const [profile, setProfile] = useState<ProfileContent | undefined>();
+): ProfileWithEmojis | undefined {
+  const [profile, setProfile] = useState<ProfileWithEmojis | undefined>();
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Stabilize relayHints so callers can pass [p.relay] without causing
@@ -70,12 +74,16 @@ export function useProfile(
         // Only update state and cache if not aborted
         if (controller.signal.aborted) return;
 
-        setProfile(profileData);
+        const emojis = getEmojiTags(fetchedEvent);
+        const withEmojis: ProfileWithEmojis =
+          emojis.length > 0 ? { ...profileData, emojis } : profileData;
+
+        setProfile(withEmojis);
 
         // Save to IndexedDB after state update to avoid blocking UI
         try {
           await db.profiles.put({
-            ...profileData,
+            ...withEmojis,
             pubkey,
             created_at: fetchedEvent.created_at,
           });

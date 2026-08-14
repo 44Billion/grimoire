@@ -47,6 +47,47 @@ export function toApplesauceEmojis(emojis: EmojiTag[]): Emoji[] {
   return emojis.map(toApplesauceEmoji);
 }
 
+/** Unanchored twin of {@link EMOJI_SHORTCODE_REGEX} for finding shortcodes inline */
+const INLINE_EMOJI_SHORTCODE_REGEX = /:([a-zA-Z0-9_-]+):/g;
+
+export type EmojiSegment =
+  | { type: "text"; value: string }
+  | { type: "emoji"; shortcode: string; url: string };
+
+/**
+ * Split text into literal runs and NIP-30 custom emoji, resolving shortcodes
+ * against `emojis`. Unknown shortcodes stay literal text.
+ */
+export function parseEmojiSegments(
+  text: string,
+  emojis?: EmojiTag[],
+): EmojiSegment[] {
+  if (!text) return [];
+  if (!emojis || emojis.length === 0) return [{ type: "text", value: text }];
+
+  const byShortcode = new Map(emojis.map((e) => [e.shortcode, e.url]));
+  const segments: EmojiSegment[] = [];
+  let cursor = 0;
+
+  for (const match of text.matchAll(INLINE_EMOJI_SHORTCODE_REGEX)) {
+    const url = byShortcode.get(match[1]);
+    if (!url) continue;
+
+    const start = match.index;
+    if (start > cursor) {
+      segments.push({ type: "text", value: text.slice(cursor, start) });
+    }
+    segments.push({ type: "emoji", shortcode: match[1], url });
+    cursor = start + match[0].length;
+  }
+
+  if (cursor < text.length) {
+    segments.push({ type: "text", value: text.slice(cursor) });
+  }
+
+  return segments;
+}
+
 /**
  * Symbol for caching parsed emoji tags on events
  */

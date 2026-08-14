@@ -2,6 +2,7 @@ import { ProfileContent } from "applesauce-core/helpers";
 import { Dexie, Table } from "dexie";
 import { RelayInformation } from "../types/nip11";
 import { normalizeRelayURL } from "../lib/relay-url";
+import type { EmojiTag } from "../lib/emoji-helpers";
 import type { NostrEvent } from "@/types/nostr";
 import type {
   SpellEvent,
@@ -12,6 +13,8 @@ import type {
 export interface Profile extends ProfileContent {
   pubkey: string;
   created_at: number;
+  /** NIP-30 emoji tags from the kind 0 event, for shortcodes in the name */
+  emojis?: EmojiTag[];
 }
 
 export interface Nip05 {

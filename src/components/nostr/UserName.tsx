@@ -5,6 +5,7 @@ import { useGrimoire } from "@/core/state";
 import { isGrimoireMember } from "@/lib/grimoire-members";
 import { BadgeCheck, Flame } from "lucide-react";
 import { useIsSupporter } from "@/hooks/useIsSupporter";
+import { EmojiText } from "./EmojiText";
 
 interface UserNameProps {
   pubkey: string;
@@ -68,7 +69,7 @@ export function UserName({
         )}
       >
         {isMention ? "@" : null}
-        {displayName}
+        <EmojiText text={displayName} emojis={profile?.emojis} />
       </span>
       {isGrimoire && (
         <BadgeCheck
