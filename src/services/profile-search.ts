@@ -2,8 +2,34 @@ import { Index } from "flexsearch";
 import type { NostrEvent } from "nostr-tools";
 import { getProfileContent } from "applesauce-core/helpers";
 import { getDisplayName } from "@/lib/nostr-utils";
+import {
+  emojiShortcodesToPlainText,
+  getEmojiTags,
+  type EmojiTag,
+} from "@/lib/emoji-helpers";
 import eventStore from "./event-store";
 import db from "./db";
+
+/**
+ * Searchable text for a profile. Names carrying NIP-30 shortcodes are indexed
+ * both raw and flattened, so ":H::e::n::k::y:" matches a query for "henky".
+ */
+function buildSearchText(
+  profile: ProfileSearchResult,
+  emojis: EmojiTag[],
+): string {
+  const names = [profile.displayName, profile.username].filter(
+    (name): name is string => Boolean(name),
+  );
+  const flattened = emojis.length
+    ? names.map((name) => emojiShortcodesToPlainText(name, emojis))
+    : [];
+
+  return [...names, ...flattened, profile.nip05, profile.pubkey]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
 
 export interface ProfileSearchResult {
   pubkey: string;
@@ -54,18 +80,7 @@ class ProfileSearchService {
           picture: metadata?.picture,
         };
         this.profiles.set(pubkey, result);
-
-        // Add to search index
-        const searchText = [
-          result.displayName,
-          result.username,
-          result.nip05,
-          pubkey,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        this.index.add(pubkey, searchText);
+        this.index.add(pubkey, buildSearchText(result, profile.emojis ?? []));
       }
       console.debug(
         `[ProfileSearch] Loaded ${cachedProfiles.length} profiles from IndexedDB`,
@@ -107,18 +122,10 @@ class ProfileSearchService {
 
     this.profiles.set(pubkey, profile);
 
-    // Create searchable text from multiple fields (lowercase for case-insensitive search)
-    const searchText = [
-      profile.displayName,
-      profile.username,
-      profile.nip05,
+    await this.index.addAsync(
       pubkey,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-
-    await this.index.addAsync(pubkey, searchText);
+      buildSearchText(profile, getEmojiTags(event)),
+    );
   }
 
   /**

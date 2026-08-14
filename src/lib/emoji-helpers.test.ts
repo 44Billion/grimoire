@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { parseEmojiSegments, type EmojiTag } from "./emoji-helpers";
+import {
+  emojiShortcodesToPlainText,
+  parseEmojiSegments,
+  type EmojiTag,
+} from "./emoji-helpers";
 
 const emojis: EmojiTag[] = [
   { shortcode: "H", url: "https://example.com/h.png" },
@@ -37,5 +41,19 @@ describe("parseEmojiSegments", () => {
 
   it("returns nothing for empty text", () => {
     expect(parseEmojiSegments("", emojis)).toEqual([]);
+  });
+});
+
+describe("emojiShortcodesToPlainText", () => {
+  it("flattens adjacent shortcodes into the bare codes", () => {
+    expect(emojiShortcodesToPlainText(":H::e:!!", emojis)).toBe("He!!");
+  });
+
+  it("leaves unknown shortcodes and plain text alone", () => {
+    expect(emojiShortcodesToPlainText("hi :nope: :H:", emojis)).toBe(
+      "hi :nope: H",
+    );
+    expect(emojiShortcodesToPlainText("plain name", emojis)).toBe("plain name");
+    expect(emojiShortcodesToPlainText(":H:")).toBe(":H:");
   });
 });

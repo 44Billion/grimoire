@@ -89,6 +89,22 @@ export function parseEmojiSegments(
 }
 
 /**
+ * Flatten NIP-30 shortcodes to their bare codes — `":H::e:!!"` → `"He!!"`.
+ * For text indexes and other plain-text contexts that can't render an image;
+ * dropping the emoji entirely would leave a name searchable by nothing.
+ */
+export function emojiShortcodesToPlainText(
+  text: string,
+  emojis?: EmojiTag[],
+): string {
+  return parseEmojiSegments(text, emojis)
+    .map((segment) =>
+      segment.type === "text" ? segment.value : segment.shortcode,
+    )
+    .join("");
+}
+
+/**
  * Symbol for caching parsed emoji tags on events
  */
 const EmojiTagsSymbol = Symbol("emojiTags");
