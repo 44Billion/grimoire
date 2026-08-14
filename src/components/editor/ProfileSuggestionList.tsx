@@ -20,14 +20,20 @@ export interface ProfileSuggestionListHandle {
   onKeyDown: (event: KeyboardEvent) => boolean;
 }
 
+/** Row height estimate for the first paint only — rows grow with their content
+ * (a name spelled in custom emoji is taller), so the real height comes from
+ * Virtuoso and is capped at MAX_LIST_HEIGHT. */
 const ITEM_HEIGHT = 48;
-const MAX_VISIBLE = 6;
+const MAX_LIST_HEIGHT = ITEM_HEIGHT * 6;
 
 export const ProfileSuggestionList = forwardRef<
   ProfileSuggestionListHandle,
   ProfileSuggestionListProps
 >(({ items, command, onClose }, ref) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [listHeight, setListHeight] = useState(() =>
+    Math.min(items.length * ITEM_HEIGHT, MAX_LIST_HEIGHT),
+  );
   const virtuosoRef = useRef<VirtuosoHandle>(null);
 
   // Keyboard navigation
@@ -119,8 +125,6 @@ export const ProfileSuggestionList = forwardRef<
 
   if (items.length === 0) return null;
 
-  const listHeight = Math.min(items.length, MAX_VISIBLE) * ITEM_HEIGHT;
-
   return (
     <div
       role="listbox"
@@ -129,7 +133,10 @@ export const ProfileSuggestionList = forwardRef<
       <Virtuoso
         ref={virtuosoRef}
         totalCount={items.length}
-        fixedItemHeight={ITEM_HEIGHT}
+        defaultItemHeight={ITEM_HEIGHT}
+        totalListHeightChanged={(height) =>
+          setListHeight(Math.min(height, MAX_LIST_HEIGHT))
+        }
         style={{ height: listHeight }}
         className="overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/60 [&::-webkit-scrollbar-track]:bg-transparent"
         itemContent={renderItem}
