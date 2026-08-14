@@ -11,6 +11,24 @@ import db, { Profile } from "@/services/db";
 import { useGrimoire } from "@/core/state";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
 import { getTagValues, getDisplayName } from "@/lib/nostr-utils";
+import { emojiShortcodesToPlainText } from "@/lib/emoji-helpers";
+import { EmojiText } from "./nostr/EmojiText";
+
+/**
+ * Lowercased name variants to match a query against: the raw names plus, when
+ * the profile carries NIP-30 emoji tags, the same names with shortcodes
+ * flattened — so ":H::e::n::k::y:!!" is findable by "henky".
+ */
+function nameVariants(profile: Profile): string[] {
+  const names = [profile.display_name, profile.name].filter(
+    (name): name is string => Boolean(name),
+  );
+  const flattened = profile.emojis?.length
+    ? names.map((name) => emojiShortcodesToPlainText(name, profile.emojis))
+    : [];
+
+  return [...names, ...flattened].map((name) => name.toLowerCase());
+}
 
 interface ProfileSelectorProps {
   onSelect: (value: string) => void;
@@ -65,15 +83,12 @@ export function ProfileSelector({
     // Note: This is a full scan filter, but acceptable for local cache sizes
     db.profiles
       .filter((p) => {
-        const displayName = p.display_name?.toLowerCase() || "";
-        const name = p.name?.toLowerCase() || "";
         const about = p.about?.toLowerCase() || "";
         const lud16 = p.lud16?.toLowerCase() || "";
         const pubkey = p.pubkey.toLowerCase();
 
         return (
-          displayName.includes(lowerSearch) ||
-          name.includes(lowerSearch) ||
+          nameVariants(p).some((name) => name.includes(lowerSearch)) ||
           about.includes(lowerSearch) ||
           lud16.includes(lowerSearch) ||
           pubkey.startsWith(lowerSearch)
@@ -90,20 +105,18 @@ export function ProfileSelector({
           if (aIsContact && !bIsContact) return -1;
           if (!aIsContact && bIsContact) return 1;
 
-          const aDisplayName = a.display_name?.toLowerCase() || "";
-          const bDisplayName = b.display_name?.toLowerCase() || "";
-          const aName = a.name?.toLowerCase() || "";
-          const bName = b.name?.toLowerCase() || "";
           const aAbout = a.about?.toLowerCase() || "";
           const bAbout = b.about?.toLowerCase() || "";
           const aLud = a.lud16?.toLowerCase() || "";
           const bLud = b.lud16?.toLowerCase() || "";
 
           // 1. Display Name / Name priority
-          const aHasNameMatch =
-            aDisplayName.includes(lowerSearch) || aName.includes(lowerSearch);
-          const bHasNameMatch =
-            bDisplayName.includes(lowerSearch) || bName.includes(lowerSearch);
+          const aHasNameMatch = nameVariants(a).some((name) =>
+            name.includes(lowerSearch),
+          );
+          const bHasNameMatch = nameVariants(b).some((name) =>
+            name.includes(lowerSearch),
+          );
           if (aHasNameMatch && !bHasNameMatch) return -1;
           if (!aHasNameMatch && bHasNameMatch) return 1;
 
@@ -212,7 +225,10 @@ export function ProfileSelector({
                     <div className="flex flex-col w-full min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-medium truncate">
-                          {getDisplayName(profile.pubkey, profile)}
+                          <EmojiText
+                            text={getDisplayName(profile.pubkey, profile)}
+                            emojis={profile.emojis}
+                          />
                         </span>
                       </div>
                       {profile.about && (
