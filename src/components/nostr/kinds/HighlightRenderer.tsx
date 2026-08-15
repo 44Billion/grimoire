@@ -6,7 +6,10 @@ import {
   getHighlightComment,
   getHighlightSourceEventPointer,
   getHighlightSourceAddressPointer,
+  getHighlightContext,
 } from "applesauce-common/helpers/highlight";
+import { HighlightedContext } from "../HighlightedContext";
+import { splitHighlightContext } from "@/lib/highlight-context";
 import { UserName } from "../UserName";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
 import { useAddWindow } from "@/core/state";
@@ -24,6 +27,10 @@ export function Kind9802Renderer({ event }: BaseEventProps) {
   const highlightText = getHighlightText(event);
   const sourceUrl = getHighlightSourceUrl(event);
   const comment = getHighlightComment(event);
+  const contextSplit = splitHighlightContext(
+    getHighlightContext(event),
+    highlightText,
+  );
 
   // Get source event pointer (e tag) or address pointer (a tag) for Nostr event references
   const eventPointer = getHighlightSourceEventPointer(event);
@@ -64,13 +71,19 @@ export function Kind9802Renderer({ event }: BaseEventProps) {
           />
         )}
 
-        {/* Highlighted text */}
-        {highlightText && (
+        {/* Highlighted text, spliced into its context when the context contains it */}
+        {contextSplit ? (
           <blockquote className="border-l-4 border-muted px-4 py-2 bg-muted/30">
-            <p className="text-sm italic leading-relaxed text-muted-foreground">
-              {highlightText}
-            </p>
+            <HighlightedContext split={contextSplit} />
           </blockquote>
+        ) : (
+          highlightText && (
+            <blockquote className="border-l-4 border-muted px-4 py-2 bg-muted/30">
+              <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                {highlightText}
+              </p>
+            </blockquote>
+          )
         )}
 
         {/* Compact Source Event Preview - Clickable link with icon, author, and title/content */}

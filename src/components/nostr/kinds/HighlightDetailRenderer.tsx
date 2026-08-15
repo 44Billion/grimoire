@@ -13,6 +13,8 @@ import { UserName } from "../UserName";
 import { useAddWindow } from "@/core/state";
 import { formatTimestamp } from "@/hooks/useLocale";
 import { RichText } from "../RichText";
+import { HighlightedContext } from "../HighlightedContext";
+import { splitHighlightContext } from "@/lib/highlight-context";
 
 /**
  * Detail renderer for Kind 9802 - Highlight
@@ -25,6 +27,7 @@ export function Kind9802DetailRenderer({ event }: { event: NostrEvent }) {
   const comment = getHighlightComment(event);
   const context = getHighlightContext(event);
   const sourceUrl = getHighlightSourceUrl(event);
+  const contextSplit = splitHighlightContext(context, highlightText);
 
   // Get source event pointer (e tag) or address pointer (a tag)
   const eventPointer = getHighlightSourceEventPointer(event);
@@ -58,23 +61,33 @@ export function Kind9802DetailRenderer({ event }: { event: NostrEvent }) {
         </div>
       </header>
 
-      {/* Highlighted Text */}
-      {highlightText && (
+      {/* Highlighted text, spliced into its context when the context contains it */}
+      {contextSplit ? (
         <blockquote className="border-l-4 border-muted pl-4 py-2 bg-muted/30">
-          <p className="text-base italic leading-relaxed text-muted-foreground">
-            {highlightText}
-          </p>
+          <HighlightedContext split={contextSplit} className="text-base" />
         </blockquote>
-      )}
+      ) : (
+        <>
+          {highlightText && (
+            <blockquote className="border-l-4 border-muted pl-4 py-2 bg-muted/30">
+              <p className="text-base leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                {highlightText}
+              </p>
+            </blockquote>
+          )}
 
-      {/* Context (surrounding text) */}
-      {context && (
-        <div className="flex flex-col gap-2">
-          <div className="text-xs text-muted-foreground uppercase tracking-wide">
-            Context
-          </div>
-          <p className="text-sm text-muted-foreground italic">{context}</p>
-        </div>
+          {/* Context (surrounding text) */}
+          {context && (
+            <div className="flex flex-col gap-2">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">
+                Context
+              </div>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                {context}
+              </p>
+            </div>
+          )}
+        </>
       )}
 
       {/* Comment */}
