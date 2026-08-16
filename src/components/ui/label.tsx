@@ -10,6 +10,8 @@ interface LabelProps {
    */
   size?: "sm" | "md";
   onClick?: (e: React.MouseEvent) => void;
+  /** Native tooltip text */
+  title?: string;
 }
 
 /**
@@ -21,10 +23,12 @@ export function Label({
   className,
   size = "sm",
   onClick,
+  title,
 }: LabelProps) {
   return (
     <span
       onClick={onClick}
+      title={title}
       className={cn(
         "truncate line-clamp-1 border border-muted border-dotted text-muted-foreground text-xs",
         size === "sm" && "px-2 py-0.5",

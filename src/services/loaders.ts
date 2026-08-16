@@ -211,6 +211,15 @@ export const profileLoader = createAddressLoader(pool, {
   extraRelays: AGGREGATOR_RELAYS,
 });
 
+// Batched address loader for components that fan out over many pointers at
+// once. A NKBIP-01 publication index can list 100+ sections; one REQ per
+// pointer makes relays rate-limit and the tail never resolves.
+export const batchedAddressLoader = createAddressLoader(pool, {
+  eventStore,
+  bufferTime: 200,
+  extraRelays: AGGREGATOR_RELAYS,
+});
+
 // Timeline loader factory - creates loader for event feeds
 export { createTimelineLoader };
 

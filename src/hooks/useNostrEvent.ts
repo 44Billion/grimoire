@@ -1,7 +1,11 @@
 import { useEffect } from "react";
 import type { EventPointer, AddressPointer } from "nostr-tools/nip19";
 import { useEventStore, use$ } from "applesauce-react/hooks";
-import { eventLoader, addressLoader } from "@/services/loaders";
+import {
+  eventLoader,
+  addressLoader,
+  batchedAddressLoader,
+} from "@/services/loaders";
 import type { NostrEvent } from "@/types/nostr";
 
 /**
@@ -92,6 +96,40 @@ export function useNostrEvent(
       console.warn("[useNostrEvent] Unknown pointer type:", pointer);
     }
   }, [pointer, pointerKey, context]);
+
+  return event;
+}
+
+/**
+ * Like useNostrEvent, but loads through the batched address loader.
+ *
+ * Use this when one component fans out over many pointers at once: a NKBIP-01
+ * publication index can list 100+ sections, and a REQ per pointer makes relays
+ * rate-limit so the tail of the list never resolves. Batching collapses them
+ * into one REQ per 200ms window.
+ */
+export function useBatchedAddressableEvent(
+  pointer: AddressPointer | undefined,
+): NostrEvent | undefined {
+  const eventStore = useEventStore();
+
+  const event = use$(
+    () =>
+      pointer
+        ? eventStore.replaceable(
+            pointer.kind,
+            pointer.pubkey,
+            pointer.identifier || "",
+          )
+        : undefined,
+    [pointer],
+  );
+
+  useEffect(() => {
+    if (!pointer) return;
+    const subscription = batchedAddressLoader(pointer).subscribe();
+    return () => subscription.unsubscribe();
+  }, [pointer]);
 
   return event;
 }

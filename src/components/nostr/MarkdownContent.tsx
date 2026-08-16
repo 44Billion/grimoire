@@ -120,7 +120,7 @@ function NostrMention({ href }: { href: string }) {
  * Code block wrapper with copy button
  * Renders syntax-highlighted code or plain code with a copy button
  */
-function CodeBlock({
+export function CodeBlock({
   code,
   language,
 }: {

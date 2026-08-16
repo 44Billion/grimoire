@@ -40,6 +40,10 @@ import {
 } from "./FavoriteSpellsRenderer";
 import { Kind30023Renderer } from "./ArticleRenderer";
 import { Kind30023DetailRenderer } from "./ArticleDetailRenderer";
+import { PublicationIndexRenderer } from "./PublicationIndexRenderer";
+import { PublicationIndexDetailRenderer } from "./PublicationIndexDetailRenderer";
+import { PublicationSectionRenderer } from "./PublicationSectionRenderer";
+import { PublicationSectionDetailRenderer } from "./PublicationSectionDetailRenderer";
 import { CommunityNIPRenderer } from "./CommunityNIPRenderer";
 import { CommunityNIPDetailRenderer } from "./CommunityNIPDetailRenderer";
 import { RepositoryRenderer } from "./RepositoryRenderer";
@@ -285,6 +289,8 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   30015: InterestSetRenderer, // Interest Sets (NIP-51)
   30023: Kind30023Renderer, // Long-form Article
   30030: EmojiSetRenderer, // Emoji Sets (NIP-30)
+  30040: PublicationIndexRenderer, // Publication Index (NKBIP-01)
+  30041: PublicationSectionRenderer, // Publication Content (NKBIP-01)
   30063: ZapstoreReleaseRenderer, // Zapstore App Release
   30142: EducationalResourceRenderer, // Educational Resource (AMB)
   30166: RelayDiscoveryRenderer, // Relay Discovery (NIP-66)
@@ -411,6 +417,8 @@ const detailRenderers: Record<
   30015: InterestSetDetailRenderer, // Interest Sets Detail (NIP-51)
   30023: Kind30023DetailRenderer, // Long-form Article Detail
   30030: EmojiSetDetailRenderer, // Emoji Sets Detail (NIP-30)
+  30040: PublicationIndexDetailRenderer, // Publication Index Detail (NKBIP-01)
+  30041: PublicationSectionDetailRenderer, // Publication Content Detail (NKBIP-01)
   30063: ZapstoreReleaseDetailRenderer, // Zapstore App Release Detail
   30142: EducationalResourceDetailRenderer, // Educational Resource Detail (AMB)
   30166: RelayDiscoveryDetailRenderer, // Relay Discovery Detail (NIP-66)
@@ -498,3 +506,7 @@ export { Kind22Renderer } from "./ShortVideoRenderer";
 export { VoiceMessageRenderer } from "./VoiceMessageRenderer";
 export { Kind1063Renderer } from "./FileMetadataRenderer";
 export { Kind9735Renderer } from "./ZapReceiptRenderer";
+export { PublicationIndexRenderer } from "./PublicationIndexRenderer";
+export { PublicationIndexDetailRenderer } from "./PublicationIndexDetailRenderer";
+export { PublicationSectionRenderer } from "./PublicationSectionRenderer";
+export { PublicationSectionDetailRenderer } from "./PublicationSectionDetailRenderer";

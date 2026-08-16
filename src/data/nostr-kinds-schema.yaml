@@ -1910,15 +1910,87 @@ kinds:
 
   30040:
     description: Curated Publication Index
+    in_use: true
     content:
-      type: free
-    tags: []
+      type: empty
+    tags:
+      - *titletag
+      - *summarytag
+      - *imagetag
+      - name: T
+        next:
+          type: free
+          required: true
+      - name: author
+        next:
+          type: free
+          required: true
+          next:
+            type: free
+      - name: N
+        next:
+          type: free
+          required: true
+      - name: i
+        next:
+          type: free
+          required: true
+      - name: s
+        next:
+          type: url
+          required: true
+      # "s" was formerly spelled "source"
+      - name: source
+        next:
+          type: url
+          required: true
+      - name: type
+        next:
+          type: constrained
+          required: true
+          either:
+            - book
+            - illustrated
+            - magazine
+            - documentation
+            - academic
+            - blog
+      - name: version
+        next:
+          type: free
+          required: true
+      - name: published_on
+        next:
+          type: free
+          required: true
+      - name: published_by
+        next:
+          type: free
+          required: true
+      # NKBIP-01 extends the usual a-tag with a 4th element pinning a version
+      - name: a
+        next:
+          type: addr
+          required: true
+          next:
+            type: relay
+            next:
+              type: id
+      - *ptag
+      - name: E
+        next: *event
 
   30041:
     description: Curated Publication Content
+    in_use: true
     content:
       type: free
-    tags: []
+    tags:
+      - *titletag
+      - name: T
+        next:
+          type: free
+          required: true
 
   30063:
     description: Release artifact sets

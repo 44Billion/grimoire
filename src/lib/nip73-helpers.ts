@@ -23,6 +23,7 @@ import {
   Film,
   Flag,
   ExternalLink,
+  Library,
 } from "lucide-react";
 
 /**
@@ -32,6 +33,14 @@ export function getExternalIdentifierIcon(kValue: string): LucideIcon {
   if (kValue === "web") return Globe;
   if (kValue.startsWith("podcast")) return Podcast;
   if (kValue === "isbn") return BookOpen;
+  // Book catalogues used by NKBIP-01 publications
+  if (
+    kValue === "openlibrary" ||
+    kValue === "gutenberg" ||
+    kValue === "overdrive"
+  )
+    return Library;
+  if (kValue === "wikidata" || kValue === "wikipedia") return Globe;
   if (kValue === "doi") return FileText;
   if (kValue === "geo") return MapPin;
   if (kValue === "iso3166") return Flag;
@@ -75,6 +84,20 @@ export function getExternalIdentifierLabel(
   // DOI
   if (iValue.startsWith("doi:")) return `DOI ${iValue.slice(4)}`;
 
+  // Book catalogues (NKBIP-01 publication identifiers)
+  if (iValue.startsWith("openlibrary:"))
+    return `Open Library ${iValue.slice(12)}`;
+  if (iValue.startsWith("gutenberg:")) return `Gutenberg ${iValue.slice(10)}`;
+  if (iValue.startsWith("wikidata:")) return `Wikidata ${iValue.slice(9)}`;
+  if (iValue.startsWith("overdrive:")) return `OverDrive ${iValue.slice(10)}`;
+  if (iValue.startsWith("wikipedia:")) {
+    // "wikipedia:en:Aesop's_Fables"
+    const [lang, ...title] = iValue.slice(10).split(":");
+    return title.length > 0
+      ? `Wikipedia ${title.join(":").replace(/_/g, " ")} (${lang})`
+      : `Wikipedia ${lang.replace(/_/g, " ")}`;
+  }
+
   // Geohash
   if (kValue === "geo") return `Location ${iValue}`;
 
@@ -113,6 +136,11 @@ export function inferExternalIdentifierType(iValue: string): string {
     return "podcast:guid";
   }
   if (iValue.startsWith("isbn:")) return "isbn";
+  if (iValue.startsWith("openlibrary:")) return "openlibrary";
+  if (iValue.startsWith("gutenberg:")) return "gutenberg";
+  if (iValue.startsWith("wikidata:")) return "wikidata";
+  if (iValue.startsWith("wikipedia:")) return "wikipedia";
+  if (iValue.startsWith("overdrive:")) return "overdrive";
   if (iValue.startsWith("doi:")) return "doi";
   if (iValue.startsWith("geo:")) return "geo";
   if (iValue.startsWith("iso3166:")) return "iso3166";
@@ -140,6 +168,28 @@ export function getExternalIdentifierHref(
   if (hint) return hint;
   if (iValue.startsWith("http://") || iValue.startsWith("https://"))
     return iValue;
+
+  // Book catalogues carry no hint of their own but have stable URL schemes
+  if (iValue.startsWith("openlibrary:")) {
+    const id = iValue.slice(12);
+    // OL…W works, OL…M editions, OL…A authors
+    const path = id.endsWith("M")
+      ? "books"
+      : id.endsWith("A")
+        ? "authors"
+        : "works";
+    return `https://openlibrary.org/${path}/${id}`;
+  }
+  if (iValue.startsWith("gutenberg:"))
+    return `https://www.gutenberg.org/ebooks/${iValue.slice(10)}`;
+  if (iValue.startsWith("wikidata:"))
+    return `https://www.wikidata.org/wiki/${iValue.slice(9)}`;
+  if (iValue.startsWith("wikipedia:")) {
+    const [lang, ...title] = iValue.slice(10).split(":");
+    if (title.length === 0) return undefined;
+    return `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title.join(":"))}`;
+  }
+
   return undefined;
 }
 
@@ -154,6 +204,11 @@ export function getExternalTypeLabel(kValue: string): string {
   if (kValue === "podcast:guid" || kValue.startsWith("podcast"))
     return "Podcast";
   if (kValue === "isbn") return "Book";
+  if (kValue === "openlibrary") return "Open Library";
+  if (kValue === "gutenberg") return "Project Gutenberg";
+  if (kValue === "wikidata") return "Wikidata";
+  if (kValue === "wikipedia") return "Wikipedia";
+  if (kValue === "overdrive") return "OverDrive";
   if (kValue === "doi") return "Paper";
   if (kValue === "geo") return "Location";
   if (kValue === "iso3166") return "Country / Region";

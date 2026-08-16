@@ -38,6 +38,7 @@ import {
   Image,
   Key,
   Landmark,
+  Library,
   List,
   ListChecks,
   ListFilter,
@@ -103,6 +104,14 @@ export interface EventKind {
 export const SPELL_KIND = 777;
 export const SPELLBOOK_KIND = 30777;
 export const SCROLL_KIND = 1227;
+
+// NKBIP-01 is published as a community NIP (kind 30817), not a nostr-protocol
+// NIP, so the badge resolves to that event. No relay hints: outbox resolves it.
+const NKBIP01_COMMUNITY_NIP: CommunityNip = {
+  title: "NKBIP-01",
+  identifier: "nkbip-01",
+  pubkey: "fd208ee8c8f283780a9552896e4823cc9dc6bfd442063889577106940fd927c1",
+};
 
 export const EVENT_KINDS: Record<number | string, EventKind> = {
   // Core protocol kinds
@@ -1346,20 +1355,22 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     nip: "51",
     icon: Smile,
   },
-  // 30040: {
-  //   kind: 30040,
-  //   name: "Publication Index",
-  //   description: "Curated Publication Index",
-  //   nip: "NKBIP-01",
-  //   icon: Library,
-  // },
-  // 30041: {
-  //   kind: 30041,
-  //   name: "Publication Content",
-  //   description: "Curated Publication Content",
-  //   nip: "NKBIP-01",
-  //   icon: FileText,
-  // },
+  30040: {
+    kind: 30040,
+    name: "Publication Index",
+    description: "Curated Publication Index",
+    nip: "NKBIP-01",
+    icon: Library,
+    communityNip: NKBIP01_COMMUNITY_NIP,
+  },
+  30041: {
+    kind: 30041,
+    name: "Publication Content",
+    description: "Curated Publication Content",
+    nip: "NKBIP-01",
+    icon: FileText,
+    communityNip: NKBIP01_COMMUNITY_NIP,
+  },
   30063: {
     kind: 30063,
     name: "App Release",
