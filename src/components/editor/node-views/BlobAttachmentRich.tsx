@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { NodeViewWrapper, type ReactNodeViewProps } from "@tiptap/react";
-import { X, FileIcon, Music, Film } from "lucide-react";
+import { X, FileIcon, Music, Film, ImageIcon } from "lucide-react";
 
 function formatBlobSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`;
@@ -21,9 +22,13 @@ export function BlobAttachmentRich({ node, deleteNode }: ReactNodeViewProps) {
     server: string;
   };
 
-  const isImage = mimeType?.startsWith("image/");
-  const isVideo = mimeType?.startsWith("video/");
-  const isAudio = mimeType?.startsWith("audio/");
+  // Blobs the browser can't render (encrypted, auth-gated) fall back to an icon
+  const [previewFailed, setPreviewFailed] = useState(false);
+
+  const mediaType = mimeType?.split("/")[0];
+  const isImage = mediaType === "image" && !previewFailed;
+  const isVideo = mediaType === "video" && !previewFailed;
+  const isAudio = mediaType === "audio" && !previewFailed;
 
   return (
     <NodeViewWrapper className="my-3 relative group">
@@ -35,6 +40,7 @@ export function BlobAttachmentRich({ node, deleteNode }: ReactNodeViewProps) {
               alt="attachment"
               className="max-w-full h-auto max-h-96 object-contain"
               draggable={false}
+              onError={() => setPreviewFailed(true)}
             />
             {deleteNode && (
               <button
@@ -55,6 +61,7 @@ export function BlobAttachmentRich({ node, deleteNode }: ReactNodeViewProps) {
               controls
               className="max-w-full h-auto max-h-96"
               preload="metadata"
+              onError={() => setPreviewFailed(true)}
             />
             {deleteNode && (
               <button
@@ -74,7 +81,12 @@ export function BlobAttachmentRich({ node, deleteNode }: ReactNodeViewProps) {
               <Music className="size-6 text-muted-foreground" />
             </div>
             <div className="flex-1 min-w-0">
-              <audio src={url} controls className="w-full" />
+              <audio
+                src={url}
+                controls
+                className="w-full"
+                onError={() => setPreviewFailed(true)}
+              />
               <p className="text-xs text-muted-foreground mt-1">
                 Audio • {formatBlobSize(size || 0)}
               </p>
@@ -94,8 +106,12 @@ export function BlobAttachmentRich({ node, deleteNode }: ReactNodeViewProps) {
         {!isImage && !isVideo && !isAudio && (
           <div className="p-4 flex items-center gap-3">
             <div className="p-3 rounded-lg bg-muted">
-              {isVideo ? (
+              {mediaType === "image" ? (
+                <ImageIcon className="size-6 text-muted-foreground" />
+              ) : mediaType === "video" ? (
                 <Film className="size-6 text-muted-foreground" />
+              ) : mediaType === "audio" ? (
+                <Music className="size-6 text-muted-foreground" />
               ) : (
                 <FileIcon className="size-6 text-muted-foreground" />
               )}
