@@ -34,16 +34,30 @@ export type { EmojiTag, BlobAttachment, SerializedContent } from "./types";
 
 export interface MentionEditorProps {
   placeholder?: string;
+  /**
+   * Called with the composed message. May return a promise: the editor clears
+   * optimistically and RESTORES what was typed if that promise rejects, so a
+   * refused send never costs the user their text.
+   */
   onSubmit?: (
     content: string,
     emojiTags: EmojiTag[],
     blobAttachments: BlobAttachment[],
-  ) => void;
+  ) => void | Promise<void>;
   searchProfiles: (query: string) => Promise<ProfileSearchResult[]>;
   searchEmojis?: (query: string) => Promise<EmojiSearchResult[]>;
   searchCommands?: (query: string) => Promise<ChatAction[]>;
   onCommandExecute?: (action: ChatAction) => Promise<void>;
   onFilePaste?: (files: File[]) => void;
+  /**
+   * Fired on every edit, with the document as it now stands.
+   *
+   * The JSON travels WITH the notification rather than being fetched later:
+   * the composer unmounts between conversations and a child's cleanup runs
+   * before its parent's, so anything reaching for the editor at save time finds
+   * it already destroyed.
+   */
+  onChange?: (state: { isEmpty: boolean; json: unknown }) => void;
   autoFocus?: boolean;
   className?: string;
 }
@@ -59,6 +73,10 @@ export interface MentionEditorHandle {
   insertText: (text: string) => void;
   /** Insert a blob attachment with rich preview */
   insertBlob: (blob: BlobAttachment) => void;
+  /** The document as tiptap JSON — mentions, emoji and attachments included. */
+  getJSON: () => unknown;
+  /** Replace the document with a previously saved one. */
+  setJSON: (json: unknown) => void;
 }
 
 export const MentionEditor = forwardRef<
@@ -74,11 +92,17 @@ export const MentionEditor = forwardRef<
       searchCommands,
       onCommandExecute,
       onFilePaste,
+      onChange,
       autoFocus = false,
       className = "",
     },
     ref,
   ) => {
+    // Through a ref, so a changing callback never rebuilds the editor: tiptap's
+    // extension manager is built once at mount and `setOptions` does not
+    // rebuild it.
+    const onChangeRef = useRef(onChange);
+    onChangeRef.current = onChange;
     // Use a ref for onSubmit to avoid stale closures in TipTap keyboard handlers.
     // The Enter key handler reads this ref at invocation time, ensuring it always
     // has the latest callback (including any captured reply context).
@@ -91,10 +115,25 @@ export const MentionEditor = forwardRef<
 
       const { text, emojiTags, blobAttachments } =
         serializeInlineContent(editorInstance);
-      if (text) {
-        cb(text, emojiTags, blobAttachments);
-        editorInstance.commands.clearContent();
-      }
+      if (!text) return;
+
+      // Clear optimistically — waiting on the send before clearing makes every
+      // message feel laggy — but keep what was typed so a REFUSED send can put
+      // it back. A send can fail for ordinary reasons (a relay that will not
+      // take it, a rate limit, a permission), and losing a paragraph to a
+      // toast is the worst possible answer.
+      const typed = editorInstance.getJSON();
+      const sent = cb(text, emojiTags, blobAttachments);
+      editorInstance.commands.clearContent();
+
+      void Promise.resolve(sent).catch(() => {
+        // Never clobber something typed in the meantime — the message is in the
+        // toast either way, and stealing the composer back would be worse.
+        if (editorInstance.isDestroyed) return;
+        if (serializeInlineContent(editorInstance).text) return;
+        editorInstance.commands.setContent(typed);
+        editorInstance.commands.focus("end");
+      });
     }, []);
 
     const handleSubmitRef = useRef(handleSubmit);
@@ -290,6 +329,12 @@ export const MentionEditor = forwardRef<
         },
       },
       autofocus: autoFocus,
+      onUpdate: ({ editor: instance }) => {
+        onChangeRef.current?.({
+          isEmpty: instance.isEmpty,
+          json: instance.getJSON(),
+        });
+      },
     });
 
     useImperativeHandle(
@@ -315,6 +360,11 @@ export const MentionEditor = forwardRef<
         insertText: (text: string) => {
           if (editor) editor.chain().focus().insertContent(text).run();
         },
+        getJSON: () => editor?.getJSON(),
+        setJSON: (json: unknown) => {
+          if (!editor || json === undefined) return;
+          editor.commands.setContent(json as never);
+        },
         insertBlob: (blob: BlobAttachment) => {
           if (editor) {
             editor
@@ -329,6 +379,8 @@ export const MentionEditor = forwardRef<
                     mimeType: blob.mimeType,
                     size: blob.size,
                     server: blob.server,
+                    previewUrl: blob.previewUrl ?? null,
+                    encrypted: blob.encrypted ?? null,
                   },
                 },
                 { type: "text", text: " " },

@@ -17,7 +17,14 @@ export const CHAT_KINDS = [
  * Chat protocol identifier
  */
 export type ChatProtocol =
-  "nip-17" | "nip-28" | "nip-29" | "nip-53" | "nip-10" | "nip-22";
+  | "nip-17"
+  | "nip-28"
+  | "nip-29"
+  | "nip-53"
+  | "nip-10"
+  | "nip-22"
+  /** Concord (CORD-01…08) — E2E-encrypted community channels. */
+  | "concord";
 
 /**
  * Conversation type
@@ -81,6 +88,11 @@ export interface ConversationMetadata {
   encrypted?: boolean;
   giftWrapped?: boolean;
 
+  // Concord: the channel's own id. Not an address — a channel lives at a
+  // derived pubkey and cannot be typed back in — but it identifies the channel
+  // everywhere else, so it is offered for copying.
+  channelId?: string;
+
   // NIP-10 thread
   rootEventId?: string; // Thread root event ID
   providedEventId?: string; // Original event from nevent (may be reply)
@@ -118,6 +130,15 @@ export interface MessageMetadata {
   reactions?: NostrEvent[];
   zaps?: NostrEvent[];
   deleted?: boolean;
+  /**
+   * Who removed it, when the removal was an act of MODERATION.
+   *
+   * Set only where a protocol can prove a third party took the message down.
+   * An author deleting their own message leaves this absent — and generally
+   * leaves no row at all — because naming the erasure is the opposite of
+   * honouring it.
+   */
+  deletedBy?: string;
   hidden?: boolean; // NIP-28 channel hide
   // Zap-specific metadata (for type: "zap" messages)
   zapAmount?: number; // Amount in sats
@@ -146,6 +167,15 @@ export interface Message {
   metadata?: MessageMetadata;
   protocol: ChatProtocol;
   event: NostrEvent; // Original Nostr event for verification
+  /**
+   * Where an OUTGOING message has got to, when the protocol tracks that.
+   *
+   * Absent is the normal case and means delivered — a message only carries this
+   * while it is still the sender's problem. `"sending"` is queued and being
+   * attempted, `"failed"` is queued and waiting for a retry the reader can
+   * trigger. A row with this set exists nowhere but the sender's own device.
+   */
+  delivery?: "sending" | "failed";
 }
 
 /**
@@ -157,6 +187,24 @@ export interface GroupIdentifier {
   value: string;
   /** Relay URL where the group is hosted (required for NIP-29) */
   relays: string[];
+}
+
+/**
+ * Concord channel identifier (CORD-03).
+ *
+ * Both halves are raw hex and both are MEANINGLESS without the key material the
+ * viewer's Community List holds — a channel id addresses nothing on its own, and
+ * the stream it lives at derives from a secret. That is why this is never typed
+ * by a user: it is produced by the community viewer from the folded channel
+ * list, and the `concord` command resolves a community by NAME or id prefix
+ * against the local vault instead.
+ */
+export interface ConcordIdentifier {
+  type: "concord";
+  /** community_id, lowercase hex. */
+  communityId: string;
+  /** channel id, lowercase hex. */
+  channelId: string;
 }
 
 /**
@@ -267,6 +315,7 @@ export interface CommentIdentifier {
  * Returned by adapter parseIdentifier()
  */
 export type ProtocolIdentifier =
+  | ConcordIdentifier
   | GroupIdentifier
   | LiveActivityIdentifier
   | DMIdentifier
@@ -309,10 +358,32 @@ export interface CreateConversationParams {
  */
 export interface ChatCapabilities {
   supportsEncryption: boolean;
+  /**
+   * The viewer can delete their OWN messages through
+   * `ChatProtocolAdapter.deleteMessage`. Absent means the protocol has no
+   * self-delete surface here — not that deletion is impossible in it.
+   */
+  supportsDeletion?: boolean;
   supportsThreading: boolean;
   supportsModeration: boolean;
   supportsRoles: boolean;
   supportsGroupManagement: boolean;
   canCreateConversations: boolean;
   requiresRelay: boolean;
+  /**
+   * Where the composer's @-autocomplete should look.
+   *
+   * `"roster"` means this protocol knows exactly who is in the room and the
+   * suggestions must come from there — a closed community, where the global
+   * profile index offers strangers who will never read the message and omits
+   * members who have no cached profile. Absent means the global index, which is
+   * the right answer for a public thread.
+   */
+  mentionSuggestions?: "roster";
+  /**
+   * Outgoing messages carry a `delivery` state, and the adapter offers
+   * `retrySend`/`discardSend` for the ones that are stuck. Absent means a send
+   * either succeeds or throws, with nothing to show afterwards.
+   */
+  supportsDeliveryStatus?: boolean;
 }

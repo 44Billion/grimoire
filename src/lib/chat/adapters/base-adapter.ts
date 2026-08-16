@@ -63,6 +63,25 @@ export interface BlobAttachmentMeta {
   size?: number;
   /** Blossom server URL */
   server?: string;
+  /**
+   * AES-GCM parameters, when the blob at `url` is CIPHERTEXT.
+   *
+   * Concord attachments are encrypted before upload, so the host never holds
+   * the plaintext. These travel in the message's `imeta` and are the only copy
+   * — losing them makes the blob permanently unreadable.
+   */
+  encryption?: {
+    algorithm: "aes-gcm";
+    key: string;
+    nonce: string;
+    /** SHA-256 of the plaintext, so a swapped blob fails closed. */
+    ox: string;
+  };
+  /**
+   * The plaintext's MIME. The server's own `m` describes the ciphertext, which
+   * tells a reader nothing about what it will find inside.
+   */
+  originalMime?: string;
 }
 
 /**
@@ -171,6 +190,50 @@ export abstract class ChatProtocolAdapter {
     emoji: string,
     customEmoji?: EmojiTag,
   ): Promise<void>;
+
+  /**
+   * Delete one of the viewer's OWN messages.
+   *
+   * Optional: only adapters advertising `supportsDeletion` implement it, and the
+   * UI offers it only for the viewer's own messages. Deleting someone ELSE's
+   * message is moderation, which is a different capability.
+   */
+  deleteMessage?(conversation: Conversation, messageId: string): Promise<void>;
+
+  /**
+   * Try a queued message again, now.
+   *
+   * `messageId` is the id of the row the timeline is showing with a `delivery`
+   * state — which is NOT a message id on any relay, because the message never
+   * reached one. Optional: only adapters advertising `supportsDeliveryStatus`
+   * have anything to retry, and the UI feature-detects.
+   */
+  retrySend?(conversation: Conversation, messageId: string): Promise<void>;
+
+  /** Give up on a queued message and forget it. Same id as `retrySend`. */
+  discardSend?(conversation: Conversation, messageId: string): Promise<void>;
+
+  /**
+   * How far into this conversation the viewer has read, in unix SECONDS.
+   *
+   * Optional, and read state is per-PROTOCOL by nature: there is no wire format
+   * for it in any of these NIPs, so an adapter that implements this is saying it
+   * has somewhere local to keep the stamp. 0 means "never read", which is not
+   * the same as "all read" — see the divider, which deliberately shows nothing
+   * for a channel the viewer has never opened.
+   */
+  getLastRead?(conversation: Conversation): Promise<number>;
+
+  /**
+   * Mark this conversation read up to `timestampSecs`.
+   *
+   * The caller passes the newest message it has LOADED. An adapter may stamp
+   * higher: what the viewer can see and what is unread are not the same set
+   * whenever the protocol hides rows (moderation, expiry, key rotation), and a
+   * stamp that cannot reach the hidden rows is a badge no user action clears.
+   * Stamping is expected to be monotonic — never move a conversation backwards.
+   */
+  markRead?(conversation: Conversation, timestampSecs: number): Promise<void>;
 
   /**
    * Get the capabilities of this protocol
