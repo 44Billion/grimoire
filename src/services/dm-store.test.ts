@@ -4,7 +4,9 @@ import type { Rumor } from "applesauce-common/helpers/gift-wrap";
 import db from "./db";
 import {
   DM_MAX_FUTURE_SECS,
+  DM_UNREAD_CAP,
   clearDirectMessages,
+  countUnreadDms,
   foldDmMessages,
   listDmConversations,
   queryConversation,
@@ -363,5 +365,113 @@ describe("clearDirectMessages", () => {
     await clearDirectMessages(ME);
 
     expect(await listDmConversations(PEER)).toHaveLength(1);
+  });
+});
+
+describe("countUnreadDms", () => {
+  async function conversationId() {
+    const [conversation] = await listDmConversations(ME);
+    return conversation.conversationId;
+  }
+
+  it("counts messages, not conversations", async () => {
+    // The bug this replaces: the badge counted rows in the sidebar, so four
+    // messages across two conversations read as "2".
+    await writeDmRumors(ME, [
+      rumor({ created_at: nowSecs() - 30, content: "one" }),
+      rumor({ created_at: nowSecs() - 20, content: "two" }),
+      rumor({ created_at: nowSecs() - 10, content: "three" }),
+    ]);
+
+    expect(await countUnreadDms(ME, await conversationId(), 0)).toBe(3);
+  });
+
+  it("counts only what arrived after the stamp", async () => {
+    const cutoff = nowSecs() - 25;
+    await writeDmRumors(ME, [
+      rumor({ created_at: cutoff - 10, content: "read" }),
+      rumor({ created_at: cutoff, content: "the boundary itself" }),
+      rumor({ created_at: cutoff + 10, content: "unread" }),
+    ]);
+
+    // Exclusive at the bound: the message the stamp was taken FROM has been
+    // read, so counting it would leave a badge no visit can clear.
+    expect(await countUnreadDms(ME, await conversationId(), cutoff)).toBe(1);
+  });
+
+  it("never counts the viewer's own messages", async () => {
+    // Sending is reading.
+    await writeDmRumors(ME, [
+      rumor({ pubkey: ME, tags: [["p", PEER]], content: "mine" }),
+      rumor({ pubkey: PEER, tags: [["p", ME]], content: "theirs" }),
+    ]);
+
+    expect(await countUnreadDms(ME, await conversationId(), 0)).toBe(1);
+  });
+
+  it("does not count a reaction as a message waiting", async () => {
+    const target = rumor({ content: "the message" });
+    await writeDmRumors(ME, [target]);
+    const id = await conversationId();
+    await writeDmRumors(ME, [
+      rumor({
+        kind: 7,
+        pubkey: PEER,
+        content: "🔥",
+        tags: [
+          ["p", ME],
+          ["e", target.id],
+        ],
+      }),
+    ]);
+
+    // A reaction to something already read is not a message waiting.
+    expect(await countUnreadDms(ME, id, 0)).toBe(1);
+  });
+
+  it("does not count a message its author deleted", async () => {
+    const target = rumor({ content: "regretted" });
+    await writeDmRumors(ME, [target]);
+    const id = await conversationId();
+    await writeDmRumors(ME, [
+      rumor({ kind: 5, pubkey: PEER, tags: [["e", target.id]] }),
+    ]);
+
+    // Nothing to read: the fold removes it from the timeline, so a badge
+    // pointing at it sends the reader to an empty conversation. The count
+    // skips side rows, and the target is the only row-kind left.
+    expect(await countUnreadDms(ME, id, 0)).toBe(1);
+  });
+
+  it("does not count a message past its deadline", async () => {
+    const deadline = nowSecs() + 60;
+    await writeDmRumors(ME, [
+      rumor({
+        content: "fleeting",
+        tags: [
+          ["p", ME],
+          ["expiration", String(deadline)],
+        ],
+      }),
+    ]);
+    const id = await conversationId();
+
+    expect(await countUnreadDms(ME, id, 0, deadline - 1)).toBe(1);
+    expect(await countUnreadDms(ME, id, 0, deadline + 1)).toBe(0);
+  });
+
+  it("stops counting at the cap", async () => {
+    const base = nowSecs() - 5000;
+    await writeDmRumors(
+      ME,
+      Array.from({ length: DM_UNREAD_CAP + 20 }, (_, i) =>
+        rumor({ created_at: base + i, content: `m${i}` }),
+      ),
+    );
+
+    // A conversation nobody has opened in a year should cost a bounded read.
+    expect(await countUnreadDms(ME, await conversationId(), 0)).toBe(
+      DM_UNREAD_CAP,
+    );
   });
 });

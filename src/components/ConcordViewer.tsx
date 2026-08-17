@@ -535,8 +535,17 @@ export function ConcordViewer({
 
   const dms = useDirectMessages();
 
-  /** One number for the row, the way a community row totals its channels. */
-  const dmUnreadCount = dms.conversations.filter((c) => c.unread).length;
+  /**
+   * One number for the row, the way a community row totals its channels.
+   *
+   * MESSAGES, not conversations: a row saying 2 when four messages are waiting
+   * in two conversations is counting the wrong noun, and the channel badge
+   * beside it counts messages.
+   */
+  const dmUnreadCount = dms.conversations.reduce(
+    (total, c) => total + c.unreadCount,
+    0,
+  );
 
   const openDirectMessages = useCallback(() => {
     setDmSectionOpen((open) => !open);

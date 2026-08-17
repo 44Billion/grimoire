@@ -24,7 +24,7 @@ import {
   syncDmInbox,
   type BackfillProgress,
 } from "@/services/dm-inbox";
-import { listDmConversations } from "@/services/dm-store";
+import { countUnreadDms, listDmConversations } from "@/services/dm-store";
 import { readDmLastRead } from "@/services/dm-reads";
 import { ownDmReadRelays } from "@/lib/dm/relays";
 import type { DmConversationRow } from "@/services/db";
@@ -55,7 +55,12 @@ export interface DmConversationSummary extends DmConversationRow {
   isSelf: boolean;
   /** How far the reader has got, in unix seconds. 0 means never opened. */
   lastRead: number;
-  /** Something has arrived here since they last looked. */
+  /**
+   * Messages waiting, counted — the viewer's own never count, and neither do
+   * reactions. Capped at {@link DM_UNREAD_CAP}.
+   */
+  unreadCount: number;
+  /** Shorthand for `unreadCount > 0`, which is what the row styling asks. */
   unread: boolean;
 }
 
@@ -130,13 +135,19 @@ export function useDirectMessages(
           const lastRead = await readDmLastRead(pubkey, row.conversationId);
           const peer =
             row.participants.find((p) => p !== pubkey) ?? row.participants[0];
+          // Your own notes are never unread to you, so Saved messages does not
+          // pay for the count either.
+          const isSelf = peer === pubkey;
+          const unreadCount = isSelf
+            ? 0
+            : await countUnreadDms(pubkey, row.conversationId, lastRead);
           return {
             ...row,
             peer,
-            isSelf: peer === pubkey,
+            isSelf,
             lastRead,
-            // Your own notes are never unread to you.
-            unread: peer !== pubkey && row.lastAt > lastRead,
+            unreadCount,
+            unread: unreadCount > 0,
           };
         }),
       );
@@ -154,6 +165,7 @@ export function useDirectMessages(
           peer: pubkey,
           isSelf: true,
           lastRead: 0,
+          unreadCount: 0,
           unread: false,
         });
 

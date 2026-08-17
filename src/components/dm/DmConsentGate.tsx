@@ -13,8 +13,9 @@
  *
  * Rendered by both the DM pane in ChatViewer and the Concord sidebar, which is
  * why it is a component and not an inline branch in either. `compact` is the
- * sidebar's shape: the same words, left-aligned, sized for a column rather
- * than for a pane.
+ * sidebar's shape: one row among the conversations it is standing in for,
+ * rather than a bordered panel with a paragraph in it — nothing has gone
+ * wrong, so nothing should look like an alert.
  */
 
 import { useState } from "react";
@@ -33,50 +34,73 @@ export function DmConsentGate({
 }) {
   const [working, setWorking] = useState(false);
 
-  if (status === "loading") return null;
+  if (status === "loading" || status === "ready") return null;
 
-  if (status === "readonly")
+  // Nothing to offer: these two are facts about the account, not choices, and
+  // dressing a fact as a prompt invites a click that cannot help.
+  if (status === "readonly" || status === "no-nip44")
     return (
-      <Shell compact={compact}>
-        Sign in with a signer to read private messages — they are encrypted to
-        your key, and a read-only account holds none.
-      </Shell>
+      <Note compact={compact}>
+        {status === "readonly"
+          ? "Sign in with a signer to read private messages."
+          : "This signer cannot decrypt private messages."}
+      </Note>
     );
 
-  if (status === "no-nip44")
+  // In the sidebar this is one row among the conversations it will become —
+  // sized and shaped like them, because it is standing in for them. A panel
+  // with a border and a paragraph would be an alert, and there is nothing
+  // wrong here to alert anyone about.
+  if (compact)
     return (
-      <Shell compact={compact}>
-        This signer cannot do NIP-44, so private messages are unreadable to it.
-        Sign in with one that can.
-      </Shell>
-    );
-
-  if (status !== "needs-consent") return null;
-
-  return (
-    <Shell compact={compact}>
-      <Lock className={compact ? "mb-1 size-3" : "mx-auto mb-2 size-4"} />
-      <p className={compact ? "mb-2" : "mb-3"}>
-        Your private messages are stored encrypted, one envelope each. Opening
-        them asks your signer to decrypt every one — after that they are kept
-        locally and never decrypted again.
-      </p>
-      <Button
-        size="sm"
+      <button
+        type="button"
         disabled={working}
         onClick={() => {
           setWorking(true);
           void onGrant().finally(() => setWorking(false));
         }}
+        title="Your messages are stored encrypted. Opening them asks your signer once; after that they are kept locally."
+        className="flex w-full cursor-crosshair items-center gap-1.5 px-2 py-0.5 text-left text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:cursor-default"
       >
-        {working && <Loader2 className="mr-1.5 size-3 animate-spin" />}
-        Load private messages
-      </Button>
-    </Shell>
+        {working ? (
+          <Loader2 className="size-3 flex-shrink-0 animate-spin" />
+        ) : (
+          <Lock className="size-3 flex-shrink-0" />
+        )}
+        <span className="truncate">
+          {working ? "Opening…" : "Show messages"}
+        </span>
+      </button>
+    );
+
+  return (
+    <div className="flex h-full items-center justify-center p-6">
+      <div className="flex max-w-xs flex-col items-center gap-3 text-center">
+        <Lock className="size-5 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">
+          Your messages are stored encrypted, one envelope each. Opening them
+          asks your signer once — after that they are kept locally and never
+          decrypted again.
+        </p>
+        <Button
+          size="sm"
+          disabled={working}
+          onClick={() => {
+            setWorking(true);
+            void onGrant().finally(() => setWorking(false));
+          }}
+        >
+          {working && <Loader2 className="mr-1.5 size-3 animate-spin" />}
+          Show messages
+        </Button>
+      </div>
+    </div>
   );
 }
 
-function Shell({
+/** A statement, not a prompt: no border, no icon, nothing to press. */
+function Note({
   compact,
   children,
 }: {
@@ -85,11 +109,11 @@ function Shell({
 }) {
   if (compact)
     return (
-      <div className="px-2 py-1 text-xs text-muted-foreground">{children}</div>
+      <p className="px-2 py-1 text-xs text-muted-foreground">{children}</p>
     );
   return (
     <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
-      <div className="max-w-sm">{children}</div>
+      <p className="max-w-xs">{children}</p>
     </div>
   );
 }

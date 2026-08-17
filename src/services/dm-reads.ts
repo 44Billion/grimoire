@@ -12,6 +12,7 @@
 
 import db from "./db";
 import type { ChatReadRow } from "./db";
+import { DM_LIST_SCOPE, emitDmScopes } from "./dm-bus";
 
 /** A DM has no container above the conversation, so the slot is a constant. */
 const CONTAINER = "dm";
@@ -57,6 +58,7 @@ export async function markDmRead(
   );
   const id = key(pubkey, conversationId);
   try {
+    let moved = false;
     await db.transaction("rw", db.chatReads, async () => {
       const existing = await db.chatReads.get(id);
       if (existing && existing.lastRead >= clamped) return;
@@ -69,7 +71,14 @@ export async function markDmRead(
         updatedAt: Date.now(),
       };
       await db.chatReads.put(row);
+      moved = true;
     });
+
+    // The badge is computed against this stamp, so moving it silently leaves
+    // the sidebar showing unread messages the reader is looking at. Only on an
+    // actual move — the stamp is written on every emission of the timeline,
+    // and ringing for a no-op would re-read the whole list per message.
+    if (moved) emitDmScopes([DM_LIST_SCOPE]);
   } catch (error) {
     console.warn("[dm] could not stamp the conversation as read:", error);
   }

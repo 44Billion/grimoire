@@ -523,3 +523,48 @@ export async function clearDirectMessages(viewer: string): Promise<void> {
     },
   );
 }
+
+/**
+ * How many messages have arrived in a conversation since `after`.
+ *
+ * Counted, not inferred from `lastAt`: a badge saying "3" and a badge saying
+ * "something" are different promises, and the sidebar has room for the number.
+ *
+ * The viewer's own messages never count — sending is reading — and neither do
+ * side rows: a reaction to something you already read is not a message
+ * waiting. Capped, because a conversation nobody has opened in a year should
+ * cost a bounded read rather than a proportional one.
+ */
+export const DM_UNREAD_CAP = 99;
+
+export async function countUnreadDms(
+  viewer: string,
+  conversationId: string,
+  after: number,
+  at = nowSecs(),
+): Promise<number> {
+  if (!viewer || !conversationId) return 0;
+
+  // The same clock allowance the stamp uses. Bounding one side and not the
+  // other either pins the badge forever or clears it for years.
+  const ceiling = at + DM_MAX_FUTURE_SECS;
+
+  let count = 0;
+  await db.dmRumors
+    .where("[viewer+conversationId+created_at]")
+    .between(
+      [viewer, conversationId, after],
+      [viewer, conversationId, ceiling],
+      false,
+      true,
+    )
+    .until(() => count >= DM_UNREAD_CAP)
+    .each((row) => {
+      if (!DM_ROW_KINDS.includes(row.kind)) return;
+      if (row.pubkey === viewer) return;
+      if (isExpired(row, at)) return;
+      count += 1;
+    });
+
+  return count;
+}

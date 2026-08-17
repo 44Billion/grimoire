@@ -17,6 +17,7 @@ import { formatTimestamp, useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 import type { DmConversationSummary } from "@/hooks/useDirectMessages";
 import type { BackfillProgress } from "@/services/dm-inbox";
+import { DM_UNREAD_CAP } from "@/services/dm-store";
 
 export function DirectMessageList({
   conversations,
@@ -129,12 +130,14 @@ function DirectMessageRow({
             {formatTimestamp(conversation.lastAt, "relative", locale)}
           </span>
         )}
-        {conversation.unread && (
-          <span
-            aria-label="Unread messages"
-            title="Unread messages"
-            className="size-1.5 rounded-full bg-primary"
-          />
+        {/* A count, like a channel's — "3" and "something" are different
+            promises and there is room for the number. */}
+        {conversation.unreadCount > 0 && (
+          <span className="rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">
+            {conversation.unreadCount >= DM_UNREAD_CAP
+              ? `${DM_UNREAD_CAP}+`
+              : conversation.unreadCount}
+          </span>
         )}
       </span>
     </button>
