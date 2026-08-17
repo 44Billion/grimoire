@@ -1,6 +1,13 @@
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, PanelLeft, RefreshCw, Search } from "lucide-react";
+import {
+  Globe,
+  Loader2,
+  Lock,
+  PanelLeft,
+  RefreshCw,
+  Search,
+} from "lucide-react";
 
 import { ChatViewer } from "./ChatViewer";
 import {
@@ -588,16 +595,17 @@ function OpennessBadge({
   openness: "public" | "private";
   detail: string;
 }) {
+  const Icon = openness === "public" ? Globe : Lock;
   return (
     <span
-      className="ml-auto shrink-0 rounded border border-dotted px-1 text-[10px] font-normal text-muted-foreground"
+      className="ml-auto shrink-0 text-muted-foreground"
       title={
         openness === "public"
-          ? `Anyone holding a live invite link can join: ${detail}. Retiring the last one turns the community private again.`
-          : "No live invite link exists, so nobody can join without a member handing them the keys directly."
+          ? `Public: anyone holding a live invite link can join (${detail}). Retiring the last one turns the community private again.`
+          : "Private: no live invite link exists, so nobody can join without a member handing them the keys directly."
       }
     >
-      {openness}
+      <Icon className="size-3" aria-label={openness} />
     </span>
   );
 }
