@@ -72,6 +72,8 @@ import {
 import { DirectMessageList } from "./dm/DirectMessageList";
 import { dmRowRef } from "@/lib/dm/row-ref";
 import { markDmRead } from "@/services/dm-reads";
+import { markChannelRead, markCommunityRead } from "@/services/concord-reads";
+import { readStoredState } from "@/services/concord-state";
 import { NewConversationDialog } from "./dm/NewConversationDialog";
 import { DmConsentGate } from "./dm/DmConsentGate";
 import { useDirectMessages } from "@/hooks/useDirectMessages";
@@ -632,6 +634,39 @@ export function ConcordViewer({
     groupSectionOpen || selectedGroup !== undefined,
   );
 
+  const viewerPubkey = account?.pubkey;
+
+  /**
+   * Clear one community's channels, whether or not it is the open one.
+   *
+   * The fold is re-read here rather than taken from `state`, because a row for
+   * a community the reader is NOT in has no loaded fold — and that is the case
+   * this exists for: the open one you can simply read.
+   */
+  const markCommunityAllRead = useCallback(
+    async (idHex: string) => {
+      const target = communities.find((c) => c.idHex === idHex);
+      if (!viewerPubkey || !target) return;
+      const stored = await readStoredState(target).catch(() => undefined);
+      if (!stored) return;
+      await markCommunityRead(
+        viewerPubkey,
+        idHex,
+        stored.channels.map((ch) => ch.idHex.toLowerCase()),
+        stored.folded.banned,
+      );
+    },
+    [viewerPubkey, communities],
+  );
+
+  const markChannelAllRead = useCallback(
+    (channelIdHex: string, atSecs: number) => {
+      if (!viewerPubkey || !communityIdHex) return;
+      void markChannelRead(viewerPubkey, communityIdHex, channelIdHex, atSecs);
+    },
+    [viewerPubkey, communityIdHex],
+  );
+
   const handleGroupSelect = useCallback(
     (selection: GroupSelection) => {
       setSelectedGroup(selection);
@@ -835,6 +870,7 @@ export function ConcordViewer({
         highlight={!showInvites && !selectedDm && !selectedGroup}
         openness={openness}
         opennessDetail={opennessDetail}
+        onMarkRead={(idHex) => void markCommunityAllRead(idHex)}
         onSelect={(idHex) => {
           setSelectedDm(undefined);
           setDmSectionOpen(false);
@@ -870,6 +906,7 @@ export function ConcordViewer({
             unread={unread}
             inCall={inCall}
             onSelect={handleChannelSelect}
+            onMarkRead={markChannelAllRead}
           />
           {/* The guestbook entry is hidden for now: it sat between the channels
               and nothing else, reading as a channel that is not one. The panel
@@ -1291,6 +1328,7 @@ function CommunityRow({
   openness,
   opennessDetail,
   onSelect,
+  onMarkRead,
 }: {
   community: {
     idHex: string;
@@ -1303,12 +1341,18 @@ function CommunityRow({
   openness?: "public" | "private";
   opennessDetail?: string;
   onSelect: (idHex: string) => void;
+  /** Clear every channel of this community at once. */
+  onMarkRead?: (idHex: string) => void;
 }) {
   const icon = useConcordImage(community.icon);
   const label = community.name || community.idHex.slice(0, 8);
   const hasUnread = (community.unread?.count ?? 0) > 0;
   return (
-    <NotifLevelMenu>
+    <NotifLevelMenu
+      {...(onMarkRead && hasUnread
+        ? { onMarkRead: () => onMarkRead(community.idHex) }
+        : {})}
+    >
       <button
         type="button"
         onClick={() => onSelect(community.idHex)}
@@ -1363,6 +1407,7 @@ function CommunityPicker({
   openness,
   opennessDetail,
   onSelect,
+  onMarkRead,
   children,
 }: {
   communities: Array<{
@@ -1378,6 +1423,8 @@ function CommunityPicker({
   openness?: "public" | "private";
   opennessDetail: string;
   onSelect: (idHex: string) => void;
+  /** Clear every channel of one community at once. */
+  onMarkRead?: (idHex: string) => void;
   children: ReactNode;
 }) {
   // Every community gets a row, including the only one. It used to be hidden as
@@ -1404,6 +1451,7 @@ function CommunityPicker({
               ? { openness, opennessDetail }
               : {})}
             onSelect={onSelect}
+            {...(onMarkRead ? { onMarkRead } : {})}
           />
           {c.idHex === selected && <div className="pl-2">{children}</div>}
         </div>

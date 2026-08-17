@@ -13,6 +13,7 @@ import {
   clearReads,
   communityUnread,
   markChannelRead,
+  markCommunityRead,
   readCommunityLastReads,
   readLastRead,
 } from "./concord-reads";
@@ -214,5 +215,98 @@ describe("communityUnread", () => {
       1,
     );
     expect((await communityUnread(ME, other, [CHANNEL], NOW)).count).toBe(2);
+  });
+});
+
+describe("markCommunityRead", () => {
+  const NOW = 1_800_000_000;
+  let seq = 0;
+
+  async function post(channelId: string, at: number): Promise<void> {
+    seq += 1;
+    await writeChatRumors(
+      COMMUNITY,
+      [
+        {
+          rumorId: (seq + 0x9000).toString(16).padStart(64, "0"),
+          author: THEM,
+          kind: KIND_MESSAGE,
+          content: "hi",
+          tags: [],
+          createdAt: at,
+          ms: at * 1000,
+          channel: channelId,
+        },
+      ],
+      0,
+    );
+  }
+
+  it("clears every channel that had something waiting", async () => {
+    await post(CHANNEL, NOW - 300);
+    await post(OTHER_CHANNEL, NOW - 200);
+
+    await markCommunityRead(
+      ME,
+      COMMUNITY,
+      [CHANNEL, OTHER_CHANNEL],
+      undefined,
+      NOW,
+    );
+
+    expect(
+      (await communityUnread(ME, COMMUNITY, [CHANNEL, OTHER_CHANNEL], NOW))
+        .count,
+    ).toBe(0);
+  });
+
+  it("stamps each channel at ITS OWN newest message, not at the clock", async () => {
+    // Stamping "now" would also swallow whatever arrives next with an older
+    // `created_at` — routine in a store fed by a relay backfill.
+    await post(CHANNEL, NOW - 300);
+    await post(OTHER_CHANNEL, NOW - 200);
+
+    await markCommunityRead(
+      ME,
+      COMMUNITY,
+      [CHANNEL, OTHER_CHANNEL],
+      undefined,
+      NOW,
+    );
+
+    expect(await readLastRead(ME, COMMUNITY, CHANNEL)).toBe(NOW - 300);
+    expect(await readLastRead(ME, COMMUNITY, OTHER_CHANNEL)).toBe(NOW - 200);
+  });
+
+  it("writes nothing for a channel with nothing waiting", async () => {
+    await post(CHANNEL, NOW - 300);
+    await markCommunityRead(
+      ME,
+      COMMUNITY,
+      [CHANNEL, OTHER_CHANNEL],
+      undefined,
+      NOW,
+    );
+    expect(await readLastRead(ME, COMMUNITY, OTHER_CHANNEL)).toBe(0);
+  });
+
+  it("never moves a stamp backwards", async () => {
+    await post(CHANNEL, NOW - 300);
+    await markChannelRead(ME, COMMUNITY, CHANNEL, NOW);
+    await markCommunityRead(ME, COMMUNITY, [CHANNEL], undefined, NOW);
+    expect(await readLastRead(ME, COMMUNITY, CHANNEL)).toBe(NOW);
+  });
+
+  it("skips a banned author's messages, like the badge does", async () => {
+    await post(CHANNEL, NOW - 300);
+    await markCommunityRead(ME, COMMUNITY, [CHANNEL], new Set([THEM]), NOW);
+    // Nothing countable, so nothing stamped — the badge was already empty.
+    expect(await readLastRead(ME, COMMUNITY, CHANNEL)).toBe(0);
+  });
+
+  it("leaves another account alone", async () => {
+    await post(CHANNEL, NOW - 300);
+    await markCommunityRead(ME, COMMUNITY, [CHANNEL], undefined, NOW);
+    expect(await readLastRead(THEM, COMMUNITY, CHANNEL)).toBe(0);
   });
 });

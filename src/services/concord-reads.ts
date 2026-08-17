@@ -158,6 +158,63 @@ export async function markChannelRead(
   }
 }
 
+/**
+ * Stamp every channel of one community read, in one transaction.
+ *
+ * Each channel is stamped at ITS OWN newest countable message rather than at
+ * the clock: the summary already applies the future ceiling, the ban list and
+ * the "not my own messages" rule, so stamping what it reports clears exactly
+ * what the badge was counting and nothing the reader has not been shown.
+ *
+ * Channels with nothing waiting are skipped rather than stamped forward. A
+ * stamp is a position, and moving one in a channel the reader never opened
+ * would silently swallow whatever arrives next with an older `created_at`.
+ */
+export async function markCommunityRead(
+  pubkey: string,
+  communityId: string,
+  channelIdsHex: readonly string[],
+  bannedAuthors?: ReadonlySet<string>,
+  nowSecs: number = Math.floor(Date.now() / 1000),
+): Promise<void> {
+  if (!pubkey || !communityId || channelIdsHex.length === 0) return;
+  try {
+    const stamps = await readCommunityLastReads(pubkey, communityId);
+    const wanted: Array<{ channelId: string; at: number }> = [];
+    for (const channelId of channelIdsHex) {
+      const id = channelId.toLowerCase();
+      const summary = await channelUnreadSummary(communityId, id, {
+        after: stamps.get(id) ?? 0,
+        nowSecs,
+        maxFutureSecs: CONCORD_READ_MAX_FUTURE_SECS,
+        selfPubkey: pubkey,
+        ...(bannedAuthors ? { bannedAuthors } : {}),
+      });
+      if (summary.count > 0 && summary.latest > 0)
+        wanted.push({ channelId: id, at: summary.latest });
+    }
+    if (wanted.length === 0) return;
+
+    await db.transaction("rw", db.chatReads, async () => {
+      for (const { channelId, at } of wanted) {
+        const id = key(pubkey, communityId, channelId);
+        const existing = await db.chatReads.get(id);
+        if (existing && existing.lastRead >= at) continue;
+        await db.chatReads.put({
+          pubkey: id[0],
+          protocol: id[1],
+          containerId: id[2],
+          channelId: id[3],
+          lastRead: at,
+          updatedAt: Date.now(),
+        });
+      }
+    });
+  } catch (error) {
+    console.warn("[concord] could not stamp the community as read:", error);
+  }
+}
+
 /** One community's channels, added up. */
 export interface CommunityUnread {
   count: number;

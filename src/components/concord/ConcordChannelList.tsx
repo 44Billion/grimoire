@@ -88,6 +88,7 @@ export function NotifLevelMenu({
   onTogglePin,
   muted,
   onToggleMute,
+  onMarkRead,
   children,
 }: {
   /** Channel rows only — a container is not something you pin above itself. */
@@ -95,6 +96,8 @@ export function NotifLevelMenu({
   onTogglePin?: () => void;
   muted?: boolean;
   onToggleMute?: () => void;
+  /** Only passed when there is something unread to clear. */
+  onMarkRead?: () => void;
   children: ReactNode;
 }) {
   // Notification levels are hidden for now: the whole subsystem is off, so a
@@ -111,6 +114,7 @@ export function NotifLevelMenu({
       {...(onTogglePin ? { onTogglePin } : {})}
       {...(muted !== undefined ? { muted } : {})}
       {...(onToggleMute ? { onToggleMute } : {})}
+      {...(onMarkRead ? { onMarkRead } : {})}
     >
       {children}
     </RowMenu>
@@ -139,6 +143,7 @@ export function ChannelList({
   unread,
   inCall,
   onSelect,
+  onMarkRead,
 }: {
   channels: Channel[];
   communityId: string | undefined;
@@ -149,6 +154,8 @@ export function ChannelList({
   /** Channel id → how many members are in its call right now (CORD-07 §4). */
   inCall: Map<string, number>;
   onSelect: (idHex: string) => void;
+  /** Clear one channel's count without opening it. */
+  onMarkRead?: (channelIdHex: string, atSecs: number) => void;
 }) {
   const { isCollapsed, toggleCollapsed, isPinned, isMuted } = useConcordPrefs();
   // Muted channels leave the categories entirely and fold away at the bottom —
@@ -204,6 +211,7 @@ export function ChannelList({
           unread={unread.get(ch.idHex.toLowerCase())}
           inCall={inCall.get(ch.idHex) ?? 0}
           onSelect={onSelect}
+          {...(onMarkRead ? { onMarkRead } : {})}
         />
       ))}
       {uncategorized.map((ch) => (
@@ -215,6 +223,7 @@ export function ChannelList({
           unread={unread.get(ch.idHex.toLowerCase())}
           inCall={inCall.get(ch.idHex) ?? 0}
           onSelect={onSelect}
+          {...(onMarkRead ? { onMarkRead } : {})}
         />
       ))}
       {categories.map((group) => {
@@ -249,6 +258,7 @@ export function ChannelList({
                 unread={unread.get(ch.idHex.toLowerCase())}
                 inCall={inCall.get(ch.idHex) ?? 0}
                 onSelect={onSelect}
+                {...(onMarkRead ? { onMarkRead } : {})}
               />
             ))}
           </div>
@@ -263,6 +273,7 @@ export function ChannelList({
             selected={ch.idHex === selected}
             unread={unread.get(ch.idHex.toLowerCase())}
             onSelect={onSelect}
+            {...(onMarkRead ? { onMarkRead } : {})}
           />
         ))}
       </MutedSection>
@@ -277,6 +288,7 @@ function ChannelRow({
   unread,
   inCall,
   onSelect,
+  onMarkRead,
 }: {
   channel: Channel;
   communityId: string | undefined;
@@ -284,6 +296,7 @@ function ChannelRow({
   unread: ChannelUnread | undefined;
   inCall: number;
   onSelect: (idHex: string) => void;
+  onMarkRead?: (channelIdHex: string, atSecs: number) => void;
 }) {
   const Icon = channel.isPrivate ? Lock : Hash;
   const { isPinned, togglePin, isMuted, toggleMute } = useConcordPrefs();
@@ -302,6 +315,9 @@ function ChannelRow({
       onToggleMute={
         communityId ? () => toggleMute(communityId, channel.idHex) : undefined
       }
+      {...(onMarkRead && (unread?.count ?? 0) > 0
+        ? { onMarkRead: () => onMarkRead(channel.idHex, unread!.latest) }
+        : {})}
     >
       <button
         type="button"
