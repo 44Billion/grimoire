@@ -39,13 +39,18 @@ export function DirectMessageList({
   backfill?: BackfillProgress;
 }) {
   const { isRowPinned } = useConcordPrefs();
-  // Pinned first, in the order the list already had. "Saved messages" is
-  // synthesized at the top of that list, so pinning something above it is the
-  // reader saying they meant it.
-  const { pinned, rest } = partitionPinned(conversations, (c) =>
+  // "Saved messages" first and always, then the pinned, then the rest in the
+  // order the list already had. Saved messages is not correspondence and is
+  // never unread — it is where this account's own notes live — so it holds the
+  // top whatever else the reader pins.
+  const { pinned: saved, rest: others } = partitionPinned(
+    conversations,
+    (c) => c.isSelf,
+  );
+  const { pinned, rest } = partitionPinned(others, (c) =>
     isRowPinned(dmRowRef(c.conversationId)),
   );
-  const ordered = [...pinned, ...rest];
+  const ordered = [...saved, ...pinned, ...rest];
 
   return (
     <div className="flex flex-col">
