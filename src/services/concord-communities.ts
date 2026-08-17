@@ -16,8 +16,8 @@
  * of every slot is the List. §8's merges are commutative and idempotent, which
  * is exactly what makes unioning across the generations sound.
  *
- * Nothing here publishes. See `src/lib/concord/community-list.ts` for why there
- * is no serializer at all.
+ * Nothing here publishes — the one write that exists, joining, lives in
+ * `concord-join.ts` and comes back through here to re-read what it wrote.
  *
  * The read disciplines below are ported from armada `bc19d1f`
  * (`src/concord/hooks/useCommunityList.ts`), minus its merge and its stock-relay
@@ -394,6 +394,68 @@ export async function readJoinedAtMs(
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The List as a WRITER needs it: every readable slot, freshly fetched.
+ *
+ * §8's read-modify-write rests on this — a client MUST union its own state into
+ * the newest copy it holds of each fragment it rewrites, and MUST NOT publish a
+ * fragment built from local state alone. The mirrored copy in `concordKv` is
+ * not good enough for that: it is as old as the last sync, and a write built on
+ * it silently drops whatever another device published since.
+ *
+ * A slot that will not decrypt is omitted rather than reported: a writer must
+ * never treat one as empty, and the caller picks a target among what came back.
+ */
+export async function readListSlotsForWrite(
+  pubkey: string,
+  signer: Nip44Decryptor,
+): Promise<{ slots: StoredSlot[]; unreadable: number }> {
+  if (!signer.nip44) return { slots: [], unreadable: 0 };
+  const fetched = await fetchListEvents(pubkey);
+  const slots = new Map<string, StoredSlot>();
+  let unreadable = 0;
+  for (const [key, event] of fetched) {
+    const list = await decryptList(event, signer, pubkey);
+    if (!list) {
+      // Counted, never skipped silently. A writer that cannot read a slot
+      // cannot rewrite it either: publishing over it would replace whatever it
+      // held, and what it holds is key material.
+      unreadable++;
+      continue;
+    }
+    slots.set(key, {
+      kind: event.kind,
+      d: fragmentIndex(event),
+      eventId: event.id,
+      createdAt: event.created_at,
+      list,
+    });
+  }
+
+  // The mirrored copies are a FLOOR, not a fallback: a coordinate whose newest
+  // copy this read missed still contributes what was last seen there, so a
+  // short read can never publish less than the client already knew. §8's whole
+  // tolerance — "absence is never a fact" — rests on this being a union.
+  for (const [key, held] of await readSlots(pubkey)) {
+    const fresh = slots.get(key);
+    if (!fresh) {
+      slots.set(key, held);
+      continue;
+    }
+    if (fresh.eventId === held.eventId) continue;
+    slots.set(key, {
+      ...fresh,
+      list: mergeCommunityLists([{ list: fresh.list }, { list: held.list }]),
+    });
+  }
+  return { slots: inRangeSlots(slots), unreadable };
+}
+
+/** How many memberships the local mirror holds — the floor a write must clear. */
+export async function mirroredMembershipCount(pubkey: string): Promise<number> {
+  return db.concordCommunities.where("pubkey").equals(pubkey).count();
 }
 
 /**

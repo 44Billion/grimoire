@@ -311,6 +311,92 @@ function pickSnapshot(
 }
 
 /**
+ * Union two snapshots' PRIVATE CHANNEL KEYS, per channel, keeping the higher
+ * epoch and carrying the loser forward as a prior.
+ *
+ * Choosing a whole snapshot is right for the fields that describe one epoch —
+ * the root, the name, the relays — and catastrophic for `channels`, which is
+ * key MATERIAL a member accumulates: a re-invite granting `[A, C]` must not
+ * delete the `B` this member already holds, and at an equal epoch a
+ * canonical-bytes coin flip would do exactly that, unrecoverably. The armada
+ * reference unions here for the same reason.
+ */
+function unionChannels(
+  a: JoinMaterial["channels"] | undefined,
+  b: JoinMaterial["channels"] | undefined,
+): JoinMaterial["channels"] {
+  const out = new Map<string, JoinMaterial["channels"][number]>();
+  for (const channel of [
+    ...(Array.isArray(a) ? a : []),
+    ...(Array.isArray(b) ? b : []),
+  ]) {
+    if (!channel || typeof channel.id !== "string") continue;
+    const id = channel.id.toLowerCase();
+    const prev = out.get(id);
+    if (!prev) {
+      out.set(id, channel);
+      continue;
+    }
+    const winner = (channel.epoch ?? 0) > (prev.epoch ?? 0) ? channel : prev;
+    const loser = winner === channel ? prev : channel;
+    // The loser's key still opens its own epoch's history, so it is retained as
+    // a prior rather than dropped — the same shape armada writes.
+    const priors = new Map<number, { key: string; epoch: number }>();
+    for (const prior of [
+      ...(Array.isArray(winner.priors) ? winner.priors : []),
+      ...(Array.isArray(loser.priors) ? loser.priors : []),
+    ]) {
+      if (prior && typeof prior.key === "string")
+        priors.set(prior.epoch, prior);
+    }
+    if (loser.epoch !== winner.epoch && typeof loser.key === "string") {
+      priors.set(loser.epoch, { key: loser.key, epoch: loser.epoch });
+    }
+    out.set(id, {
+      ...loser,
+      ...winner,
+      ...(priors.size > 0 ? { priors: [...priors.values()] } : {}),
+    });
+  }
+  return [...out.values()];
+}
+
+/** Union retained prior roots by epoch — the same accumulation, for the base. */
+function unionHeldRoots(
+  a: JoinMaterial["held_roots"] | undefined,
+  b: JoinMaterial["held_roots"] | undefined,
+): JoinMaterial["held_roots"] | undefined {
+  const out = new Map<
+    number,
+    NonNullable<JoinMaterial["held_roots"]>[number]
+  >();
+  for (const root of [
+    ...(Array.isArray(a) ? a : []),
+    ...(Array.isArray(b) ? b : []),
+  ]) {
+    if (root && typeof root.epoch === "number" && !out.has(root.epoch)) {
+      out.set(root.epoch, root);
+    }
+  }
+  return out.size > 0 ? [...out.values()] : undefined;
+}
+
+/** Per channel, the highest cut epoch either side knows about. */
+function unionCuts(
+  a: CommunityListEntry["channel_cuts"],
+  b: CommunityListEntry["channel_cuts"],
+): CommunityListEntry["channel_cuts"] {
+  const out = new Map<string, { id: string; epoch: number }>();
+  for (const cut of [...(a ?? []), ...(b ?? [])]) {
+    if (!cut || typeof cut.id !== "string") continue;
+    const id = cut.id.toLowerCase();
+    const prev = out.get(id);
+    if (!prev || cut.epoch > prev.epoch) out.set(id, { id, epoch: cut.epoch });
+  }
+  return out.size > 0 ? [...out.values()] : undefined;
+}
+
+/**
  * Merge two entries for one community; neither input is mutated.
  *
  * `rank` breaks an epoch tie BEFORE the canonical-bytes rule does (lower wins),
@@ -326,6 +412,22 @@ function mergeEntries(
   rankA = 0,
   rankB = 0,
 ): CommunityListEntry {
+  // An entry this build cannot read the shape of is still an entry, and the
+  // merge feeds a WRITER: dropping it here would delete that membership — and
+  // its keys — from the document on every device its holder owns. Keep both
+  // sides whole and let the one that has a snapshot supply the snapshots.
+  if (!a.current || !b.current) {
+    const known = a.current ? a : b;
+    const other = known === a ? b : a;
+    return {
+      ...other,
+      ...known,
+      added_at: Math.max(
+        typeof a.added_at === "number" ? a.added_at : 0,
+        typeof b.added_at === "number" ? b.added_at : 0,
+      ),
+    };
+  }
   // The entry carrying the newer `current` is the base, so its extensions
   // (`excluded_at_epoch`, `channel_cuts`, unknown fields) travel with the
   // snapshot they describe rather than being spliced across generations.
@@ -341,14 +443,26 @@ function mergeEntries(
       : pickSnapshot(a.current, b.current, "higher");
   const base = newer === b.current ? b : a;
   const other = base === a ? b : a;
-  const current = base.current;
+  // The chosen snapshot describes ONE epoch; the key material accumulates
+  // across all of them. Union first, then floor by the cuts, so a stale bundle
+  // can only add a key back at or above the epoch that revoked it.
+  const cuts = unionCuts(a.channel_cuts, b.channel_cuts);
+  const heldRoots = unionHeldRoots(a.current.held_roots, b.current.held_roots);
+  const current: JoinMaterial = {
+    ...base.current,
+    channels: applyChannelCuts(
+      unionChannels(a.current.channels, b.current.channels),
+      cuts,
+    ),
+    ...(heldRoots ? { held_roots: heldRoots } : {}),
+  };
   // An absent `seed` reads as equal to `current` — which is what it means.
   const seed = pickSnapshot(
     a.seed ?? a.current,
     b.seed ?? b.current,
     "lower",
   ) as JoinMaterial;
-  return {
+  const merged: CommunityListEntry = {
     ...other,
     ...base,
     seed,
@@ -358,6 +472,21 @@ function mergeEntries(
       typeof b.added_at === "number" ? b.added_at : 0,
     ),
   };
+  if (cuts) merged.channel_cuts = cuts;
+  else delete merged.channel_cuts;
+  // An exclusion bites only while it names an epoch BEYOND what `current`
+  // holds: holding the marked epoch's own root is re-inclusion, however it
+  // arrived, so a spent marker is dropped rather than carried forever.
+  const excluded = Math.max(
+    typeof a.excluded_at_epoch === "number" ? a.excluded_at_epoch : -1,
+    typeof b.excluded_at_epoch === "number" ? b.excluded_at_epoch : -1,
+  );
+  if (excluded >= 0 && excluded > (epochOf(current) ?? 0)) {
+    merged.excluded_at_epoch = excluded;
+  } else {
+    delete merged.excluded_at_epoch;
+  }
+  return merged;
 }
 
 /**
@@ -401,7 +530,9 @@ export function mergeCommunityLists(
     for (const entry of list.entries) {
       const id =
         typeof entry?.community_id === "string" ? entry.community_id : "";
-      if (!id || !entry.current) continue;
+      // Only an entry with no id at all is unusable — it names no membership
+      // and could never be merged, rewritten or tombstoned.
+      if (!id) continue;
       const prev = entries.get(id);
       if (!prev) {
         entries.set(id, entry);

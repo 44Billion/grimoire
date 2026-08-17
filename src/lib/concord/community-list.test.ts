@@ -479,3 +479,89 @@ describe("mergeCommunityLists across generations", () => {
     expect(merged.entries[0].current.root_epoch).toBe(5);
   });
 });
+
+describe("mergeCommunityLists and shapes it does not know", () => {
+  it("keeps an entry whose snapshot this build cannot read", () => {
+    // The merge feeds a WRITER: dropping an unreadable entry would delete that
+    // membership — and the only copy of its channel keys — on every device.
+    const jm = makeJoinMaterial();
+    const alien = { community_id: "cd".repeat(32), added_at: 7, mystery: true };
+    const merged = mergeCommunityLists([
+      { entries: [alien as unknown as CommunityListEntry], tombstones: [] },
+      { entries: [entryOf(jm)], tombstones: [] },
+    ]);
+    expect(merged.entries).toHaveLength(2);
+    expect(
+      merged.entries.find((e) => e.community_id === alien.community_id),
+    ).toMatchObject({ mystery: true });
+  });
+});
+
+describe("mergeCommunityLists and key material", () => {
+  const withChannels = (
+    jm: JoinMaterial,
+    channels: JoinMaterial["channels"],
+    epoch = 0,
+  ) => entryOf({ ...jm, root_epoch: epoch, channels });
+
+  it("unions private channel keys instead of picking one snapshot", () => {
+    // A re-invite granting [A, C] must never delete the B this member already
+    // holds: a channel key is material they accumulate, and nothing recovers it.
+    const jm = makeJoinMaterial();
+    const A = chan("aa".repeat(32), 0);
+    const B = chan("bb".repeat(32), 0);
+    const C = chan("cc".repeat(32), 0);
+    const merged = mergeCommunityLists([
+      { entries: [withChannels(jm, [A, B])], tombstones: [] },
+      { entries: [withChannels(jm, [A, C])], tombstones: [] },
+    ]);
+    expect(merged.entries[0].current.channels.map((c) => c.id).sort()).toEqual(
+      [A.id, B.id, C.id].sort(),
+    );
+  });
+
+  it("keeps held keys when a fresher epoch's bundle carries fewer", () => {
+    // The stranded-member heal: a bundle at a newer root epoch grants one
+    // channel, and the two the member already holds must survive it.
+    const jm = makeJoinMaterial();
+    const A = chan("aa".repeat(32), 0);
+    const B = chan("bb".repeat(32), 0);
+    const merged = mergeCommunityLists([
+      { entries: [withChannels(jm, [A, B], 1)], tombstones: [] },
+      { entries: [withChannels(jm, [A], 2)], tombstones: [] },
+    ]);
+    expect(merged.entries[0].current.root_epoch).toBe(2);
+    expect(merged.entries[0].current.channels).toHaveLength(2);
+  });
+
+  it("carries the older key forward as a prior when one rotates", () => {
+    const jm = makeJoinMaterial();
+    const old = chan("aa".repeat(32), 1, "11".repeat(32));
+    const fresh = chan("aa".repeat(32), 2, "22".repeat(32));
+    const merged = mergeCommunityLists([
+      { entries: [withChannels(jm, [old])], tombstones: [] },
+      { entries: [withChannels(jm, [fresh])], tombstones: [] },
+    ]);
+    const channel = merged.entries[0].current.channels[0];
+    expect(channel.epoch).toBe(2);
+    expect(channel.priors?.map((p) => p.epoch)).toEqual([1]);
+  });
+
+  it("still refuses a key a cut revoked", () => {
+    const jm = makeJoinMaterial();
+    const revoked = chan("aa".repeat(32), 1);
+    const merged = mergeCommunityLists([
+      {
+        entries: [
+          {
+            ...withChannels(jm, []),
+            channel_cuts: [{ id: revoked.id, epoch: 2 }],
+          },
+        ],
+        tombstones: [],
+      },
+      { entries: [withChannels(jm, [revoked])], tombstones: [] },
+    ]);
+    expect(merged.entries[0].current.channels).toEqual([]);
+  });
+});
