@@ -284,13 +284,15 @@ function ChannelRow({
       >
         <Icon className="size-3 flex-shrink-0 text-muted-foreground" />
         <span className="truncate">{channel.name}</span>
-        {/* `ml-auto` on the pin and nothing else: it rides at the right of the
-            row, inside the row's own line box, so pinning cannot change the
-            row's height — which is the whole reason the heading went. */}
-        {pinned && (
-          <Pin className="ml-auto size-3 shrink-0 text-muted-foreground" />
-        )}
-        {unread && <UnreadBadge unread={unread} />}
+        {/* ONE `ml-auto`, on the group. The pin and the badge each carried their
+            own, and two auto margins split the free space between them — which
+            parked the pin in the middle of the row instead of beside the count.
+            Inside the row's own line box, so pinning cannot change the row's
+            height, which is the whole reason the heading went. */}
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {pinned && <Pin className="size-3 shrink-0 text-muted-foreground" />}
+          {unread && <UnreadBadge unread={unread} />}
+        </span>
       </button>
     </NotifLevelMenu>
   );

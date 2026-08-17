@@ -311,10 +311,13 @@ export function ConcordViewer({
   );
 
   if (status === "loading") {
+    // Sized like the channel list's own "loading…", not like a headline: this
+    // is a wait of a few hundred milliseconds, and a large centred sentence
+    // announces it as an event.
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
-        <Loader2 className="size-6 animate-spin" />
-        <span>Loading your communities…</span>
+      <div className="flex h-full items-center justify-center gap-1.5 text-xs text-muted-foreground">
+        <Loader2 className="size-3 animate-spin" />
+        <span>loading communities…</span>
       </div>
     );
   }
