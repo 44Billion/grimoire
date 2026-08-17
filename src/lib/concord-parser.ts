@@ -18,6 +18,24 @@ export interface ConcordCommandProps {
   dynamicTitle?: string;
 }
 
+export interface CallCommandProps {
+  communityId?: string;
+  channelId?: string;
+}
+
+/**
+ * `call` takes no arguments.
+ *
+ * A call has no address a person could type: its room name is derived from the
+ * channel key, and naming a channel from the palette would mean resolving one
+ * across every community by a name that is not unique. So the window is opened
+ * from the channel header, which already knows exactly which channel it is, and
+ * typing `call` opens a view of whatever call is running.
+ */
+export function parseCallCommand(_args: string[]): CallCommandProps {
+  return {};
+}
+
 export async function parseConcordCommand(
   args: string[],
 ): Promise<ConcordCommandProps> {

@@ -36,6 +36,11 @@ const GroupListViewer = lazy(() =>
 const ConcordViewer = lazy(() =>
   import("./ConcordViewer").then((m) => ({ default: m.ConcordViewer })),
 );
+// Lazy like every other window, and worth it here: `livekit-client` and its
+// E2EE worker are a large chunk nobody who never calls should download.
+const CallViewer = lazy(() =>
+  import("./CallViewer").then((m) => ({ default: m.CallViewer })),
+);
 const SpellsViewer = lazy(() =>
   import("./SpellsViewer").then((m) => ({ default: m.SpellsViewer })),
 );
@@ -225,6 +230,15 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
       case "concord":
         content = (
           <ConcordViewer
+            communityId={window.props.communityId}
+            channelId={window.props.channelId}
+            windowId={window.id}
+          />
+        );
+        break;
+      case "call":
+        content = (
+          <CallViewer
             communityId={window.props.communityId}
             channelId={window.props.channelId}
             windowId={window.id}

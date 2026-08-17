@@ -796,7 +796,7 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
   // Both ids come from the window's own props, which navigation rewrites
   // (`buildConcordWindowUpdate`), so the title follows the reader rather than
   // the device-wide "last channel" every window shares.
-  const isConcord = appId === "concord";
+  const isConcord = appId === "concord" || appId === "call";
   const concordBadge = useConcordUnreadTotal(isConcord);
   const concordCommunityId = isConcord ? props.communityId : undefined;
   const concordChannelId = isConcord ? props.channelId : undefined;
@@ -921,6 +921,12 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
     } else if (chatTitle && appId === "chat") {
       title = chatTitle;
       icon = getCommandIcon("chat");
+      tooltip = rawCommand;
+    } else if (appId === "call") {
+      // The call names the channel it is in — the same `community › channel`
+      // the chat window shows, so a tiled pair reads as one place.
+      title = concordTitle ?? staticTitle ?? "Call";
+      icon = getCommandIcon("call");
       tooltip = rawCommand;
     } else if (appId === "concord") {
       // A pane that is not a channel names itself: the window is showing

@@ -17,10 +17,7 @@ import {
 } from "./concord/ConcordChannelList";
 import { NoCommunitiesEmpty, StrandedBanner } from "./concord/ArmadaHandoff";
 import { ConcordPinsList, PinsHeaderButton } from "@/components/ConcordPinsBar";
-import {
-  VoiceHeaderButton,
-  VoiceRoster,
-} from "@/components/concord/ConcordVoiceBar";
+import { VoiceHeaderButton } from "@/components/concord/ConcordVoiceBar";
 import {
   ConcordInvitesPanel,
   InvitesRow,
@@ -63,6 +60,11 @@ import {
 } from "@/hooks/useConcordVoice";
 import { useConcordPrefs } from "@/hooks/useConcordPrefs";
 import { useAccount } from "@/hooks/useAccount";
+import { useAtomValue } from "jotai";
+import { useAddWindow } from "@/core/state";
+import { banVerdictPostdatesMembership } from "@/lib/concord/call-sync";
+import { callStateAtom, syncCall } from "@/services/concord-call";
+import { readJoinedAtMs } from "@/services/concord-communities";
 import { inviteStanding } from "@/lib/concord/invite";
 import { bytesToHex } from "@/lib/concord/derive";
 import { joinFromInvite } from "@/services/concord-join";
@@ -245,7 +247,22 @@ export function ConcordViewer({
   const voiceRelays = community?.relays ?? EMPTY_RELAYS;
   const inCall = useCommunityVoiceCounts(voiceRelays, channels);
   const openCall = useChannelVoice(voiceRelays, openChannel);
-  const [showCall, setShowCall] = useState(false);
+  const call = useAtomValue(callStateAtom);
+  const addWindow = useAddWindow();
+
+  /**
+   * The call opens in its own window, tiled beside the chat rather than folded
+   * into it — a call needs room for faces and controls, and a chat pane that
+   * grew one would take it from the conversation.
+   */
+  const openCallWindow = useCallback(() => {
+    if (!community || !openChannel) return;
+    addWindow(
+      "call",
+      { communityId: community.idHex, channelId: openChannel.idHex },
+      "call",
+    );
+  }, [addWindow, community, openChannel]);
 
   /**
    * Clicking a pin lands on the message itself — the same walk a search hit
@@ -259,6 +276,58 @@ export function ConcordViewer({
   // The invite inbox: pulled once per session (and on demand), never pushed —
   // an invite is a giftwrap sitting on a relay, and nothing about it is urgent.
   const { account } = useAccount();
+
+  /**
+   * When this member joined, which is what makes a ban verdict a verdict: a
+   * compaction re-wraps banlist editions verbatim, so a sentence older than a
+   * re-admission is stale rather than current. Undefined means "we do not
+   * know", and the check then declines to act at all.
+   */
+  const [joinedAtMs, setJoinedAtMs] = useState<number>();
+  useEffect(() => {
+    if (!account?.pubkey || !communityIdHex) {
+      setJoinedAtMs(undefined);
+      return;
+    }
+    let cancelled = false;
+    void readJoinedAtMs(account.pubkey, communityIdHex).then((ms) => {
+      if (!cancelled) setJoinedAtMs(ms);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [account?.pubkey, communityIdHex]);
+
+  /**
+   * CORD-07 §7, live: a call is a join-time snapshot, so while one runs the
+   * viewer — which is what actually holds fresh vault and fold state — hands it
+   * to the service to decide stay, rejoin the rotated room, or hang up.
+   */
+  useEffect(() => {
+    if (call.status !== "connected") return;
+    if (call.communityIdHex !== communityIdHex) return;
+    void syncCall({
+      listLoaded: !loading,
+      community,
+      folded: state?.folded,
+      channels,
+      selfBanned: banVerdictPostdatesMembership(
+        state?.folded,
+        account?.pubkey,
+        joinedAtMs,
+      ),
+    });
+  }, [
+    call.status,
+    call.communityIdHex,
+    communityIdHex,
+    community,
+    state?.folded,
+    channels,
+    loading,
+    account?.pubkey,
+    joinedAtMs,
+  ]);
   const [showInvites, setShowInvites] = useState(false);
   // Only while the panel is open. Reading the inbox costs two signer
   // round-trips per wrap, and a stranger can put wraps there — so it must not
@@ -752,28 +821,23 @@ export function ConcordViewer({
                     <>
                       <VoiceHeaderButton
                         count={openCall.present.length}
-                        open={showCall}
-                        onToggle={() => {
-                          setShowCall((v) => !v);
-                          setShowPins(false);
-                        }}
+                        active={
+                          call.status === "connected" &&
+                          call.channelIdHex === openChannel?.idHex
+                        }
+                        onOpen={openCallWindow}
                       />
                       <PinsHeaderButton
                         count={pins.length}
                         unavailable={pinsUnavailable}
                         open={showPins}
-                        onToggle={() => {
-                          setShowPins((v) => !v);
-                          setShowCall(false);
-                        }}
+                        onToggle={() => setShowPins((v) => !v)}
                       />
                     </>
                   }
                   belowHeader={
                     showPins ? (
                       <ConcordPinsList pins={pins} onOpen={handleOpenPin} />
-                    ) : showCall ? (
-                      <VoiceRoster fold={openCall} />
                     ) : undefined
                   }
                   onJumpHandled={handleJumpHandled}

@@ -32,6 +32,30 @@ import { startOutboxDrain, stopOutboxDrain } from "@/services/concord-outbox";
 
 let mounted = 0;
 
+/**
+ * Hold the wire open without being a component.
+ *
+ * A call outlives the window that started it — it survives a workspace switch,
+ * and it is meant to — but its heartbeat goes out through `publishWrap`, which
+ * multiplexes on a socket something else must already have opened a plane read
+ * on. So the call service takes a count of its own; without it, closing the
+ * Concord window while staying in the call silently stops the heartbeat, and
+ * everyone else watches the caller go stale 90 seconds later.
+ */
+export function retainWire(): void {
+  mounted += 1;
+  startOutboxDrain();
+}
+
+/** Release a {@link retainWire}. The last one out drops the sockets. */
+export function releaseWire(): void {
+  mounted -= 1;
+  if (mounted === 0) {
+    stopWire();
+    stopOutboxDrain();
+  }
+}
+
 /** Assemble the spec from the store. No network. */
 async function buildInputs(communities: Community[]): Promise<WireInputs> {
   const inputs: WireInputs = { channels: [], control: [] };
@@ -110,18 +134,11 @@ export function useConcordWire(communities: Community[]): void {
   // gating relay) each time one control edition arrived live, and the per-relay
   // diff would never get to do its job because `loops` was already cleared.
   useEffect(() => {
-    mounted += 1;
     // Queued sends go out over the wire's own sockets, so the queue listens for
     // exactly as long as the wire holds them. Idempotent, like the wire itself.
-    startOutboxDrain();
-    return () => {
-      mounted -= 1;
-      // The last Concord window closing is the only reason to drop the sockets.
-      if (mounted === 0) {
-        stopWire();
-        stopOutboxDrain();
-      }
-    };
+    retainWire();
+    // The last holder letting go is the only reason to drop the sockets.
+    return releaseWire;
   }, []);
 
   useEffect(() => {
