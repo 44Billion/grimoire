@@ -19,6 +19,42 @@ Registered in two places, both of which must agree: the `getAdapter` switch in
 `src/components/ChatViewer.tsx` and the priority array in
 `src/lib/chat-parser.ts`.
 
+## The browser: bare `chat`
+
+`chat <identifier>` opens ONE conversation — a window that shows a single
+timeline for its whole life, with no sidebar. `chat` with no argument opens the
+**browser** instead: three collapsible sections in one sidebar — private
+conversations, NIP-29 relay groups, Concord communities — each sorted by its
+most recent message, with `ChatViewer` rendering whichever one is selected.
+
+Two commands, one component. `ConcordViewer` is the browser; `concord` and bare
+`chat` both mount it, and the `command` prop is the only difference between
+them. It exists because navigation writes the window's command back:
+
+- **`concord` rebuilds its command with the community** (`concord <id>`). Its
+  appId always means the browser, so there is no ambiguity to protect.
+- **`chat` stays BARE, always.** Its appId dispatches on props, so a browser
+  window that rebuilt its command as `chat relay'group` would reopen as a
+  single-conversation pane with no sidebar at all. The selection rides in the
+  props beside the command, never in it.
+
+`src/lib/concord/window-props.ts` is the one place either is written, and one
+selection has three families: a channel, a private conversation and a relay
+group are mutually exclusive, so every write drops the other two. A window
+carrying both would reload showing one while the sidebar highlighted another.
+
+The NIP-29 section resolves the reader's OWN kind-10009 list
+(`useNip29Groups`) — a plain replaceable list, identifier `""`, found through
+the outbox loader with no hint required. That is the difference from
+`useNip29GroupList`, which serves `chat naddr1…10009…`: someone else's list,
+addressed explicitly. Both share the group extraction and the per-group
+last-message REQ.
+
+A group is addressed by id AND relay everywhere (`GroupSelection`,
+`src/lib/nip29/group-selection.ts`): a NIP-29 group id is only unique within
+the relay hosting it, so the pair travels together through the sidebar, the
+window props and the timeline key.
+
 ## NIP-17 direct messages
 
 **applesauce does the crypto; Dexie does the storage and the reads.** Wraps are

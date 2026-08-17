@@ -629,9 +629,9 @@ export const manPages: Record<string, ManPageEntry> = {
   chat: {
     name: "chat",
     section: "1",
-    synopsis: "chat <identifier>",
+    synopsis: "chat [identifier]",
     description:
-      "Join and participate in Nostr chat conversations. Supports NIP-17 private direct messages, NIP-29 relay-based groups, NIP-53 live activity chat, NIP-10 thread chat, NIP-22 comment threads on any event kind, and multi-room group list interface. A direct message is gift-wrapped (NIP-59): the outer event is signed by a throwaway key, so the relay holding it cannot tell who sent it, and grimoire never authenticates on the socket it publishes one over. Messages are decrypted once and mirrored locally, so a conversation opens with no signer prompt; the first time an account reads its inbox it is asked for permission, because opening a backlog of wraps means two decryptions each. NIP-22 comments work as a catch-all: any event that isn't kind 1 (NIP-10) or a relay group/live activity gets a comment thread. You can also comment on URLs and hashtags. In a room that can page backwards — a relay group, a live chat, a Concord channel — clicking a reply preview fetches history until it finds the message being answered, and the calendar button in the header jumps to a date. A thread or a comment set is loaded whole, so neither applies there.",
+      "Join and participate in Nostr chat conversations. With no argument it opens the browser: private conversations, NIP-29 relay groups and Concord communities as collapsible sections in one sidebar, each sorted by its most recent message. Supports NIP-17 private direct messages, NIP-29 relay-based groups, NIP-53 live activity chat, NIP-10 thread chat, NIP-22 comment threads on any event kind, and multi-room group list interface. A direct message is gift-wrapped (NIP-59): the outer event is signed by a throwaway key, so the relay holding it cannot tell who sent it, and grimoire never authenticates on the socket it publishes one over. Messages are decrypted once and mirrored locally, so a conversation opens with no signer prompt; the first time an account reads its inbox it is asked for permission, because opening a backlog of wraps means two decryptions each. NIP-22 comments work as a catch-all: any event that isn't kind 1 (NIP-10) or a relay group/live activity gets a comment thread. You can also comment on URLs and hashtags. In a room that can page backwards — a relay group, a live chat, a Concord channel — clicking a reply preview fetches history until it finds the message being answered, and the calendar button in the header jumps to a date. A thread or a comment set is loaded whole, so neither applies there.",
     options: [
       {
         flag: "<identifier>",
@@ -640,6 +640,7 @@ export const manPages: Record<string, ManPageEntry> = {
       },
     ],
     examples: [
+      "chat                                      Browse everything: DMs, groups, communities",
       "chat npub1...                             Open a private conversation (NIP-17)",
       "chat nprofile1...                         Same, with relay hints",
       "chat relay.example.com'bitcoin-dev        Join NIP-29 relay group",
@@ -656,6 +657,10 @@ export const manPages: Record<string, ManPageEntry> = {
     appId: "chat",
     category: "Nostr",
     argParser: async (args: string[]) => {
+      // Bare `chat` names no conversation, so it opens the browser. Handled
+      // here rather than in `parseChatCommand`, whose whole contract is
+      // "identifier in, protocol out" — there is no protocol to return.
+      if (args.length === 0) return { identifier: { type: "browser" } };
       const result = await parseChatCommand(args);
       return {
         protocol: result.protocol,

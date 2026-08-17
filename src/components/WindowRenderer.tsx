@@ -149,8 +149,23 @@ class WindowErrorBoundary extends Component<
 export function WindowRenderer({ window, onClose }: WindowRendererProps) {
   let content: ReactNode;
 
+  /**
+   * Bare `chat` names no conversation, so it is the browser — the same
+   * component `concord` mounts, listing private conversations, relay groups and
+   * communities in one sidebar.
+   *
+   * Routed by rewriting the appId rather than by a branch under `case "chat"`
+   * so there is ONE place that renders the browser. The command it came from
+   * still rides along, because a navigation writes the command back and
+   * `chat <identifier>` is a single-conversation window: rebuilding a browser
+   * window's command with an argument would reopen it as one pane.
+   */
+  const browser =
+    window.appId === "chat" &&
+    (!window.props.identifier || window.props.identifier.type === "browser");
+
   try {
-    switch (window.appId) {
+    switch (browser ? "concord" : window.appId) {
       case "nip":
         content = <NipRenderer nipId={window.props.number} />;
         break;
@@ -214,6 +229,11 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
         content = <ConnViewer />;
         break;
       case "chat":
+        // Bare `chat`: no conversation named, so this is the browser — private
+        // conversations, relay groups and Concord communities in one sidebar.
+        // The same component `concord` mounts; only the command it writes back
+        // differs, and that difference matters because `chat <identifier>` is a
+        // single-conversation window.
         // Check if this is a group list (kind 10009) - render multi-room interface
         if (window.props.identifier?.type === "group-list") {
           content = <GroupListViewer identifier={window.props.identifier} />;
@@ -230,9 +250,12 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
       case "concord":
         content = (
           <ConcordViewer
+            command={browser ? "chat" : "concord"}
             communityId={window.props.communityId}
             channelId={window.props.channelId}
             dmPeer={window.props.dmPeer}
+            groupId={window.props.groupId}
+            groupRelay={window.props.groupRelay}
             windowId={window.id}
           />
         );

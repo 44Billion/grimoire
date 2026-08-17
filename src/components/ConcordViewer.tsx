@@ -8,6 +8,7 @@ import {
   PanelLeft,
   RefreshCw,
   Search,
+  Users,
 } from "lucide-react";
 
 import { ChatViewer } from "./ChatViewer";
@@ -53,9 +54,14 @@ import { useConcordImage } from "@/hooks/useConcordImage";
 import type { ImagePointer } from "@/lib/concord/types";
 import { resolveOpenChannel } from "@/lib/concord/channels";
 import {
+  buildBrowserGroupUpdate,
   buildConcordDmUpdate,
   buildConcordWindowUpdate,
+  type BrowserCommand,
 } from "@/lib/concord/window-props";
+import { Nip29GroupList } from "./nip29/Nip29GroupList";
+import { groupKey, type GroupSelection } from "@/lib/nip29/group-selection";
+import { useNip29Groups } from "@/hooks/useNip29Groups";
 import { useConcordInvites } from "@/hooks/useConcordInvites";
 import { useConcordPins } from "@/hooks/useConcordPins";
 import {
@@ -93,8 +99,19 @@ interface ConcordViewerProps {
   channelId?: string;
   /** A private conversation to open instead of a channel, by peer pubkey. */
   dmPeer?: string;
+  /** A NIP-29 group to open instead. Both halves: an id alone names no room. */
+  groupId?: string;
+  groupRelay?: string;
   /** The window these props belong to, when there is one to write back to. */
   windowId?: string;
+  /**
+   * Which command mounted this browser.
+   *
+   * `concord` is the community-first window that already exists in published
+   * spellbooks; `chat` is the unified one. The same component either way — the
+   * only difference is the command a navigation writes back.
+   */
+  command?: BrowserCommand;
 }
 
 /**
@@ -108,7 +125,10 @@ export function ConcordViewer({
   communityId,
   channelId,
   dmPeer,
+  groupId,
+  groupRelay,
   windowId,
+  command = "concord",
 }: ConcordViewerProps) {
   const isMobile = useIsMobile();
   const { state: grimoire, updateWindow } = useGrimoire();
@@ -135,6 +155,18 @@ export function ConcordViewer({
    * back into a channel should find the list where they left it.
    */
   const [dmSectionOpen, setDmSectionOpen] = useState(dmPeer !== undefined);
+  /**
+   * The open NIP-29 group, by id AND relay.
+   *
+   * The third family of the one selection: a group, a channel and a private
+   * conversation are mutually exclusive, so each setter clears the other two.
+   */
+  const [selectedGroup, setSelectedGroup] = useState<
+    GroupSelection | undefined
+  >(groupId && groupRelay ? { groupId, relayUrl: groupRelay } : undefined);
+  const [groupSectionOpen, setGroupSectionOpen] = useState(
+    groupId !== undefined,
+  );
   const [composing, setComposing] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   /** Desktop only: the channel column is collapsible, the sheet is not. */
@@ -507,16 +539,18 @@ export function ConcordViewer({
       if (!existing) return;
       updateWindow(
         windowId,
-        buildConcordWindowUpdate(existing, idHex, channelIdHex),
+        buildConcordWindowUpdate(existing, idHex, channelIdHex, command),
       );
     },
-    [grimoire.windows, setLastChannel, updateWindow, windowId],
+    [command, grimoire.windows, setLastChannel, updateWindow, windowId],
   );
 
   const handleChannelSelect = useCallback(
     (idHex: string) => {
       setSelectedDm(undefined);
       setDmSectionOpen(false);
+      setSelectedGroup(undefined);
+      setGroupSectionOpen(false);
       setSelectedChannel(idHex);
       rememberNavigation(communityIdHex, idHex);
       setShowGuestbook(false);
@@ -560,6 +594,7 @@ export function ConcordViewer({
   const handleDmSelect = useCallback(
     (peer: string) => {
       setSelectedDm(peer);
+      setSelectedGroup(undefined);
       setShowGuestbook(false);
       // The invites pane takes the whole pane too, so opening a conversation
       // has to leave it — the same rule in the other direction.
@@ -569,11 +604,58 @@ export function ConcordViewer({
       if (windowId) {
         const existing = grimoire.windows[windowId]?.props;
         if (existing)
-          updateWindow(windowId, buildConcordDmUpdate(existing, peer));
+          updateWindow(windowId, buildConcordDmUpdate(existing, peer, command));
       }
       if (isMobile) setSidebarOpen(false);
     },
-    [grimoire.windows, isMobile, updateWindow, windowId],
+    [command, grimoire.windows, isMobile, updateWindow, windowId],
+  );
+
+  const { groups: nip29Groups, loading: nip29Loading } = useNip29Groups();
+
+  const handleGroupSelect = useCallback(
+    (selection: GroupSelection) => {
+      setSelectedGroup(selection);
+      setSelectedDm(undefined);
+      setShowGuestbook(false);
+      setShowInvites(false);
+      setQuery("");
+      setJumpTo(undefined);
+      if (windowId) {
+        const existing = grimoire.windows[windowId]?.props;
+        if (existing)
+          updateWindow(
+            windowId,
+            buildBrowserGroupUpdate(
+              existing,
+              selection.groupId,
+              selection.relayUrl,
+              command,
+            ),
+          );
+      }
+      if (isMobile) setSidebarOpen(false);
+    },
+    [command, grimoire.windows, isMobile, updateWindow, windowId],
+  );
+
+  /**
+   * Memoized BY VALUE, on both halves.
+   *
+   * `ChatViewer` keys its conversation resolution on this object, so a fresh
+   * one every render makes it re-resolve and blank the timeline — the same trap
+   * the DM identifier below carries a note about.
+   */
+  const groupIdentifier: ProtocolIdentifier | undefined = useMemo(
+    () =>
+      selectedGroup
+        ? ({
+            type: "group",
+            value: selectedGroup.groupId,
+            relays: [selectedGroup.relayUrl],
+          } as ProtocolIdentifier)
+        : undefined,
+    [selectedGroup],
   );
 
   const dmIdentifier: DMIdentifier | undefined = useMemo(
@@ -890,6 +972,36 @@ export function ConcordViewer({
             </div>
           )}
         </div>
+        {/* Relay groups, the third conversation family. Beneath the private
+            ones and above the Concord rows because that is the order of how
+            personal they are, and because the two above are the ones every
+            account has whether or not it joined anything. */}
+        <div className="flex shrink-0 flex-col">
+          <button
+            type="button"
+            onClick={() => setGroupSectionOpen((open) => !open)}
+            className={cn(
+              "flex w-full cursor-crosshair items-center gap-1.5 px-2 py-1 text-left text-sm hover:bg-muted/50",
+              groupSectionOpen && "bg-muted/70 font-medium",
+            )}
+          >
+            <Users className="size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">Groups</span>
+            {/* No count. NIP-29 has no unread bookkeeping in grimoire yet, and
+                a number that only ever said how many groups you are in would
+                read as messages waiting. */}
+          </button>
+          {groupSectionOpen && (
+            <div className="pl-2">
+              <Nip29GroupList
+                groups={nip29Groups}
+                onSelect={handleGroupSelect}
+                selected={selectedGroup}
+                loading={nip29Loading}
+              />
+            </div>
+          )}
+        </div>
         {/* Always offered, not only when something is waiting: a link is
             opened from here, and a panel that appears only when you already
             have an invite is one you cannot reach to paste one into. */}
@@ -970,6 +1082,16 @@ export function ConcordViewer({
             <ChatViewer
               protocol="nip-17"
               identifier={dmIdentifier as ProtocolIdentifier}
+              headerPrefix={headerPrefix}
+            />
+          ) : groupIdentifier ? (
+            // Keyed on the relay too: the same group id on two relays is two
+            // rooms, and without the key the second selection would reuse the
+            // first one's mounted timeline.
+            <ChatViewer
+              key={groupKey(selectedGroup!)}
+              protocol="nip-29"
+              identifier={groupIdentifier}
               headerPrefix={headerPrefix}
             />
           ) : showInvites ? (

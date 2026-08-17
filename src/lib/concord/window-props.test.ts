@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildConcordDmUpdate, buildConcordWindowUpdate } from "./window-props";
+import {
+  buildBrowserGroupUpdate,
+  buildConcordDmUpdate,
+  buildConcordWindowUpdate,
+} from "./window-props";
 
 const COMMUNITY = "a".repeat(64);
 const PEER = "e".repeat(64);
@@ -88,5 +92,64 @@ describe("buildConcordDmUpdate", () => {
     const update = buildConcordDmUpdate(undefined, PEER);
     expect(update.props).toEqual({ dmPeer: PEER });
     expect(update.commandString).toBe("concord");
+  });
+});
+
+describe("buildBrowserGroupUpdate", () => {
+  const RELAY = "wss://relay.example.com/";
+
+  it("writes both halves of the address", () => {
+    // A group id is only unique within its relay, so a window that remembered
+    // the id alone would reopen on whichever relay answered first.
+    const update = buildBrowserGroupUpdate(undefined, "bitcoin", RELAY);
+    expect(update.props).toEqual({ groupId: "bitcoin", groupRelay: RELAY });
+  });
+
+  it("replaces a channel and a conversation rather than joining them", () => {
+    const update = buildBrowserGroupUpdate(
+      { communityId: COMMUNITY, channelId: CHANNEL, dmPeer: PEER },
+      "bitcoin",
+      RELAY,
+    );
+    expect(update.props).toEqual({
+      communityId: COMMUNITY,
+      groupId: "bitcoin",
+      groupRelay: RELAY,
+    });
+  });
+});
+
+describe("the command a browser window reopens with", () => {
+  const RELAY = "wss://relay.example.com/";
+
+  // `chat` dispatches on props: `chat <identifier>` is a SINGLE-conversation
+  // window. A browser window that rebuilt its command with an argument would
+  // reopen as one pane with no sidebar, losing every other section.
+  it("stays bare for chat, whatever is selected", () => {
+    expect(
+      buildConcordWindowUpdate({}, COMMUNITY, CHANNEL, "chat").commandString,
+    ).toBe("chat");
+    expect(buildConcordDmUpdate({}, PEER, "chat").commandString).toBe("chat");
+    expect(
+      buildBrowserGroupUpdate({}, "bitcoin", RELAY, "chat").commandString,
+    ).toBe("chat");
+  });
+
+  it("still names the community for concord", () => {
+    expect(buildConcordWindowUpdate({}, COMMUNITY, CHANNEL).commandString).toBe(
+      `concord ${COMMUNITY}`,
+    );
+  });
+
+  it("drops a stale group when a channel is picked", () => {
+    const update = buildConcordWindowUpdate(
+      { groupId: "bitcoin", groupRelay: RELAY },
+      COMMUNITY,
+      CHANNEL,
+    );
+    expect(update.props).toEqual({
+      communityId: COMMUNITY,
+      channelId: CHANNEL,
+    });
   });
 });

@@ -323,6 +323,20 @@ export interface CommentIdentifier {
  * Protocol-specific identifier - discriminated union
  * Returned by adapter parseIdentifier()
  */
+/**
+ * No conversation at all: bare `chat`, which opens the browser.
+ *
+ * Deliberately OUTSIDE `ProtocolIdentifier`. It is the absence of a protocol,
+ * not one more of them, and every consumer of that union reads a `value` off
+ * whatever it is handed — a member without one would make each of them prove a
+ * case that no adapter can ever produce. It reaches `WindowRenderer` through
+ * `props.identifier`, which is the untyped window bag, and is the marker that
+ * tells a window that named nothing apart from one whose props failed to load.
+ */
+export interface BrowserIdentifier {
+  type: "browser";
+}
+
 export type ProtocolIdentifier =
   | ConcordIdentifier
   | GroupIdentifier

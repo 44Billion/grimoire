@@ -1,5 +1,5 @@
 /**
- * Where a Concord window is: the one place its props are rewritten.
+ * Where a browser window is: the one place its props are rewritten.
  *
  * `Logic.updateWindow` REPLACES `props` wholesale (`{ ...window, ...updates }`),
  * so every caller has to spread what was already there or silently drop it —
@@ -16,6 +16,51 @@
 export interface ConcordWindowUpdate {
   props: Record<string, unknown>;
   commandString: string;
+}
+
+/**
+ * Which command this window answers to.
+ *
+ * The same browser is mounted under both: `concord` for the community-first
+ * window that already exists in published spellbooks, `chat` for the unified
+ * one that also lists private conversations and relay groups.
+ */
+export type BrowserCommand = "concord" | "chat";
+
+/**
+ * Everything that names a selection, so a write can drop what it replaces.
+ *
+ * One selection, three families — a channel, a private conversation and a
+ * relay group cannot be open at once — so every write clears the other two
+ * rather than leaving a window that reloads showing one while the sidebar
+ * highlights another.
+ */
+function withoutSelection(existingProps: Record<string, unknown> | undefined) {
+  const {
+    channelId: _channel,
+    dmPeer: _dm,
+    groupId: _group,
+    groupRelay: _relay,
+    ...rest
+  } = existingProps ?? {};
+  return rest;
+}
+
+/**
+ * The command a window of this kind reopens with.
+ *
+ * `chat` stays BARE, always. Its appId dispatches on props: `chat <identifier>`
+ * is a single-conversation window, so rebuilding the command with an argument
+ * would reopen the browser as one pane with no sidebar at all. Concord has no
+ * such ambiguity — its appId always means the browser — so it can carry the
+ * community in the command the way a reader would type it.
+ */
+function commandFor(
+  command: BrowserCommand,
+  communityIdHex: string | undefined,
+): string {
+  if (command === "chat") return "chat";
+  return communityIdHex ? `concord ${communityIdHex}` : "concord";
 }
 
 /**
@@ -38,18 +83,18 @@ export function buildConcordWindowUpdate(
   existingProps: Record<string, unknown> | undefined,
   communityIdHex: string,
   channelIdHex?: string,
+  command: BrowserCommand = "concord",
 ): ConcordWindowUpdate {
-  const { channelId: _stale, dmPeer: _staleDm, ...rest } = existingProps ?? {};
   return {
     props: {
-      ...rest,
+      ...withoutSelection(existingProps),
       communityId: communityIdHex,
       ...(channelIdHex ? { channelId: channelIdHex } : {}),
     },
     // The command has no channel argument — a channel has no user-typeable
     // address — so the reconstructed command names the community only, and the
     // channel rides in the props beside it.
-    commandString: `concord ${communityIdHex}`,
+    commandString: commandFor(command, communityIdHex),
   };
 }
 
@@ -63,14 +108,37 @@ export function buildConcordWindowUpdate(
 export function buildConcordDmUpdate(
   existingProps: Record<string, unknown> | undefined,
   peerHex: string,
+  command: BrowserCommand = "concord",
 ): ConcordWindowUpdate {
-  const { channelId: _stale, dmPeer: _staleDm, ...rest } = existingProps ?? {};
+  const rest = withoutSelection(existingProps);
   const communityId =
     typeof rest.communityId === "string" ? rest.communityId : undefined;
   return {
     props: { ...rest, dmPeer: peerHex },
     // Still the community's command: a DM has no place in `concord`'s argument
     // grammar, and `chat npub…` is the address a reader would type for one.
-    commandString: communityId ? `concord ${communityId}` : "concord",
+    commandString: commandFor(command, communityId),
+  };
+}
+
+/**
+ * The props a window should carry after opening a NIP-29 relay group.
+ *
+ * Both halves are written. A group id is only unique within the relay hosting
+ * it, so a window that remembered the id alone would reopen on whichever relay
+ * answered first — a different room with the same name.
+ */
+export function buildBrowserGroupUpdate(
+  existingProps: Record<string, unknown> | undefined,
+  groupId: string,
+  relayUrl: string,
+  command: BrowserCommand = "concord",
+): ConcordWindowUpdate {
+  const rest = withoutSelection(existingProps);
+  const communityId =
+    typeof rest.communityId === "string" ? rest.communityId : undefined;
+  return {
+    props: { ...rest, groupId, groupRelay: relayUrl },
+    commandString: commandFor(command, communityId),
   };
 }
