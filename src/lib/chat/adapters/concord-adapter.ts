@@ -69,6 +69,7 @@ import {
 import { KIND_DELETE, KIND_MESSAGE, KIND_REACTION } from "@/lib/concord/kinds";
 import { messageExpirationOf } from "@/lib/concord/disappearing";
 import { extractMentionTags } from "@/lib/chat/mentions";
+import { timelineSignature } from "@/lib/chat/timeline-signature";
 import { emitWireScopes } from "@/lib/concord/wire-bus";
 import { syncChannel } from "@/services/concord-channel-sync";
 import {
@@ -348,27 +349,15 @@ export class ConcordAdapter extends ChatProtocolAdapter {
    *
    * A repaint with identical content still hands the virtualizer a fresh array,
    * which re-anchors the scroll — so a re-read that found nothing new has to be
-   * silent rather than merely harmless.
+   * silent rather than merely harmless. What "changed" means lives in
+   * {@link timelineSignature}, where the fields that must repaint are listed.
    */
   private publish(
     conversationId: string,
     emitter: ReplaySubject<Message[]>,
     next: Message[],
   ): void {
-    // The delivery state is part of the signature, not just the id: a queued
-    // message flipping from "sending" to "failed" changes no id at all, and an
-    // id-only signature would suppress the very repaint that shows the reader
-    // their message did not go.
-    //
-    // So is the tombstone flag, for the same reason and a worse consequence: a
-    // moderator's delete turns a message into a removal row at the SAME id and
-    // the same timestamp, so an id-and-delivery signature is unchanged and the
-    // reader keeps seeing the content that was just taken down.
-    const signature = next
-      .map(
-        (m) => `${m.id}:${m.delivery ?? ""}:${m.metadata?.deleted ? "x" : ""}`,
-      )
-      .join(",");
+    const signature = timelineSignature(next);
     if (this.lastEmitted.get(conversationId) === signature) return;
     this.lastEmitted.set(conversationId, signature);
     emitter.next(next);
