@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Send, Sparkles, Square } from "lucide-react";
+import { ArrowDown, ArrowUp, Send, Sparkles, Square } from "lucide-react";
 
 import {
   Conversation,
@@ -25,7 +25,9 @@ import {
   getInferenceFeatures,
   isInferenceAvailable,
 } from "@/services/inference";
-import type { InferenceMessage } from "@/types/inference";
+import type { InferenceMessage, Usage } from "@/types/inference";
+import { useLocale } from "@/hooks/useLocale";
+import { ProviderLogo, providerFromModel } from "./ai/ProviderLogo";
 
 interface AiViewerProps {
   /** Prompt from the command line, sent once on mount. */
@@ -39,15 +41,68 @@ interface Turn {
   content: string;
   reasoning?: string;
   pending?: boolean;
+  /** From the `done` chunk. The model is the extension's choice, not ours. */
+  model?: string;
+  usage?: Usage;
+}
+
+/**
+ * Model and token counts from the `done` chunk. No cost: the spec leaves
+ * pricing metadata undefined, so any figure here would be invented.
+ */
+function TurnUsage({
+  locale,
+  model,
+  usage,
+}: {
+  locale: string;
+  model?: string;
+  usage?: Usage;
+}) {
+  if (!model && !usage) return null;
+  // Compact so a long model id and both counts fit one line in a narrow window.
+  const format = new Intl.NumberFormat(locale, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format;
+
+  // `anthropic/claude-haiku-4.5` → provider mark plus `claude-haiku-4.5`.
+  const provider = providerFromModel(model);
+  const modelName = provider ? model!.slice(provider.length + 1) : model;
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 pt-1 text-xs text-muted-foreground">
+      {model && (
+        <span className="flex items-center gap-1" title={model}>
+          <ProviderLogo provider={provider} />
+          <span className="font-mono">{modelName}</span>
+        </span>
+      )}
+      {usage?.inputTokens !== undefined && (
+        <span className="flex items-center gap-0.5" title="Input tokens">
+          <ArrowUp className="size-3" />
+          {format(usage.inputTokens)}
+        </span>
+      )}
+      {usage?.outputTokens !== undefined && (
+        <span className="flex items-center gap-0.5" title="Output tokens">
+          <ArrowDown className="size-3" />
+          {format(usage.outputTokens)}
+        </span>
+      )}
+    </div>
+  );
 }
 
 export default function AiViewer({ prompt, system }: AiViewerProps) {
+  const { locale } = useLocale();
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [input, setInput] = useState("");
+  // The command-line prompt is prefilled, not sent. Windows are restored from
+  // localStorage on load, and auto-sending would re-spend on every reload.
+  const [input, setInput] = useState(prompt ?? "");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
-  const sentInitial = useRef(false);
 
   // Availability is read once: an injector that appears later is picked up on
   // the next send, which throws `unavailable` with the same message.
@@ -87,6 +142,8 @@ export default function AiViewer({ prompt, system }: AiViewerProps) {
       // stream does not thrash the tree.
       let content = "";
       let reasoning = "";
+      let model: string | undefined;
+      let usage: Usage | undefined;
       let queued = false;
       const flush = () => {
         queued = false;
@@ -127,6 +184,8 @@ export default function AiViewer({ prompt, system }: AiViewerProps) {
               schedule();
               break;
             case "done":
+              model = chunk.model;
+              usage = chunk.usage;
               content =
                 chunk.message.role === "assistant"
                   ? (chunk.message.content ?? content)
@@ -149,6 +208,8 @@ export default function AiViewer({ prompt, system }: AiViewerProps) {
                   role: "assistant",
                   content,
                   ...(reasoning ? { reasoning } : {}),
+                  ...(model ? { model } : {}),
+                  ...(usage ? { usage } : {}),
                 }
               : turn,
           ),
@@ -169,15 +230,6 @@ export default function AiViewer({ prompt, system }: AiViewerProps) {
     },
     [system, turns],
   );
-
-  // Fire the command-line prompt once.
-  useEffect(() => {
-    if (sentInitial.current || !prompt || !available) return;
-    sentInitial.current = true;
-    void send(prompt);
-    // `send` closes over `turns`, but this must run exactly once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prompt, available]);
 
   // Closing the window must cancel in-flight provider work.
   useEffect(() => () => controllerRef.current?.abort(), []);
@@ -226,6 +278,13 @@ export default function AiViewer({ prompt, system }: AiViewerProps) {
                     </Reasoning>
                   )}
                   <MessageResponse>{turn.content}</MessageResponse>
+                  {turn.role === "assistant" && !turn.pending && (
+                    <TurnUsage
+                      locale={locale}
+                      model={turn.model}
+                      usage={turn.usage}
+                    />
+                  )}
                 </MessageContent>
               </Message>
             ))
@@ -240,39 +299,47 @@ export default function AiViewer({ prompt, system }: AiViewerProps) {
         </div>
       )}
 
-      <div className="flex items-end gap-2 border-t border-border p-3">
-        <Textarea
-          className="max-h-40 min-h-9 resize-none"
-          onChange={(event) => setInput(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              submit();
-            }
-          }}
-          placeholder="Ask anything…"
-          rows={1}
-          value={input}
-        />
-        {streaming ? (
-          <Button
-            onClick={() => controllerRef.current?.abort()}
-            size="icon"
-            title="Stop"
-            variant="outline"
-          >
-            <Square className="size-4" />
-          </Button>
-        ) : (
-          <Button
-            disabled={!input.trim()}
-            onClick={submit}
-            size="icon"
-            title="Send"
-          >
-            <Send className="size-4" />
-          </Button>
-        )}
+      {/* Matches the chat composer: border-t, tight padding, flex-1 input. */}
+      <div className="border-t px-2 py-1">
+        <div className="flex items-end gap-1.5">
+          <Textarea
+            className="min-h-7 max-h-40 flex-1 min-w-0 resize-none py-1 text-sm"
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                submit();
+              }
+            }}
+            placeholder="Ask anything..."
+            rows={1}
+            value={input}
+          />
+          {streaming ? (
+            <Button
+              className="h-7 flex-shrink-0 px-2 text-xs"
+              onClick={() => controllerRef.current?.abort()}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              <Square className="size-3" />
+              Stop
+            </Button>
+          ) : (
+            <Button
+              className="h-7 flex-shrink-0 px-2 text-xs"
+              disabled={!input.trim()}
+              onClick={submit}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              <Send className="size-3" />
+              Send
+            </Button>
+          )}
+        </div>
       </div>
 
       {features.toolCalling && (
