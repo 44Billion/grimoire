@@ -43,8 +43,11 @@ import {
 import {
   buildAiContext,
   buildMentionContext,
+  GENERAL_SUGGESTIONS,
   type AiTarget,
 } from "@/lib/ai-context";
+import { Suggestion, Suggestions } from "./ai-elements/suggestion";
+import { SystemPromptDisclosure } from "./ai/SystemPromptDisclosure";
 import { ProviderLogo, providerFromModel } from "./ai/ProviderLogo";
 import { useAddWindow } from "@/core/state";
 import {
@@ -250,6 +253,9 @@ export default function AiViewer({
   // localStorage on load, and auto-sending would re-spend on every reload.
   const [input, setInput] = useState(prompt ?? "");
   const [streaming, setStreaming] = useState(false);
+  // The exact system prompt of the last send, so the disclosure shows what was
+  // sent rather than what would be sent now.
+  const [sentSystem, setSentSystem] = useState<string>();
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
 
@@ -257,6 +263,10 @@ export default function AiViewer({
   // the next send, which throws `unavailable` with the same message.
   const available = isInferenceAvailable();
   const features = available ? getInferenceFeatures() : {};
+
+  // Before the first send, mentions are unknown, so show the grounding that is
+  // already decided. After, show exactly what went out.
+  const disclosedSystem = sentSystem ?? system ?? context?.system;
 
   // Markdown element overrides for MessageResponse. Memoized because a new
   // object each render would defeat its memo and re-parse the whole reply.
@@ -310,6 +320,7 @@ export default function AiViewer({
       const systemPrompt =
         [system ?? context?.system, mentions].filter(Boolean).join("\n\n") ||
         undefined;
+      setSentSystem(systemPrompt);
       const history: InferenceMessage[] = [
         ...(systemPrompt
           ? [{ role: "system" as const, content: systemPrompt }]
@@ -451,7 +462,13 @@ export default function AiViewer({
         follows the stream.
       */}
       <Conversation className="min-h-0">
-        <ConversationContent>
+        {/* The empty state centers itself in `size-full`, so the content box
+            has to fill the pane — its default height is its content. */}
+        <ConversationContent className={turns.length === 0 ? "h-full" : ""}>
+          {/* What the model was actually told, before anything the user typed. */}
+          {disclosedSystem && (
+            <SystemPromptDisclosure prompt={disclosedSystem} />
+          )}
           {turns.length === 0 ? (
             <ConversationEmptyState
               icon={<Sparkles className="size-8" />}
@@ -461,7 +478,36 @@ export default function AiViewer({
                   ? "Grounded in the local copy — no data leaves except the prompt."
                   : "Your extension picks the provider and model."
               }
-            />
+            >
+              <Sparkles className="size-8 text-muted-foreground" />
+              <div className="space-y-1">
+                <h3 className="text-sm font-medium">
+                  {context ? `Ask about ${context.label}` : "Ask anything"}
+                </h3>
+                <p className="max-w-sm text-sm text-muted-foreground">
+                  {context
+                    ? "Grounded in the local copy — no data leaves except the prompt."
+                    : "Your extension picks the provider and model."}
+                </p>
+              </div>
+              {/* Openers, tailored to whatever this window is grounded in.
+                  Clicking sends; nothing fires on its own. */}
+              <Suggestions className="justify-center pt-2">
+                {(context?.suggestions ?? GENERAL_SUGGESTIONS).map(
+                  (suggestion) => (
+                    <Suggestion
+                      key={suggestion}
+                      onClick={(text) => {
+                        if (streaming) return;
+                        setInput("");
+                        void send(text);
+                      }}
+                      suggestion={suggestion}
+                    />
+                  ),
+                )}
+              </Suggestions>
+            </ConversationEmptyState>
           ) : (
             turns.map((turn, index) => (
               <Message from={turn.role} key={index}>

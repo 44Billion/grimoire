@@ -26,7 +26,20 @@ export interface AiContext {
   system: string;
   /** Short label for the window title. */
   label: string;
+  /** Opening questions offered before the first turn. */
+  suggestions: string[];
 }
+
+/**
+ * Openers for an ungrounded window. Each one is answerable without any Nostr
+ * data, so none of them wastes a request discovering it has no context.
+ */
+export const GENERAL_SUGGESTIONS = [
+  "What problem does Nostr actually solve?",
+  "Explain relays like I run one",
+  "What is a replaceable event?",
+  "How do NIP-05 identifiers work?",
+];
 
 export type AiTargetKind = "event" | "kind" | "nip";
 
@@ -92,6 +105,11 @@ async function eventContext(bech32: string): Promise<AiContext | undefined> {
     return {
       label: bech32.slice(0, 12),
       system: `${BASE_SYSTEM}\n\nThe user is asking about this Nostr user.\nPubkey: ${ref.pubkey}\nProfile metadata:\n${described}`,
+      suggestions: [
+        "Who is this, from their metadata?",
+        "What can I tell about them from this alone?",
+        "What is missing from this profile?",
+      ],
     };
   }
 
@@ -100,12 +118,18 @@ async function eventContext(bech32: string): Promise<AiContext | undefined> {
     return {
       label: bech32.slice(0, 12),
       system: `${BASE_SYSTEM}\n\nThe user is asking about ${bech32}, which could not be loaded from the event store or its relay hints. Say so rather than guessing its contents.`,
+      suggestions: ["Why might this event be unreachable?"],
     };
   }
 
   return {
     label: `kind ${event.kind}`,
     system: `${BASE_SYSTEM}\n\nThe user is asking about this event.\n${describeKind(event.kind)}\n\nRaw event:\n${JSON.stringify(event, null, 2)}`,
+    suggestions: [
+      "What is this event saying?",
+      "What do its tags mean?",
+      `Why kind ${event.kind} and not something else?`,
+    ],
   };
 }
 
@@ -124,6 +148,12 @@ async function kindContext(kind: number): Promise<AiContext | undefined> {
     system: `${BASE_SYSTEM}\n\nThe user is asking about event kind ${kind}.\n${describeKind(kind)}${
       nipText ? `\n\nThe NIP that defines it:\n${nipText}` : ""
     }`,
+    suggestions: [
+      `What is kind ${kind} for?`,
+      "Show me a minimal example event",
+      "Which tags are required?",
+      "Is it regular, replaceable, or addressable?",
+    ],
   };
 }
 
@@ -141,6 +171,12 @@ async function nipContext(id: string): Promise<AiContext | undefined> {
     system: text
       ? `${BASE_SYSTEM}\n\nThe user is asking about NIP-${id}. Its full text:\n${text}`
       : `${BASE_SYSTEM}\n\nThe user is asking about NIP-${id}, whose text could not be loaded. Say plainly that you are answering from memory rather than from the spec.`,
+    suggestions: [
+      `What problem does NIP-${id} solve?`,
+      "Which event kinds does it define?",
+      "What would I get wrong implementing this?",
+      "How does it interact with other NIPs?",
+    ],
   };
 }
 
