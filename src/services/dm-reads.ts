@@ -84,6 +84,51 @@ export async function markDmRead(
   }
 }
 
+/**
+ * Stamp a whole list of conversations read, in one write and one doorbell.
+ *
+ * Not a loop over {@link markDmRead}: that rings the bus on every move, so
+ * clearing thirty conversations would re-read the whole list thirty times and
+ * repaint the sidebar under the cursor.
+ *
+ * Each conversation is stamped at ITS OWN newest message rather than at "now".
+ * A stamp is a position in a conversation, not a moment in time — stamping the
+ * clock would also swallow a message that arrives a second later with an older
+ * `created_at`, which for gift wraps is routine.
+ */
+export async function markAllDmsRead(
+  pubkey: string,
+  conversations: Array<{ conversationId: string; lastAt: number }>,
+): Promise<void> {
+  if (!pubkey || conversations.length === 0) return;
+  const ceiling = Math.floor(Date.now() / 1000) + DM_READ_MAX_FUTURE_SECS;
+  try {
+    let moved = false;
+    await db.transaction("rw", db.chatReads, async () => {
+      for (const { conversationId, lastAt } of conversations) {
+        if (!conversationId) continue;
+        if (!Number.isFinite(lastAt) || lastAt <= 0) continue;
+        const clamped = Math.min(lastAt, ceiling);
+        const id = key(pubkey, conversationId);
+        const existing = await db.chatReads.get(id);
+        if (existing && existing.lastRead >= clamped) continue;
+        await db.chatReads.put({
+          pubkey: id[0],
+          protocol: id[1],
+          containerId: id[2],
+          channelId: id[3],
+          lastRead: clamped,
+          updatedAt: Date.now(),
+        });
+        moved = true;
+      }
+    });
+    if (moved) emitDmScopes([DM_LIST_SCOPE]);
+  } catch (error) {
+    console.warn("[dm] could not stamp the conversations as read:", error);
+  }
+}
+
 /** Forget every DM stamp this account holds. Called on logout. */
 export async function clearDmReads(pubkey: string): Promise<void> {
   try {

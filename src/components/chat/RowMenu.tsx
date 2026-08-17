@@ -12,7 +12,7 @@
  */
 
 import type { ReactNode } from "react";
-import { Bell, BellOff, Pin, PinOff } from "lucide-react";
+import { Bell, BellOff, CheckCheck, Pin, PinOff } from "lucide-react";
 
 import {
   ContextMenu,
@@ -26,21 +26,30 @@ export function RowMenu({
   onTogglePin,
   muted,
   onToggleMute,
+  onMarkRead,
   children,
 }: {
   pinned?: boolean;
   onTogglePin?: () => void;
   muted?: boolean;
   onToggleMute?: () => void;
+  /** Only passed when there is something unread to clear. */
+  onMarkRead?: () => void;
   children: ReactNode;
 }) {
   // No menu at all where nothing can be done — an empty one that opens on
   // right-click is worse than the browser's own.
-  if (!onTogglePin && !onToggleMute) return <>{children}</>;
+  if (!onTogglePin && !onToggleMute && !onMarkRead) return <>{children}</>;
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent className="w-40">
+        {onMarkRead && (
+          <ContextMenuItem onSelect={onMarkRead}>
+            <CheckCheck className="size-4 mr-2" />
+            Mark as read
+          </ContextMenuItem>
+        )}
         {onTogglePin && (
           <ContextMenuItem onSelect={onTogglePin}>
             {pinned ? (

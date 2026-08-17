@@ -12,6 +12,16 @@ interface UserNameProps {
   isMention?: boolean;
   className?: string;
   relayHints?: string[];
+  /**
+   * Render the name in the colour and weight of whatever it sits in.
+   *
+   * For lists where the name IS the row — the sidebar's conversations — rather
+   * than a mention inside a body of text. There, accenting every row highlights
+   * nothing: the colour is what the row uses to say "unread", and a name that
+   * arrives already coloured takes that away. The badges stay, because they say
+   * something about the person rather than about the name.
+   */
+  plain?: boolean;
 }
 
 /**
@@ -32,6 +42,7 @@ export function UserName({
   isMention,
   className,
   relayHints,
+  plain,
 }: UserNameProps) {
   const { addWindow, state } = useGrimoire();
   const profile = useProfile(pubkey, relayHints);
@@ -51,7 +62,8 @@ export function UserName({
     <span
       dir="auto"
       className={cn(
-        "font-semibold cursor-crosshair hover:underline hover:decoration-dotted inline-flex items-center gap-1 max-w-full whitespace-nowrap overflow-hidden",
+        "cursor-crosshair hover:underline hover:decoration-dotted inline-flex items-center gap-1 max-w-full whitespace-nowrap overflow-hidden",
+        !plain && "font-semibold",
         className,
       )}
       onClick={handleClick}
@@ -59,13 +71,15 @@ export function UserName({
       <span
         className={cn(
           "truncate",
-          isGrimoire
-            ? isActiveAccount
-              ? "bg-gradient-to-tr from-orange-400 to-amber-600 bg-clip-text text-transparent"
-              : "bg-gradient-to-tr from-violet-500 to-fuchsia-600 bg-clip-text text-transparent"
-            : isActiveAccount
-              ? "text-highlight"
-              : "text-accent",
+          plain
+            ? undefined
+            : isGrimoire
+              ? isActiveAccount
+                ? "bg-gradient-to-tr from-orange-400 to-amber-600 bg-clip-text text-transparent"
+                : "bg-gradient-to-tr from-violet-500 to-fuchsia-600 bg-clip-text text-transparent"
+              : isActiveAccount
+                ? "text-highlight"
+                : "text-accent",
         )}
       >
         {isMention ? "@" : null}

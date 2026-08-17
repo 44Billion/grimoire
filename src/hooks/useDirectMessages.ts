@@ -11,7 +11,7 @@
  * so there is no window where one account's correspondents show under another's.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { use$ } from "applesauce-react/hooks";
 import accountManager from "@/services/accounts";
 import { DM_LIST_SCOPE, onDmScope } from "@/services/dm-bus";
@@ -26,7 +26,7 @@ import {
   type BackfillProgress,
 } from "@/services/dm-inbox";
 import { dmUnreadSummary, listDmConversations } from "@/services/dm-store";
-import { readDmLastRead } from "@/services/dm-reads";
+import { markAllDmsRead, readDmLastRead } from "@/services/dm-reads";
 import { followedPubkeys, ownDmReadRelays } from "@/lib/dm/relays";
 import {
   hasImportedLegacyDms,
@@ -94,6 +94,8 @@ export interface DirectMessagesResult {
   backfill?: BackfillProgress;
   /** Walk it again from the top: for a new relay, or a run that went wrong. */
   rescan: () => Promise<void>;
+  /** Stamp every listed conversation at its own newest message. */
+  markAllRead: () => Promise<void>;
 }
 
 export function useDirectMessages(
@@ -329,13 +331,33 @@ export function useDirectMessages(
   // Keyed by viewer rather than reset in an effect: a stale account's
   // correspondents must never render under a new one, not even for a frame.
   const current = loaded?.pubkey === pubkey ? loaded : undefined;
+  // Memoized so the empty fallback is not a fresh array every render, which
+  // would rebuild `markAllRead` — and every effect keyed on it — for nothing.
+  const conversations = useMemo(
+    () => current?.conversations ?? [],
+    [current?.conversations],
+  );
+
+  const markAllRead = useCallback(async () => {
+    if (!pubkey) return;
+    // Only the ones with something to clear, and each at its own newest
+    // message — see `markAllDmsRead`. The doorbell it rings brings the list
+    // back, so there is no refresh to fire here.
+    await markAllDmsRead(
+      pubkey,
+      conversations
+        .filter((c) => c.unreadCount > 0)
+        .map((c) => ({ conversationId: c.conversationId, lastAt: c.lastAt })),
+    );
+  }, [pubkey, conversations]);
 
   return {
-    conversations: current?.conversations ?? [],
+    conversations,
     status: current?.status ?? "loading",
     grantConsent,
     refresh,
     rescan,
+    markAllRead,
     ...(backfill ? { backfill } : {}),
   };
 }

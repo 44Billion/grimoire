@@ -28,6 +28,7 @@ export function DirectMessageList({
   selected,
   onSelect,
   onCompose,
+  onMarkRead,
   backfill,
 }: {
   conversations: DmConversationSummary[];
@@ -36,6 +37,8 @@ export function DirectMessageList({
   onSelect: (peer: string) => void;
   /** Open the dialog that starts one. */
   onCompose: () => void;
+  /** Clear one conversation's count without opening it. */
+  onMarkRead?: (conversation: DmConversationSummary) => void;
   /** The walk back through the whole history, while one is running. */
   backfill?: BackfillProgress;
 }) {
@@ -76,6 +79,7 @@ export function DirectMessageList({
           conversation={conversation}
           selected={conversation.peer === selected}
           onSelect={onSelect}
+          {...(onMarkRead ? { onMarkRead } : {})}
         />
       ))}
 
@@ -94,6 +98,7 @@ export function DirectMessageList({
             conversation={conversation}
             selected={conversation.peer === selected}
             onSelect={onSelect}
+            {...(onMarkRead ? { onMarkRead } : {})}
           />
         ))}
       </MutedSection>
@@ -117,10 +122,12 @@ function DirectMessageRow({
   conversation,
   selected,
   onSelect,
+  onMarkRead,
 }: {
   conversation: DmConversationSummary;
   selected: boolean;
   onSelect: (peer: string) => void;
+  onMarkRead?: (conversation: DmConversationSummary) => void;
 }) {
   const Icon = conversation.isSelf ? Bookmark : AtSign;
   const { isRowPinned, toggleRowPin, isRowMuted, toggleRowMute } =
@@ -139,6 +146,9 @@ function DirectMessageRow({
       onTogglePin={() => toggleRowPin(row)}
       muted={muted}
       onToggleMute={() => toggleRowMute(row)}
+      {...(conversation.unreadCount > 0 && onMarkRead
+        ? { onMarkRead: () => onMarkRead(conversation) }
+        : {})}
     >
       <button
         type="button"
@@ -159,8 +169,13 @@ function DirectMessageRow({
             // in the app renders as, badges and click-through included. Not
             // clickable here — the row owns the click, and a name that opened a
             // profile instead of the conversation would be a trap.
+            //
+            // `plain`, because in a sidebar the name IS the row: colour is what
+            // the row uses to say unread, and every name arriving pre-accented
+            // highlights nothing.
             <UserName
               pubkey={conversation.peer}
+              plain
               className="pointer-events-none"
             />
           )}

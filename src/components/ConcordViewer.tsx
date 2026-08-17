@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  CheckCheck,
   Globe,
   Loader2,
   Lock,
@@ -70,6 +71,7 @@ import {
 } from "@/hooks/useConcordVoice";
 import { DirectMessageList } from "./dm/DirectMessageList";
 import { dmRowRef } from "@/lib/dm/row-ref";
+import { markDmRead } from "@/services/dm-reads";
 import { NewConversationDialog } from "./dm/NewConversationDialog";
 import { DmConsentGate } from "./dm/DmConsentGate";
 import { useDirectMessages } from "@/hooks/useDirectMessages";
@@ -956,6 +958,30 @@ export function ConcordViewer({
                   {dmUnreadCount}
                 </span>
               )}
+              {/* Only while there is something to clear, so the control
+                  appears exactly when it means anything and takes no width the
+                  rest of the time. */}
+              {dmUnreadCount > 0 && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  title="Mark all as read"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void dms.markAllRead();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    void dms.markAllRead();
+                  }}
+                  className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <CheckCheck className="size-3" />
+                  <span className="sr-only">Mark all as read</span>
+                </span>
+              )}
               {/* Icon only, and in the heading: the walk finishes on its own
                   and re-runs when the relay set changes, so this is for the
                   cases that mechanism cannot see — a relay that was down, a
@@ -993,6 +1019,13 @@ export function ConcordViewer({
                   conversations={dms.conversations}
                   onSelect={handleDmSelect}
                   onCompose={() => setComposing(true)}
+                  onMarkRead={(conversation) =>
+                    void markDmRead(
+                      conversation.viewer,
+                      conversation.conversationId,
+                      conversation.lastAt,
+                    )
+                  }
                   {...(selectedDm ? { selected: selectedDm } : {})}
                   {...(dms.backfill ? { backfill: dms.backfill } : {})}
                 />
