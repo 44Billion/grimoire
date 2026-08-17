@@ -29,15 +29,31 @@ function getStateWriteRelays(): string[] {
  * 3. Seen relays from the event
  * 4. Aggregator relays (fallback)
  *
+ * An explicit `relays` list overrides all of that. applesauce's `PublishMethod`
+ * is `(event, relays?)`, and an action that passes relays means it — a NIP-17
+ * gift wrap goes to the RECIPIENT's inbox, and outbox selection answers "where
+ * does this author write", which is the wrong question.
+ *
  * @param event - The signed Nostr event to publish
+ * @param relays - Explicit relay URLs; omit to use outbox selection
  */
-export async function publishEvent(event: NostrEvent): Promise<void> {
+export async function publishEvent(
+  event: NostrEvent,
+  relays?: string[],
+): Promise<void> {
+  if (relays && relays.length > 0) return publishTo(event, relays);
+
   const seenRelays = getSeenRelays(event);
-  const relays = await selectRelaysForPublish(event.pubkey, {
+  const selected = await selectRelaysForPublish(event.pubkey, {
     writeRelays: getStateWriteRelays(),
     relayHints: seenRelays ? Array.from(seenRelays) : [],
   });
 
+  return publishTo(event, selected);
+}
+
+/** The one place an event actually reaches PublishService. */
+async function publishTo(event: NostrEvent, relays: string[]): Promise<void> {
   const result = await publishService.publish(event, relays);
 
   if (!result.ok) {
@@ -115,12 +131,5 @@ export async function publishEventToRelays(
     throw new Error("No relays provided for publishing.");
   }
 
-  const result = await publishService.publish(event, relays);
-
-  if (!result.ok) {
-    const errors = result.failed
-      .map((f) => `${f.relay}: ${f.error}`)
-      .join(", ");
-    throw new Error(`Failed to publish to any relay. Errors: ${errors}`);
-  }
+  return publishTo(event, relays);
 }

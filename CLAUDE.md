@@ -52,13 +52,24 @@ library and protocol questions — prefer them over recalling API shapes.
 **Never construct your own `EventStore`, `RelayPool`, or `RelayLiveness`** —
 use the singletons in `src/services/`.
 
-> **One exception: Concord plane traffic** (`src/services/concord-relay-pool.ts`).
+> **Exception 1: Concord plane traffic** (`src/services/concord-relay-pool.ts`).
 > applesauce arms `receivedAuthRequiredForReq` per-`Relay`, before the
 > `!waitForAuth` early return, so a plane REQ that opts out of the auth gate
 > still wedges grimoire's ordinary reads on a shared socket — and the auth
 > manager then re-prompts the signer in a loop. Plane reads therefore get their
-> own pool, and `concord-stream-auth.ts` watches that one. Nothing else may spawn
-> a pool; the kind-13302 Community List stays on the singleton.
+> own pool, and `concord-stream-auth.ts` watches that one. The kind-13302
+> Community List stays on the singleton.
+>
+> **Exception 2: publishing NIP-17 gift wraps**
+> (`src/services/dm-publish-pool.ts`). A gift wrap is signed by a throwaway key
+> so the relay cannot tell who sent it; a socket that has NIP-42 AUTHed as the
+> sender hands over exactly that. `relayAuthManager` is wired to the singleton
+> pool and auto-auths, so a peer's wrap is published on a pool no auth manager
+> watches, and a relay that answers `auth-required` is reported undeliverable
+> rather than satisfied. Reads (`{kinds:[1059],"#p":[self]}` on the user's own
+> inbox) stay on the singleton pool, authenticated — that is your own mailbox.
+>
+> Nothing else may spawn a pool.
 
 ### Window system
 
