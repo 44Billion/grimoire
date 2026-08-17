@@ -26,7 +26,7 @@
  *   ends it.
  */
 
-import { atom, getDefaultStore } from "jotai";
+import { getDefaultStore } from "jotai";
 import {
   BaseKeyProvider,
   isE2EESupported,
@@ -38,6 +38,12 @@ import {
 } from "livekit-client";
 
 import { grimoireStateAtom } from "@/core/state";
+import {
+  callReactionsAtom,
+  callStateAtom,
+  IDLE,
+  type CallState,
+} from "@/services/concord-call-state";
 import { decideCallSync } from "@/lib/concord/call-sync";
 import { random32, voiceSenderKey } from "@/lib/concord/derive";
 import type { StreamSigner } from "@/lib/concord/stream";
@@ -67,64 +73,6 @@ import {
   setPreferredMicId,
   volumeFor,
 } from "@/services/concord-devices";
-
-export type CallStatus =
-  | "idle"
-  /** Probing brokers and minting a token (§2/§5). */
-  | "joining"
-  | "connected"
-  | "failed";
-
-export interface CallState {
-  status: CallStatus;
-  communityIdHex?: string;
-  channelIdHex?: string;
-  channelName?: string;
-  /** The broker that actually minted our token — what rides our presence (§5). */
-  broker?: string;
-  /** Our own SFU identity. Keys our frames; never re-minted while connected. */
-  identity?: string;
-  micEnabled: boolean;
-  cameraEnabled: boolean;
-  screenEnabled: boolean;
-  handRaised: boolean;
-  error?: string;
-  /** Who is in the call, as presence tells it. */
-  fold: VoicePresenceFold;
-  /** The window that owns this call; it ends when that window is closed. */
-  windowId?: string;
-  /**
-   * Bumped every time a NEW `Room` is built — a rejoin after a rekey, or a §5
-   * migration. Nothing about the call's identity changes, so `status` stays
-   * "connected" through a migration and a component watching status alone would
-   * keep holding the room that was just torn down. Anything that binds to the
-   * room object itself keys on this.
-   */
-  roomEpoch: number;
-}
-
-const IDLE: CallState = {
-  status: "idle",
-  micEnabled: false,
-  cameraEnabled: false,
-  screenEnabled: false,
-  handRaised: false,
-  fold: { present: [], claims: new Map() },
-  roomEpoch: 0,
-};
-
-/** The UI's view of the call. Written only by this module. */
-export const callStateAtom = atom<CallState>(IDLE);
-
-/**
- * Reactions currently in the air.
- *
- * Kept out of `callStateAtom` deliberately: these change several times a second
- * while a call is lively, and every consumer of the call's identity, roster and
- * mute state would re-render with them. Nothing is folded — an entry appears,
- * floats, and is dropped.
- */
-export const callReactionsAtom = atom<VoiceReactionEntry[]>([]);
 
 /** How long a reaction floats before it is aged out. */
 const REACTION_TTL_MS = 4_000;
@@ -873,3 +821,13 @@ export function applyVolumes(): void {
     participant.setVolume(volume, Track.Source.ScreenShareAudio);
   }
 }
+
+// Re-exported so nothing has to know the split exists; the point of the state
+// module is only to keep `livekit-client` out of chunks that merely display a
+// call.
+export {
+  callReactionsAtom,
+  callStateAtom,
+  type CallState,
+  type CallStatus,
+} from "@/services/concord-call-state";

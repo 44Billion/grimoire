@@ -32,7 +32,7 @@ import type { ChatProtocol, ProtocolIdentifier } from "@/types/chat";
 import { useState, useEffect } from "react";
 import { useAtomValue } from "jotai";
 
-import { callStateAtom } from "@/services/concord-call";
+import { callStateAtom } from "@/services/concord-call-state";
 
 export interface WindowTitleData {
   title: string | ReactElement;

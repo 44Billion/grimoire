@@ -3,6 +3,7 @@ import { Button } from "./ui/button";
 import { useGrimoire } from "@/core/state";
 import { cn } from "@/lib/utils";
 import { LayoutControls } from "./LayoutControls";
+import { CallPill } from "./call/CallPill";
 import { useEffect, useState } from "react";
 import { Reorder, useDragControls } from "framer-motion";
 import { Workspace } from "@/types/app";
@@ -248,8 +249,11 @@ export function TabBar() {
         {/* Spacer to push right side controls to the end */}
         <div className="flex-1" />
 
-        {/* Right side: Layout controls */}
+        {/* Right side: the running call, then the layout controls. The call
+            sits here because this bar is the only chrome every workspace
+            shares — a call you cannot see is one you forget you are in. */}
         <div className="flex items-center gap-1 flex-shrink-0">
+          <CallPill />
           <LayoutControls />
         </div>
       </div>

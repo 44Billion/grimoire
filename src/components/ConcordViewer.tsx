@@ -63,7 +63,7 @@ import { useAccount } from "@/hooks/useAccount";
 import { useAtomValue } from "jotai";
 import { useAddWindow } from "@/core/state";
 import { banVerdictPostdatesMembership } from "@/lib/concord/call-sync";
-import { callStateAtom, syncCall } from "@/services/concord-call";
+import { callStateAtom } from "@/services/concord-call-state";
 import { readJoinedAtMs } from "@/services/concord-communities";
 import { inviteStanding } from "@/lib/concord/invite";
 import { bytesToHex } from "@/lib/concord/derive";
@@ -308,17 +308,22 @@ export function ConcordViewer({
   useEffect(() => {
     if (call.status !== "connected") return;
     if (call.communityIdHex !== communityIdHex) return;
-    void syncCall({
-      listLoaded: !loading,
-      community,
-      folded: state?.folded,
-      channels,
-      selfBanned: banVerdictPostdatesMembership(
-        state?.folded,
-        account?.pubkey,
-        joinedAtMs,
-      ),
-    });
+    // Lazily, so opening a community does not pull `livekit-client` in for a
+    // reader who never makes a call — the import only resolves while one is
+    // actually connected, by which point the chunk is already loaded.
+    void import("@/services/concord-call").then((service) =>
+      service.syncCall({
+        listLoaded: !loading,
+        community,
+        folded: state?.folded,
+        channels,
+        selfBanned: banVerdictPostdatesMembership(
+          state?.folded,
+          account?.pubkey,
+          joinedAtMs,
+        ),
+      }),
+    );
   }, [
     call.status,
     call.communityIdHex,
