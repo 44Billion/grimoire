@@ -442,7 +442,13 @@ export class Nip17Adapter extends ChatProtocolAdapter {
         limit: PAGE_ROWS * 5,
       });
       const parent = rows.find((r) => r.id === options.replyTo);
-      if (parent)
+      // A legacy parent is skipped rather than refused: the message still
+      // sends, it just carries no `e` tag. Threading it would put a public
+      // kind-4 id inside a gift wrap, which tells the recipient's relays
+      // which public DM this private one is about.
+      if (parent?.legacy)
+        console.info("[dm] not threading a reply onto a legacy message");
+      else if (parent)
         replyTo = {
           id: parent.id,
           kind: parent.kind,
@@ -476,6 +482,18 @@ export class Nip17Adapter extends ChatProtocolAdapter {
     customEmoji?: EmojiTag,
   ): Promise<void> {
     const self = this.self();
+
+    // Not to a legacy message. The reaction would be a gift-wrapped kind 7
+    // whose `e` tag names a PUBLIC kind-4 id — so the wrap hides who reacted
+    // while the tag inside says which public DM they were reading, to everyone
+    // the recipient's relays serve. NIP-04 has no private reaction, and
+    // inventing one that leaks is worse than not having it.
+    const rows = await queryConversation(self, conversation.id, {
+      limit: PAGE_ROWS * 5,
+    });
+    if (rows.find((r) => r.id === messageId)?.legacy)
+      throw new Error("Older NIP-04 messages cannot be reacted to privately.");
+
     await sendDirectReaction({
       viewer: self,
       signer: this.signer(),

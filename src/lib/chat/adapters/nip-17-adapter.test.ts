@@ -320,3 +320,75 @@ describe("what the UI is allowed to do with a message id", () => {
     );
   });
 });
+
+describe("legacy messages", () => {
+  /** A stored legacy row, as the import would have written it. */
+  async function seedLegacy(content = "from the old days") {
+    const { writeDmRows } = await import("@/services/dm-store");
+    const conversationId = [ALICE, BOB].sort().join(":");
+    await writeDmRows(ALICE, [
+      {
+        id: "d".repeat(64),
+        viewer: ALICE,
+        conversationId,
+        kind: 4,
+        created_at: Math.floor(Date.now() / 1000) - 100,
+        pubkey: BOB,
+        content,
+        tags: [["p", ALICE]],
+        legacy: true as const,
+      },
+    ]);
+    return conversationId;
+  }
+
+  it("carries the legacy mark to the UI", async () => {
+    await seedLegacy();
+    const adapter = new Nip17Adapter();
+    const c = await conversation(adapter);
+
+    const messages = await new Promise<Array<{ metadata?: unknown }>>(
+      (resolve) => {
+        const sub = adapter.loadMessages(c).subscribe((next) => {
+          if (next.length > 0) {
+            sub.unsubscribe();
+            resolve(next);
+          }
+        });
+      },
+    );
+
+    // Without this the row renders under gift-wrap chrome, claiming a
+    // guarantee a public kind-4 event never had.
+    expect(messages[0].metadata).toMatchObject({ legacy: true });
+  });
+
+  it("refuses to react to one", async () => {
+    // The reaction would be a gift-wrapped kind 7 whose `e` tag names a PUBLIC
+    // kind-4 id: the wrap hides who reacted while the tag inside says which
+    // public DM they were reading.
+    await seedLegacy();
+    const adapter = new Nip17Adapter();
+    const c = await conversation(adapter);
+
+    await expect(adapter.sendReaction(c, "d".repeat(64), "🔥")).rejects.toThrow(
+      /cannot be reacted to privately/,
+    );
+    expect(publishGiftWrap).not.toHaveBeenCalled();
+  });
+
+  it("sends a reply to one without threading it", async () => {
+    // The message goes; it just carries no `e` tag, because threading it would
+    // put a public id inside a private message.
+    await seedLegacy();
+    const adapter = new Nip17Adapter();
+    const c = await conversation(adapter);
+
+    await adapter.sendMessage(c, "about that", { replyTo: "d".repeat(64) });
+
+    expect(publishGiftWrap).toHaveBeenCalled();
+    const sent = (await db.dmRumors.toArray()).filter((r) => r.kind === 14);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].tags.some((t) => t[0] === "e")).toBe(false);
+  });
+});

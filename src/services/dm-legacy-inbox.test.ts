@@ -90,6 +90,22 @@ describe("toLegacyDmRow", () => {
     });
   });
 
+  it("refuses a kind-4 rumor that arrived inside a gift wrap", async () => {
+    // The hole this closes. Keying "legacy" off the KIND alone meant anyone
+    // could put a kind 4 inside a gift wrap — a wrap carries whatever its
+    // author chose — and it would take the legacy branch, skipping the id
+    // recompute that every gift-wrapped rumor depends on for its identity.
+    // Only the signature-verified path may claim the exemption.
+    const { toDmRow } = await import("./dm-store");
+    const event = await legacyMessage(bobKey, ALICE, "hello");
+
+    expect(
+      toDmRow(ALICE, { ...event, content: "anything at all" } as never),
+    ).toEqual({
+      rejected: "legacy message did not come from a verified event",
+    });
+  });
+
   it("refuses a kind that is not a legacy message", async () => {
     const event = await legacyMessage(bobKey, ALICE, "hello");
     expect(toLegacyDmRow(ALICE, { ...event, kind: 1 }, "hello")).toMatchObject({

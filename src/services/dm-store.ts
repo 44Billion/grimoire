@@ -95,15 +95,32 @@ export function isExpired(
 export function toDmRow(
   viewer: string,
   rumor: Rumor,
+  /**
+   * The caller has already verified this event's SIGNATURE.
+   *
+   * Only `toLegacyDmRow` passes it, and passing it skips the id recompute
+   * below — a kind-4 id was hashed over the ciphertext and cannot be re-derived
+   * from a row holding plaintext.
+   *
+   * Deliberately a parameter rather than `rumor.kind === 4`. Keying off the
+   * kind alone means a kind-4 rumor arriving inside a GIFT WRAP — which anyone
+   * can send, since a wrap carries whatever its author put in it — takes the
+   * legacy branch and skips the check that every gift-wrapped rumor depends on
+   * for its identity. The exemption has to be something only the verified path
+   * can claim.
+   */
+  verified = false,
 ): DmRumorRow | { rejected: string } {
   if (!ACCEPTED_KINDS.has(rumor.kind))
     return { rejected: `kind ${rumor.kind} is not a direct message` };
 
-  // A legacy kind-4 arrives decrypted, so its id cannot be re-derived from
-  // what it now holds — the id was hashed over the CIPHERTEXT. Its signature
-  // is checked instead, by `toLegacyDmRow`, which is a strictly stronger
-  // guarantee than the hash recompute below: kind 4 is signed, a rumor is not.
-  const legacy = rumor.kind === DM_LEGACY_KIND;
+  // A kind 4 that did NOT come through the verified path is a wrapped rumor
+  // wearing a legacy kind. It has no signature to check and no ciphertext its
+  // id could match, so there is nothing here that could vouch for it.
+  if (rumor.kind === DM_LEGACY_KIND && !verified)
+    return { rejected: "legacy message did not come from a verified event" };
+
+  const legacy = verified;
 
   const computedId = getEventHash(rumor);
   if (!legacy && rumor.id !== computedId)
@@ -183,10 +200,11 @@ export function toLegacyDmRow(
   };
   if (!verifyEvent(signed)) return { rejected: "signature does not verify" };
 
-  return toDmRow(viewer, {
-    ...signed,
-    content: plaintext,
-  } as unknown as Rumor);
+  return toDmRow(
+    viewer,
+    { ...signed, content: plaintext } as unknown as Rumor,
+    true,
+  );
 }
 
 export interface WriteResult {
