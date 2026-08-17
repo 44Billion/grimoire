@@ -14,6 +14,7 @@
 import { BellOff, Hash, Pin } from "lucide-react";
 import { useGroupMetadata } from "@/hooks/useGroupMetadata";
 import { RowMenu } from "@/components/chat/RowMenu";
+import { MutedSection } from "@/components/chat/MutedSection";
 import { useConcordPrefs, type RowRef } from "@/hooks/useConcordPrefs";
 import { partitionPinned } from "@/lib/concord/channels";
 import { cn } from "@/lib/utils";
@@ -48,12 +49,16 @@ export function Nip29GroupList({
   onSelect: (selection: GroupSelection) => void;
   loading?: boolean;
 }) {
-  const { isRowPinned } = useConcordPrefs();
+  const { isRowPinned, isRowMuted } = useConcordPrefs();
 
+  // Muted groups leave the list and fold away at the bottom.
+  const { pinned: muted, rest: listed } = partitionPinned(groups, (g) =>
+    isRowMuted(groupRowRef(g)),
+  );
   // Pinned above the rest, and only then by recency. A pin is the reader
   // overriding the sort, which is the only thing a pin can mean in a list that
   // already orders itself.
-  const { pinned, rest } = partitionPinned(groups, (g) =>
+  const { pinned, rest } = partitionPinned(listed, (g) =>
     isRowPinned(groupRowRef(g)),
   );
   const ordered = [...pinned, ...rest];
@@ -77,6 +82,16 @@ export function Nip29GroupList({
           onSelect={onSelect}
         />
       ))}
+      <MutedSection count={muted.length}>
+        {muted.map((group) => (
+          <Nip29GroupRow
+            key={groupKey(group)}
+            group={group}
+            selected={!!selected && groupKey(selected) === groupKey(group)}
+            onSelect={onSelect}
+          />
+        ))}
+      </MutedSection>
     </div>
   );
 }

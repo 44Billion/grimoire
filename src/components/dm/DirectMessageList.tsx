@@ -14,6 +14,7 @@
 import { AtSign, BellOff, Bookmark, Loader2, Pin, Plus } from "lucide-react";
 import { UserName } from "@/components/nostr/UserName";
 import { RowMenu } from "@/components/chat/RowMenu";
+import { MutedSection } from "@/components/chat/MutedSection";
 import { cn } from "@/lib/utils";
 import type { DmConversationSummary } from "@/hooks/useDirectMessages";
 import type { BackfillProgress } from "@/services/dm-inbox";
@@ -38,13 +39,17 @@ export function DirectMessageList({
   /** The walk back through the whole history, while one is running. */
   backfill?: BackfillProgress;
 }) {
-  const { isRowPinned } = useConcordPrefs();
+  const { isRowPinned, isRowMuted } = useConcordPrefs();
+  // Muted rows come off the list entirely and fold away at the bottom.
+  const { pinned: muted, rest: listed } = partitionPinned(conversations, (c) =>
+    isRowMuted(dmRowRef(c.conversationId)),
+  );
   // "Saved messages" first and always, then the pinned, then the rest in the
   // order the list already had. Saved messages is not correspondence and is
   // never unread — it is where this account's own notes live — so it holds the
   // top whatever else the reader pins.
   const { pinned: saved, rest: others } = partitionPinned(
-    conversations,
+    listed,
     (c) => c.isSelf,
   );
   const { pinned, rest } = partitionPinned(others, (c) =>
@@ -81,6 +86,17 @@ export function DirectMessageList({
           No conversations yet.
         </p>
       )}
+
+      <MutedSection count={muted.length}>
+        {muted.map((conversation) => (
+          <DirectMessageRow
+            key={conversation.conversationId}
+            conversation={conversation}
+            selected={conversation.peer === selected}
+            onSelect={onSelect}
+          />
+        ))}
+      </MutedSection>
 
       {/* The list grows while this runs — the walk rings the doorbell per page
           — so the line says what is still coming rather than blocking on it.

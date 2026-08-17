@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 
 import { RowMenu } from "@/components/chat/RowMenu";
+import { MutedSection } from "@/components/chat/MutedSection";
 import { useConcordPrefs } from "@/hooks/useConcordPrefs";
 import { useLocale } from "@/hooks/useLocale";
 import type { ChannelUnread } from "@/services/concord-rumor-store";
@@ -149,13 +150,21 @@ export function ChannelList({
   inCall: Map<string, number>;
   onSelect: (idHex: string) => void;
 }) {
-  const { isCollapsed, toggleCollapsed, isPinned } = useConcordPrefs();
+  const { isCollapsed, toggleCollapsed, isPinned, isMuted } = useConcordPrefs();
+  // Muted channels leave the categories entirely and fold away at the bottom —
+  // before the pin split, so a muted channel that is also pinned still goes
+  // there rather than to the top of the list it asked to leave.
+  const { pinned: muted, rest: listed } = useMemo(
+    () =>
+      partitionPinned(channels, (ch) => isMuted(communityId ?? "", ch.idHex)),
+    [channels, communityId, isMuted],
+  );
   // Pins come off the front first, so a pinned channel is never also drawn
   // inside its category — and never disappears when that category is folded.
   const { pinned, rest } = useMemo(
     () =>
-      partitionPinned(channels, (ch) => isPinned(communityId ?? "", ch.idHex)),
-    [channels, communityId, isPinned],
+      partitionPinned(listed, (ch) => isPinned(communityId ?? "", ch.idHex)),
+    [listed, communityId, isPinned],
   );
   // `channelsView` already returns display order, so the grouping reads the
   // categories straight off it — the arrangement is one act, not two.
@@ -245,6 +254,18 @@ export function ChannelList({
           </div>
         );
       })}
+      <MutedSection count={muted.length}>
+        {muted.map((ch) => (
+          <ChannelRow
+            key={ch.idHex}
+            channel={ch}
+            communityId={communityId}
+            selected={ch.idHex === selected}
+            unread={unread.get(ch.idHex.toLowerCase())}
+            onSelect={onSelect}
+          />
+        ))}
+      </MutedSection>
     </div>
   );
 }
