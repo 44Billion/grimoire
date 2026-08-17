@@ -7,6 +7,7 @@ import {
   communityIdOf,
   grantLocator,
   hex32,
+  pinsLocator,
   random32,
 } from "./derive";
 import { citationToTag, type AuthorityCitation } from "./edition";
@@ -15,6 +16,7 @@ import {
   VSK_CHANNEL,
   VSK_GRANT,
   VSK_METADATA,
+  VSK_PINS,
   VSK_ROLE,
 } from "./kinds";
 import { Permissions } from "./roles";
@@ -870,5 +872,56 @@ describe("refuse-downgrade and gap detection (CORD-04 §1)", () => {
       }),
     ]);
     expect(folded.channels.get(bytesToHex(channelId))?.name).toBe("renamed");
+  });
+});
+
+describe("pin lists (vsk 11)", () => {
+  const channelId = random32();
+  const channelIdHex = bytesToHex(channelId);
+  const pinEid = pinsLocator(CID, channelId);
+  const channelDef = () =>
+    edition({
+      vsk: VSK_CHANNEL,
+      entityId: channelId,
+      content: { name: "general", private: false },
+    });
+
+  it("folds the head at the channel's own coordinate", () => {
+    const content = { entries: [{ seal: {}, keys: "00" }] };
+    const folded = fold([
+      channelDef(),
+      edition({ vsk: VSK_PINS, entityId: pinEid, content }),
+    ]);
+    // The RAW content: only a channel keyholder can verify the entries, and the
+    // fold holds no channel keys.
+    expect(folded.pins.get(channelIdHex)).toBe(JSON.stringify(content));
+  });
+
+  it("drops an edition from someone without PIN_MESSAGES", () => {
+    const stranger = getPublicKey(generateSecretKey());
+    const folded = fold([
+      channelDef(),
+      edition({
+        vsk: VSK_PINS,
+        entityId: pinEid,
+        content: { entries: [] },
+        author: stranger,
+      }),
+    ]);
+    expect(folded.pins.has(channelIdHex)).toBe(false);
+  });
+
+  it("ignores a list at a coordinate no channel of ours derives", () => {
+    // The eid is a hash of (community_id, channel_id): a list naming a channel
+    // this member cannot see is not addressable here at all.
+    const folded = fold([
+      channelDef(),
+      edition({
+        vsk: VSK_PINS,
+        entityId: pinsLocator(CID, random32()),
+        content: { entries: [] },
+      }),
+    ]);
+    expect(folded.pins.size).toBe(0);
   });
 });

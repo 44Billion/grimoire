@@ -79,6 +79,7 @@ function folded(): FoldedControl {
     channels: new Map(),
     banned: new Set(),
     bannedAt: new Map(),
+    pins: new Map(),
     heads: new Map(),
     incomplete: [],
   };

@@ -9,6 +9,7 @@ import {
   UnreadBadge,
 } from "./concord/ConcordChannelList";
 import { NoCommunitiesEmpty, StrandedBanner } from "./concord/ArmadaHandoff";
+import { ConcordPinsBar } from "@/components/ConcordPinsBar";
 import { ConcordGuestbookPanel } from "./ConcordGuestbookPanel";
 import { ConcordSearchPanel } from "./ConcordSearchPanel";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ import { useConcordImage } from "@/hooks/useConcordImage";
 import type { ImagePointer } from "@/lib/concord/types";
 import { resolveOpenChannel } from "@/lib/concord/channels";
 import { buildConcordWindowUpdate } from "@/lib/concord/window-props";
+import { useConcordPins } from "@/hooks/useConcordPins";
 import { useConcordPrefs } from "@/hooks/useConcordPrefs";
 import { useGrimoire } from "@/core/state";
 import { cn } from "@/lib/utils";
@@ -178,6 +180,13 @@ export function ConcordViewer({
   // pass. An explicit pick wins whenever it still resolves; failing that, the
   // channel this device was last left on in this community.
   const openChannel = resolveOpenChannel(channels, selectedChannel, remembered);
+
+  // The open channel's pins, verified here rather than trusted: §7's proof
+  // bundle is what lets a member with none of the history read them.
+  const { pins, unavailable: pinsUnavailable } = useConcordPins(
+    state?.folded,
+    openChannel,
+  );
 
   /**
    * Record a deliberate move: on this device, and in this window's own props.
@@ -501,13 +510,21 @@ export function ConcordViewer({
               loading={guestbookLoading}
             />
           ) : identifier ? (
-            <ChatViewer
-              protocol="concord"
-              identifier={identifier as ProtocolIdentifier}
-              headerPrefix={headerPrefix}
-              onJumpHandled={handleJumpHandled}
-              {...(jumpTo ? { jumpTo } : {})}
-            />
+            <div className="flex h-full min-h-0 flex-col">
+              {/* Above the timeline: a pin reaches members who hold none of
+                  the history it came from, so it cannot live inside the
+                  message list. */}
+              <ConcordPinsBar pins={pins} unavailable={pinsUnavailable} />
+              <div className="min-h-0 flex-1">
+                <ChatViewer
+                  protocol="concord"
+                  identifier={identifier as ProtocolIdentifier}
+                  headerPrefix={headerPrefix}
+                  onJumpHandled={handleJumpHandled}
+                  {...(jumpTo ? { jumpTo } : {})}
+                />
+              </div>
+            </div>
           ) : (
             <Empty>
               {loading

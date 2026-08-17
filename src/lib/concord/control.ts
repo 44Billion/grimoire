@@ -6,10 +6,10 @@
  * The edition BUILDERS, dissolution publishing and the Refounding's compaction
  * are absent — grimoire publishes nothing here.
  *
- * Three sections of armada's fold are also absent, and their absence is safe
- * rather than merely untested: invite registries (vsk 8), pin lists (vsk 11) and
- * Community Signals (vsk 12). Nothing in grimoire consumes any of them, and none
- * feeds the roster, the channels, the metadata or the banlist. Signals in
+ * Two sections of armada's fold are absent, and their absence is safe rather
+ * than merely untested: invite registries (vsk 8) and Community Signals
+ * (vsk 12). Nothing in grimoire consumes either, and neither feeds the roster,
+ * the channels, the metadata or the banlist. Signals in
  * particular ship in armada from an UNMERGED spec branch, and an unknown `vsk`
  * folding to nothing is the documented forward-compat contract — the visible
  * consequence is that a paused community will not appear paused here.
@@ -29,6 +29,8 @@ import {
   bytesToHex,
   grantLocator,
   hex32,
+  hexToBytes,
+  pinsLocator,
 } from "@/lib/concord/derive";
 import {
   type AuthorityCitation,
@@ -41,6 +43,7 @@ import {
   VSK_CHANNEL,
   VSK_GRANT,
   VSK_METADATA,
+  VSK_PINS,
   VSK_ROLE,
 } from "@/lib/concord/kinds";
 import {
@@ -50,6 +53,7 @@ import {
   hasPermission,
   highestPosition,
   isAuthorized,
+  isAuthorizedIn,
   MAX_ROLES_PER_COMMUNITY,
   outranks,
   Permissions,
@@ -140,6 +144,16 @@ export interface FoldedControl {
    * banlist can't backdate-suppress a member.
    */
   bannedAt: Map<string, number>;
+  /**
+   * channelIdHex → the folded Pin List's raw `content` (CORD-04 §7).
+   *
+   * Raw, because the fold cannot open it: a private Channel's list is sealed
+   * under that Channel's key at a named epoch, and the Control Plane fold holds
+   * no channel keys. The head is authorized here — PIN_MESSAGES, in the
+   * Channel's scope — and the entries are verified where the keys are
+   * (`pins.ts`).
+   */
+  pins: Map<string, string>;
   /** Per-entity head version + hash (key = eid hex). */
   heads: Map<string, EntityHead>;
   /**
@@ -915,6 +929,45 @@ function foldOnce(
     }
   }
 
+  // 6. Pin Lists (vsk 11), one per Channel, gated by PIN_MESSAGES in that
+  //    Channel's scope. The entity's coordinate is derived from
+  //    (community_id, channel_id), so the Channel is recovered by matching the
+  //    locator of each folded Channel — an edition at a coordinate no Channel
+  //    of ours derives is not addressable here and is ignored.
+  const pins = new Map<string, string>();
+  {
+    const byLocator = new Map<string, string>();
+    for (const channelIdHex of channels.keys()) {
+      try {
+        byLocator.set(
+          bytesToHex(pinsLocator(communityId, hexToBytes(channelIdHex))),
+          channelIdHex,
+        );
+      } catch {
+        // A channel id that isn't 32 bytes has no coordinate to match.
+      }
+    }
+    for (const [eid, candidates] of candidatesOf(VSK_PINS)) {
+      const channelIdHex = byLocator.get(eid);
+      if (!channelIdHex) continue;
+      const head = pickHead(candidates, heads, (p) => {
+        if (
+          !isAuthorizedIn(
+            roster,
+            p.author,
+            ownerHex,
+            channelIdHex,
+            Permissions.PIN_MESSAGES,
+          )
+        ) {
+          return false;
+        }
+        return citationOk(p);
+      });
+      if (head) pins.set(channelIdHex, head.content);
+    }
+  }
+
   // Data-availability roll-up: gap-held entities, plus floored entities with
   // ZERO served editions this fold. A floored entity whose editions were served
   // but authority-rejected is NOT flagged — that's a deliberate drop (a stripped
@@ -932,6 +985,7 @@ function foldOnce(
     ownerHex,
     metadata,
     channels,
+    pins,
     banned,
     bannedAt,
     heads,

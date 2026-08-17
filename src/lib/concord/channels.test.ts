@@ -48,6 +48,7 @@ function folded(channels: FoldedChannel[]): FoldedControl {
     channels: new Map(channels.map((c) => [c.channelIdHex, c])),
     banned: new Set(),
     bannedAt: new Map(),
+    pins: new Map(),
     heads: new Map(),
     incomplete: [],
   };
