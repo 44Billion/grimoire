@@ -7,7 +7,7 @@
  * state for that.
  *
  * The roster renders whether or not you are in the call. Presence is announced
- * over the channel and costs nothing to read (§4), so who is talking is
+ * over the channel and costs nothing to read (§4), so who is in a call is
  * something a member can see before deciding to join — which is the whole point
  * of announcing it there rather than asking a server.
  *
@@ -23,30 +23,33 @@ import {
   Loader2,
   Mic,
   MicOff,
+  Monitor,
   Phone,
   PhoneOff,
-  ShieldAlert,
-  Volume2,
+  Video,
+  VideoOff,
 } from "lucide-react";
 
-import { UserName } from "@/components/nostr/UserName";
 import { Button } from "@/components/ui/button";
 import { useAccount } from "@/hooks/useAccount";
 import { useChannelVoice } from "@/hooks/useConcordVoice";
 import type { Channel, Community } from "@/lib/concord/types";
-import { verifiedAuthorOf, type VoicePresenceFold } from "@/lib/concord/voice";
 import { cn } from "@/lib/utils";
 import {
   callStateAtom,
   callsSupported,
   joinCall,
   leaveCall,
+  setCameraEnabled,
   setHandRaised,
   setMicEnabled,
+  setScreenShareEnabled,
 } from "@/services/concord-call";
 import { resolveChannel } from "@/services/concord-channel-resolve";
 import { CallAudio } from "@/components/call/CallAudio";
+import { CallStage } from "@/components/call/CallStage";
 import { useRoomSpeakers } from "@/components/call/useRoomSpeakers";
+import { useRoomTracks } from "@/components/call/useRoomTracks";
 
 interface CallViewerProps {
   /** community_id (lowercase hex). */
@@ -57,6 +60,11 @@ interface CallViewerProps {
 }
 
 const EMPTY_RELAYS: string[] = [];
+
+/** Screensharing needs an API Safari on iOS and most mobiles do not have. */
+const canShareScreen =
+  typeof navigator !== "undefined" &&
+  typeof navigator.mediaDevices?.getDisplayMedia === "function";
 
 export function CallViewer({
   communityId,
@@ -97,6 +105,7 @@ export function CallViewer({
   const joining = call.status === "joining" && isThisCall;
   const fold = connected ? call.fold : watched;
   const { speaking, muted } = useRoomSpeakers(call.roomEpoch);
+  const tracks = useRoomTracks(call.roomEpoch);
 
   const join = useCallback(async () => {
     if (!target || !account?.signer) return;
@@ -117,6 +126,8 @@ export function CallViewer({
     }
   }, [target, account, windowId]);
 
+  const error = joinError ?? (isThisCall ? call.error : undefined);
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-8 items-center gap-1.5 border-b px-2">
@@ -136,66 +147,94 @@ export function CallViewer({
         )}
       </div>
 
-      {(joinError ?? (isThisCall ? call.error : undefined)) && (
+      {error && (
         <div className="border-b px-3 py-1.5 text-xs text-destructive">
-          {joinError ?? call.error}
+          {error}
         </div>
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
-        <Tiles
+        <CallStage
           fold={fold}
           {...(connected && call.identity
             ? { ownIdentity: call.identity }
             : {})}
           speaking={speaking}
           muted={muted}
+          tracks={tracks}
           connected={connected}
           supported={callsSupported()}
           hasTarget={Boolean(target)}
         />
       </div>
 
-      {/* The audio sinks live outside the tile grid: a tile unmounts whenever
-          the roster changes shape, and taking the <audio> element with it would
-          cut the speaker off mid-sentence. */}
+      {/* The audio sinks live outside the stage: a tile unmounts whenever the
+          roster changes shape, and taking the <audio> element with it would cut
+          the speaker off mid-sentence. */}
       {connected && <CallAudio />}
 
-      <div className="flex items-center justify-center gap-2 border-t p-2">
+      {/* The controls sit above the join button and stay put, so the row does
+          not reshuffle under the cursor the moment a call connects — and so
+          what a call offers is legible before joining one. Off the call they
+          are inert: there is no room to publish into. */}
+      <div className="flex flex-col items-center gap-2 border-t p-2">
+        <div className="flex items-center gap-1.5">
+          <Toggle
+            on={call.micEnabled}
+            disabled={!connected}
+            onClick={() => void setMicEnabled(!call.micEnabled)}
+            title={call.micEnabled ? "Mute" : "Unmute"}
+            OnIcon={Mic}
+            OffIcon={MicOff}
+          />
+          <Toggle
+            on={call.cameraEnabled}
+            disabled={!connected}
+            onClick={() => void setCameraEnabled(!call.cameraEnabled)}
+            title={
+              call.cameraEnabled ? "Stop your camera" : "Start your camera"
+            }
+            OnIcon={Video}
+            OffIcon={VideoOff}
+          />
+          {canShareScreen && (
+            <Toggle
+              on={call.screenEnabled}
+              disabled={!connected}
+              onClick={() => void setScreenShareEnabled(!call.screenEnabled)}
+              title={
+                call.screenEnabled
+                  ? "Stop sharing your screen"
+                  : "Share a screen"
+              }
+              OnIcon={Monitor}
+              OffIcon={Monitor}
+            />
+          )}
+          <Toggle
+            on={call.handRaised}
+            disabled={!connected}
+            onClick={() => setHandRaised(!call.handRaised)}
+            title={call.handRaised ? "Lower your hand" : "Raise your hand"}
+            OnIcon={Hand}
+            OffIcon={Hand}
+          />
+        </div>
+
         {connected ? (
-          <>
-            <Button
-              size="sm"
-              variant={call.micEnabled ? "default" : "outline"}
-              onClick={() => void setMicEnabled(!call.micEnabled)}
-              title={call.micEnabled ? "Mute" : "Unmute"}
-            >
-              {call.micEnabled ? (
-                <Mic className="size-4" />
-              ) : (
-                <MicOff className="size-4" />
-              )}
-            </Button>
-            <Button
-              size="sm"
-              variant={call.handRaised ? "default" : "outline"}
-              onClick={() => setHandRaised(!call.handRaised)}
-              title={call.handRaised ? "Lower your hand" : "Raise your hand"}
-            >
-              <Hand className="size-4" />
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={() => void leaveCall()}
-              title="Leave the call"
-            >
-              <PhoneOff className="size-4" />
-            </Button>
-          </>
+          <Button
+            size="sm"
+            variant="destructive"
+            className="w-40"
+            onClick={() => void leaveCall()}
+          >
+            <PhoneOff className="size-4" />
+            Leave
+          </Button>
         ) : (
           <Button
             size="sm"
+            className="w-40"
             disabled={
               busy ||
               joining ||
@@ -205,7 +244,11 @@ export function CallViewer({
             }
             onClick={() => void join()}
           >
-            {(busy || joining) && <Loader2 className="size-3 animate-spin" />}
+            {busy || joining ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Phone className="size-4" />
+            )}
             {joining
               ? "Joining…"
               : fold.present.length > 0
@@ -218,85 +261,32 @@ export function CallViewer({
   );
 }
 
-/**
- * One tile per member presence proves (§4).
- *
- * An SFU participant nobody's fresh presence claims — or one two members claim
- * at once — renders as unverified and stays silent: its frames are keyed with
- * random bytes, so they never decode.
- *
- * Speaking and muted come from the SFU rather than from presence, because they
- * are properties of media nothing on a relay can see. They therefore only show
- * while we are actually in the room; from outside, a roster is all there is.
- */
-function Tiles({
-  fold,
-  ownIdentity,
-  speaking,
-  muted,
-  connected,
-  supported,
-  hasTarget,
+function Toggle({
+  on,
+  disabled,
+  onClick,
+  title,
+  OnIcon,
+  OffIcon,
 }: {
-  fold: VoicePresenceFold;
-  ownIdentity?: string;
-  speaking: Set<string>;
-  muted: Set<string>;
-  connected: boolean;
-  supported: boolean;
-  hasTarget: boolean;
+  on: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  title: string;
+  OnIcon: typeof Mic;
+  OffIcon: typeof Mic;
 }) {
-  if (fold.present.length === 0) {
-    return (
-      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
-        <p className="max-w-sm">
-          {!supported
-            ? "This browser cannot encrypt call media, and a Concord call is never sent unencrypted."
-            : !hasTarget
-              ? "No channel. Open one and press the phone in its header."
-              : connected
-                ? "Nobody else is here yet."
-                : "Nobody is in this call. Anyone holding the channel's key can start one — the broker is told nothing about the community, and it only ever forwards ciphertext."}
-        </p>
-      </div>
-    );
-  }
+  const Icon = on ? OnIcon : OffIcon;
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-2">
-      {fold.present.map((p) => {
-        const verified = verifiedAuthorOf(fold, p.identity) === p.author;
-        const isSpeaking = connected && speaking.has(p.identity);
-        const isMuted = connected && muted.has(p.identity);
-        return (
-          <div
-            key={`${p.author}:${p.identity}`}
-            className={cn(
-              "flex flex-col items-center gap-1 rounded border p-3 transition-colors",
-              p.identity === ownIdentity && "border-primary/60",
-              // The speaking ring is the only thing in this window that moves
-              // on its own, which is what makes it readable at a glance.
-              isSpeaking && "border-primary bg-primary/10",
-              !verified && "opacity-70",
-            )}
-          >
-            <UserName pubkey={p.author} className="truncate text-sm" />
-            <div className="flex items-center gap-1 text-muted-foreground">
-              {isSpeaking && <Volume2 className="size-3.5 text-primary" />}
-              {isMuted && !isSpeaking && <MicOff className="size-3.5" />}
-              {p.hand && <Hand className="size-3.5" />}
-              {!verified && (
-                <span
-                  className="flex items-center gap-0.5 text-[10px]"
-                  title="Two members claim this SFU identity, or nobody does. Its audio is never decoded."
-                >
-                  <ShieldAlert className="size-3.5" />
-                  unverified
-                </span>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    <Button
+      size="icon"
+      variant={on ? "default" : "outline"}
+      disabled={disabled}
+      onClick={onClick}
+      title={disabled ? "Join the call first" : title}
+      className="size-8"
+    >
+      <Icon className="size-4" />
+    </Button>
   );
 }

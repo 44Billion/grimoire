@@ -76,6 +76,8 @@ export interface CallState {
   /** Our own SFU identity. Keys our frames; never re-minted while connected. */
   identity?: string;
   micEnabled: boolean;
+  cameraEnabled: boolean;
+  screenEnabled: boolean;
   handRaised: boolean;
   error?: string;
   /** Who is in the call, as presence tells it. */
@@ -95,6 +97,8 @@ export interface CallState {
 const IDLE: CallState = {
   status: "idle",
   micEnabled: false,
+  cameraEnabled: false,
+  screenEnabled: false,
   handRaised: false,
   fold: { present: [], claims: new Map() },
   roomEpoch: 0,
@@ -229,6 +233,8 @@ export async function joinCall(opts: {
     channelName: channel.name,
     error: undefined,
     micEnabled: false,
+    cameraEnabled: false,
+    screenEnabled: false,
     handRaised: false,
     ...(opts.windowId !== undefined ? { windowId: opts.windowId } : {}),
   });
@@ -396,6 +402,8 @@ async function connect(
       identity: token.identity,
       error: undefined,
       micEnabled: false,
+      cameraEnabled: false,
+      screenEnabled: false,
       fold: currentFold(channel),
       roomEpoch: store().get(callStateAtom).roomEpoch + 1,
     });
@@ -537,25 +545,62 @@ function watchOwningWindow(call: ActiveCall): () => void {
 }
 
 /**
- * Mic on or off.
+ * Publish or stop publishing one of our own tracks.
  *
- * The reported state comes from LiveKit rather than from the request, so a
- * denied microphone permission shows as muted instead of a button that says we
- * are speaking into a room we are not.
+ * The reported state is read back off LiveKit rather than assumed from the
+ * request, so a denied permission — or a screenshare dialog the member
+ * cancelled — shows as off instead of a button claiming we are sending
+ * something we are not.
+ *
+ * Video and screenshare need no new keys and no new events (CORD-07 §6): they
+ * ride the same room, the same per-sender key and the same presence as the
+ * audio.
  */
-export async function setMicEnabled(on: boolean): Promise<void> {
+async function setPublishing(
+  source: "mic" | "camera" | "screen",
+  on: boolean,
+): Promise<void> {
   const call = active;
   if (!call) return;
+  const local = call.room.localParticipant;
   try {
-    await call.room.localParticipant.setMicrophoneEnabled(on);
+    if (source === "mic") await local.setMicrophoneEnabled(on);
+    else if (source === "camera") await local.setCameraEnabled(on);
+    // The screen's own audio rides with it when the member shares it; it is
+    // published as a separate track and mixed by the receiver like any other.
+    else await local.setScreenShareEnabled(on, { audio: true });
   } catch (error) {
     patch({
-      micEnabled: call.room.localParticipant.isMicrophoneEnabled,
+      ...readPublishing(call),
       error: error instanceof Error ? error.message : String(error),
     });
     return;
   }
-  patch({ micEnabled: call.room.localParticipant.isMicrophoneEnabled });
+  patch(readPublishing(call));
+}
+
+function readPublishing(call: ActiveCall): Partial<CallState> {
+  const local = call.room.localParticipant;
+  return {
+    micEnabled: local.isMicrophoneEnabled,
+    cameraEnabled: local.isCameraEnabled,
+    screenEnabled: local.isScreenShareEnabled,
+  };
+}
+
+/** Mic on or off. */
+export async function setMicEnabled(on: boolean): Promise<void> {
+  await setPublishing("mic", on);
+}
+
+/** Camera on or off (§6 — the same call, the same keys). */
+export async function setCameraEnabled(on: boolean): Promise<void> {
+  await setPublishing("camera", on);
+}
+
+/** Screenshare on or off (§6). */
+export async function setScreenShareEnabled(on: boolean): Promise<void> {
+  await setPublishing("screen", on);
 }
 
 /** Raise or lower a hand — sticky state, carried on every heartbeat. */
