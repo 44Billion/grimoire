@@ -158,6 +158,7 @@ import {
 } from "./StarterPackRenderer";
 import { memo } from "react";
 import { NostrEvent } from "@/types/nostr";
+import { getEventFallbackDisplay } from "@/lib/event-fallback";
 import { BaseEventContainer, type BaseEventProps } from "./BaseEventRenderer";
 import { P2pOrderRenderer } from "./P2pOrderRenderer";
 import { P2pOrderDetailRenderer } from "./P2pOrderDetailRenderer";
@@ -326,16 +327,27 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
  * Default renderer for kinds without custom implementations
  * Shows basic event info with raw content
  * Right-click or tap menu button to access event menu
+ *
+ * Tag-only kinds carry no content, so fall back to the NIP-31 `alt`
+ * description before showing the empty-content placeholder.
  */
 const DefaultKindRenderer = memo(function DefaultKindRenderer({
   event,
 }: BaseEventProps) {
+  const display = getEventFallbackDisplay(event);
+
   return (
     <BaseEventContainer event={event}>
       <div className="text-sm text-muted-foreground">
-        <pre className="text-xs overflow-x-auto whitespace-pre-wrap break-words">
-          {event.content || "(empty content)"}
-        </pre>
+        {display.type === "alt" ? (
+          <p className="text-xs italic line-clamp-6 break-words">
+            {display.text}
+          </p>
+        ) : (
+          <pre className="text-xs overflow-x-auto whitespace-pre-wrap break-words">
+            {display.type === "content" ? display.text : "(empty content)"}
+          </pre>
+        )}
       </div>
     </BaseEventContainer>
   );
