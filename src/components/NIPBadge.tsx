@@ -8,7 +8,19 @@ export interface NIPBadgeProps {
   className?: string;
   showName?: boolean;
   showNIPPrefix?: boolean;
+  /**
+   * `"sm"` for a badge sitting inline in a line of text, `"md"` (the default)
+   * for one in a list or header. A prop rather than a `className` override
+   * because padding and font-size are conflicting utilities — which one wins
+   * depends on stylesheet order, not on the order they were passed.
+   */
+  size?: "sm" | "md";
 }
+
+const SIZES = {
+  sm: "gap-1 px-1 py-0 text-[10px] border-dotted",
+  md: "gap-2 px-2.5 py-1.5 text-sm",
+} as const;
 
 /**
  * NIPBadge - Reusable component for displaying NIP badges
@@ -19,6 +31,7 @@ export function NIPBadge({
   className = "",
   showName = true,
   showNIPPrefix = true,
+  size = "md",
 }: NIPBadgeProps) {
   const addWindow = useAddWindow();
   const nipInfo = getNIPInfo(nipNumber);
@@ -53,7 +66,7 @@ export function NIPBadge({
   if (isExternal && !communityNip) {
     return (
       <span
-        className={`flex items-center gap-2 border bg-card px-2.5 py-1.5 text-sm ${className}`}
+        className={`flex items-center border bg-card ${SIZES[size]} ${className}`}
         title={`${nipNumber} (External spec)`}
       >
         <span className="text-muted-foreground">{nipNumber}</span>
@@ -64,7 +77,7 @@ export function NIPBadge({
   return (
     <button
       onClick={openNIP}
-      className={`flex items-center gap-2 border bg-card px-2.5 py-1.5 text-sm hover:underline hover:decoration-dotted cursor-crosshair ${
+      className={`flex items-center border bg-card hover:underline hover:decoration-dotted cursor-crosshair ${SIZES[size]} ${
         isDeprecated ? "opacity-50" : ""
       } ${className}`}
       title={

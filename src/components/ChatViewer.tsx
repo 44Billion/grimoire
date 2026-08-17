@@ -36,6 +36,7 @@ import { Nip29Adapter } from "@/lib/chat/adapters/nip-29-adapter";
 import { Nip17Adapter } from "@/lib/chat/adapters/nip-17-adapter";
 import { useDirectMessages } from "@/hooks/useDirectMessages";
 import { DmConsentGate } from "@/components/dm/DmConsentGate";
+import { NIPBadge } from "@/components/NIPBadge";
 import { Nip53Adapter } from "@/lib/chat/adapters/nip-53-adapter";
 import type {
   BlobAttachmentMeta,
@@ -819,17 +820,19 @@ const MessageItem = memo(function MessageItem({
           <span className="text-xs text-muted-foreground">
             <Timestamp timestamp={message.timestamp} />
           </span>
-          {/* A legacy NIP-04 message hid its content and nothing else — who it
-              was between and when was plain on a public event. Saying so is
-              the difference between showing history and quietly claiming it
-              had a guarantee it never had. */}
+          {/* A NIP-04 message hid its content and nothing else — who it was
+              between and when was plain on a public event. Saying so is the
+              difference between showing history and quietly claiming it had a
+              guarantee it never had. Named for the NIP rather than "legacy",
+              and clickable, so the caveat is one click away instead of a
+              tooltip nobody hovers. */}
           {message.metadata?.legacy && (
-            <span
-              title="Sent with the older NIP-04 encryption: the contents were private, but who you were talking to and when was public."
-              className="shrink-0 rounded border border-dotted px-1 text-[10px] text-muted-foreground"
-            >
-              legacy
-            </span>
+            <NIPBadge
+              nipNumber="04"
+              size="sm"
+              showName={false}
+              className="shrink-0"
+            />
           )}
           {/* Reactions display - inline after timestamp */}
           <MessageReactions
