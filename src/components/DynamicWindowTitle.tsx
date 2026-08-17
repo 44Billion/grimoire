@@ -324,22 +324,20 @@ function generateRawCommand(appId: string, props: any): string {
       return "zap";
 
     case "call":
-    case "concord":
-      // Both carry a community and a channel in props, and neither has a
-      // typeable address — a community id is a hex commitment and a channel
-      // lives at a derived pubkey. The id PREFIXES are what the parsers match
-      // against the member's own vault, so this round-trips: editing the
-      // window and running it again lands on the same channel instead of
-      // reopening the app at whatever it defaults to.
+      // Neither a community nor a channel has a typeable address — one is a
+      // hex commitment, the other lives at a derived pubkey — so the ids
+      // themselves are what `parseCallCommand` matches against the member's
+      // own vault. Full ids, not prefixes: a prefix is only a convenience for
+      // someone typing, and two channels can share one.
       if (props.communityId && props.channelId) {
-        return `${appId} ${String(props.communityId).slice(0, 8)} ${String(
-          props.channelId,
-        ).slice(0, 8)}`;
+        return `call ${props.communityId} ${props.channelId}`;
       }
-      if (props.communityId) {
-        return `${appId} ${String(props.communityId).slice(0, 8)}`;
-      }
-      return appId;
+      return props.communityId ? `call ${props.communityId}` : "call";
+
+    case "concord":
+      // `parseConcordCommand` joins its arguments into ONE query, so a second
+      // argument here would be read as part of the community's name.
+      return props.communityId ? `concord ${props.communityId}` : "concord";
 
     default:
       return appId;

@@ -32,6 +32,7 @@ import {
   isE2EESupported,
   Room,
   RoomEvent,
+  Track,
   VideoPresets,
   type RoomOptions,
 } from "livekit-client";
@@ -429,6 +430,18 @@ async function connect(
       syncKeys(owner);
       applyVolumes();
     });
+    // Our own publish state can change without us asking: the browser's own
+    // "Stop sharing" bar ends a screenshare, and a device can be unplugged
+    // mid-call. Reading it back off LiveKit is what keeps the buttons honest —
+    // otherwise the Monitor toggle stays lit over a share that ended, and
+    // pressing it once only corrects the state.
+    const followPublishing = () => {
+      if (active === owner) patch(readPublishing(owner));
+    };
+    lkRoom.on(RoomEvent.LocalTrackPublished, followPublishing);
+    lkRoom.on(RoomEvent.LocalTrackUnpublished, followPublishing);
+    lkRoom.on(RoomEvent.TrackMuted, followPublishing);
+    lkRoom.on(RoomEvent.TrackUnmuted, followPublishing);
     lkRoom.on(RoomEvent.Disconnected, () => {
       // A disconnect we did not ask for. Nothing here retries: the SFU token is
       // single-use and re-minting would change our identity mid-call, which is
@@ -850,6 +863,13 @@ export function applyVolumes(): void {
   const fold = currentFold(call.channel);
   for (const participant of call.room.remoteParticipants.values()) {
     const author = verifiedAuthorOf(fold, participant.identity);
-    participant.setVolume(author ? volumeFor(author) : 1);
+    const volume = author ? volumeFor(author) : 1;
+    // Both sources, and the second one is not optional: `setVolume` defaults to
+    // the MICROPHONE alone, and a shared screen's audio is a separate source
+    // with its own entry. Setting only the default leaves someone you silenced
+    // able to play a tab at you at full volume — which defeats the one lever §7
+    // leaves a client.
+    participant.setVolume(volume);
+    participant.setVolume(volume, Track.Source.ScreenShareAudio);
   }
 }

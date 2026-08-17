@@ -257,11 +257,13 @@ export function ConcordViewer({
    */
   const openCallWindow = useCallback(() => {
     if (!community || !openChannel) return;
-    addWindow(
-      "call",
-      { communityId: community.idHex, channelId: openChannel.idHex },
-      "call",
-    );
+    // No `commandString`: it would be stored verbatim and win over
+    // `reconstructCommand`, so editing the window would rewrite its props from
+    // a bare `call` that names no channel.
+    addWindow("call", {
+      communityId: community.idHex,
+      channelId: openChannel.idHex,
+    });
   }, [addWindow, community, openChannel]);
 
   /**

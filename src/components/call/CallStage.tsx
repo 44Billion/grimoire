@@ -64,7 +64,16 @@ export function CallStage(props: StageProps) {
   // the alternative — shrinking every screen to a thumbnail — makes the one
   // thing anyone is looking at unreadable. The first sharer in roster order
   // wins, which is stable across clients because the fold's order is.
-  const shared = fold.present.find((p) => tracks.get(p.identity)?.screen);
+  //
+  // Gated on verification exactly as a tile's camera is. An identity two
+  // members claim — or none does — is keyed with random bytes and decodes to
+  // nothing, so an impostor publishing a screenshare would otherwise take the
+  // whole stage for a black frame and label it with somebody else's name.
+  const shared = fold.present.find(
+    (p) =>
+      tracks.get(p.identity)?.screen &&
+      verifiedAuthorOf(fold, p.identity) === p.author,
+  );
   const screen = shared ? tracks.get(shared.identity)?.screen : undefined;
 
   return (

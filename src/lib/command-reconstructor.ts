@@ -277,6 +277,14 @@ export function reconstructCommand(window: WindowInstance): string {
       case "concord":
         return props.communityId ? `concord ${props.communityId}` : "concord";
 
+      // A call names the channel it is in. Without this, editing a call window
+      // rewrites its props to nothing and the pane goes blank.
+      case "call":
+        if (props.communityId && props.channelId) {
+          return `call ${props.communityId} ${props.channelId}`;
+        }
+        return props.communityId ? `call ${props.communityId}` : "call";
+
       default:
         return appId; // Fallback to just the command name
     }
