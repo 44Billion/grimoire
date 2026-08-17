@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import { CustomEmoji } from "@/components/nostr/CustomEmoji";
 import { UserName } from "@/components/nostr/UserName";
 import {
   ContextMenu,
@@ -158,7 +159,15 @@ function Tile({
             // a replay of the same reaction re-uses the key and never mounts a
             // second animation.
             <span key={r.nonce} className="animate-in fade-in text-2xl">
-              {r.emoji}
+              {r.custom ? (
+                <CustomEmoji
+                  shortcode={r.custom.shortcode}
+                  url={r.custom.url}
+                  size="md"
+                />
+              ) : (
+                r.emoji
+              )}
             </span>
           ))}
         </div>

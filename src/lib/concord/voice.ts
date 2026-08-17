@@ -305,12 +305,21 @@ const MAX_BROKER_LEN = 512;
 export interface VoiceReactionEntry {
   /** The verified real author (the presence rumor's seal signer). */
   author: string;
-  /** The emoji (or shortcode) to float. */
+  /** The emoji, or a `:shortcode:` resolved by {@link custom}. */
   emoji: string;
   /** The sender-chosen nonce — the fire-once/dedup key. */
   nonce: string;
   /** Millisecond stamp (CORD-02 §4) — the decay basis. */
   ms: number;
+  /**
+   * The NIP-30 image behind a `:shortcode:`, when the reaction named one.
+   *
+   * Carried as an ordinary `emoji` tag on the same rumor rather than stuffed
+   * into the `react` tag: NIP-30 is how every other Concord rumor spells a
+   * custom emoji, so a renderer that already understands chat understands this,
+   * and a client that does not simply shows the shortcode as written.
+   */
+  custom?: { shortcode: string; url: string };
 }
 
 /**
@@ -321,6 +330,46 @@ export interface VoiceReactionEntry {
  */
 export function reactionTag(emoji: string, nonce: string): string[] {
   return ["react", emoji, nonce];
+}
+
+/**
+ * The NIP-30 declaration for a custom emoji used in a reaction.
+ *
+ * `shortcode` is bare — no colons — exactly as NIP-30 spells it; the `react`
+ * tag carries the `:shortcode:` form that appears in the text.
+ */
+export function reactionEmojiTag(shortcode: string, url: string): string[] {
+  return ["emoji", shortcode, url];
+}
+
+/** How long a custom emoji's URL may be. Untrusted, unstored member input. */
+const MAX_EMOJI_URL_LEN = 512;
+const MAX_SHORTCODE_LEN = 64;
+
+/**
+ * The image a `:shortcode:` reaction names, if the rumor declared one.
+ *
+ * Only https is accepted: this is a URL a fellow member chose, and it is about
+ * to be loaded by every client in the call — an http one would be a mixed-content
+ * failure at best and a plaintext beacon at worst.
+ */
+function reactionCustomEmoji(
+  emoji: string,
+  tags: string[][],
+): { shortcode: string; url: string } | undefined {
+  const match = /^:([^\s:]{1,64}):$/.exec(emoji);
+  if (!match) return undefined;
+  const shortcode = match[1];
+  for (const tag of tags) {
+    if (tag[0] !== "emoji") continue;
+    if (tag[1] !== shortcode) continue;
+    const url = tag[2];
+    if (typeof url !== "string" || url.length > MAX_EMOJI_URL_LEN) continue;
+    if (!/^https:\/\//i.test(url)) continue;
+    if (shortcode.length > MAX_SHORTCODE_LEN) continue;
+    return { shortcode, url };
+  }
+  return undefined;
 }
 
 /**
@@ -345,7 +394,14 @@ export function parseReaction(opened: OpenedEvent): VoiceReactionEntry | null {
   ) {
     return null;
   }
-  return { author: opened.author, emoji, nonce, ms: opened.ms };
+  const custom = reactionCustomEmoji(emoji, opened.tags);
+  return {
+    author: opened.author,
+    emoji,
+    nonce,
+    ms: opened.ms,
+    ...(custom ? { custom } : {}),
+  };
 }
 
 /**

@@ -53,6 +53,7 @@ import {
   heartbeatDelayMs,
   migrationTarget,
   probeAvBroker,
+  reactionEmojiTag,
   rendezvousCandidates,
   verifiedAuthorOf,
   type AvToken,
@@ -656,10 +657,17 @@ export function setHandRaised(raised: boolean): void {
  * receiver, and nothing folds it into state. It is never retried, because an
  * emoji that arrives late is worse than one that never arrives.
  */
-export function sendReaction(emoji: string): void {
+export function sendReaction(
+  emoji: string,
+  custom?: { shortcode: string; url: string },
+): void {
   const call = active;
   if (!call) return;
   const nonce = crypto.randomUUID();
+  // A custom emoji travels as the `:shortcode:` text plus its NIP-30 tag, which
+  // is how every other Concord rumor spells one — so it renders as the image it
+  // is, rather than as the colons somebody typed.
+  const content = custom ? `:${custom.shortcode}:` : emoji;
   void publishPresence({
     relays: call.community.relays,
     channel: call.channel,
@@ -669,7 +677,10 @@ export function sendReaction(emoji: string): void {
     identity: call.token.identity,
     broker: call.token.origin,
     hand: store().get(callStateAtom).handRaised,
-    reaction: { emoji, nonce },
+    reaction: { emoji: content, nonce },
+    ...(custom
+      ? { emojiTags: [reactionEmojiTag(custom.shortcode, custom.url)] }
+      : {}),
   }).catch(() => undefined);
   // It WAS a heartbeat, so the next one is due a full interval from now rather
   // than on the old schedule — otherwise a run of reactions publishes a beat

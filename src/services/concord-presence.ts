@@ -235,6 +235,8 @@ export async function publishPresence(opts: {
   broker?: string;
   hand?: boolean;
   reaction?: { emoji: string; nonce: string };
+  /** NIP-30 declarations for any custom emoji the reaction names. */
+  emojiTags?: string[][];
 }): Promise<void> {
   const { channel } = opts;
   const rumor = buildRumor({
@@ -248,6 +250,7 @@ export async function publishPresence(opts: {
       ...(opts.reaction
         ? [reactionTag(opts.reaction.emoji, opts.reaction.nonce)]
         : []),
+      ...(opts.emojiTags ?? []),
     ],
     pubkey: opts.pubkey,
     ms: Date.now(),

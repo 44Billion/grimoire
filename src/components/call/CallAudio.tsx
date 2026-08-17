@@ -17,9 +17,10 @@ import { useEffect, useRef, useState } from "react";
 import { RoomEvent, type RemoteTrack } from "livekit-client";
 
 import { Button } from "@/components/ui/button";
-import { activeRoom, callStateAtom } from "@/services/concord-call";
+import { callStateAtom } from "@/services/concord-call-state";
+import { activeRoom } from "@/services/concord-call";
 
-export function CallAudio() {
+export default function CallAudio() {
   const holder = useRef<HTMLDivElement>(null);
   const [blocked, setBlocked] = useState(false);
   // A §5 migration and a §7 rejoin both build a NEW room while the call stays

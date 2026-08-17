@@ -8,6 +8,7 @@ import { useFavoriteListsSync } from "@/hooks/useFavoriteListsSync";
 import { useRelayState } from "@/hooks/useRelayState";
 import relayStateManager from "@/services/relay-state-manager";
 import { TabBar } from "../TabBar";
+import { CallAudioHost } from "../call/CallAudioHost";
 import CommandLauncher from "../CommandLauncher";
 import { GlobalAuthPrompt } from "../GlobalAuthPrompt";
 import { SpellbookDropdown } from "../SpellbookDropdown";
@@ -92,6 +93,12 @@ export function AppShell({ children, hideBottomBar = false }: AppShellProps) {
           {children}
         </section>
         {!hideBottomBar && <TabBar />}
+        {/* The call's speakers, mounted at the SHELL rather than in the call
+            window. A window unmounts on a workspace switch while its call keeps
+            running, and an <audio> element that leaves with it takes the sound
+            with it — the call is still connected, still publishing, and
+            silent. Nothing here renders unless a call is connected. */}
+        <CallAudioHost />
       </main>
     </AppShellContext.Provider>
   );

@@ -51,7 +51,6 @@ import {
 } from "@/services/concord-call";
 import { EmojiPickerDialog } from "@/components/chat/EmojiPickerDialog";
 import { resolveChannel } from "@/services/concord-channel-resolve";
-import { CallAudio } from "@/components/call/CallAudio";
 import { CallStage } from "@/components/call/CallStage";
 import { useRoomSpeakers } from "@/components/call/useRoomSpeakers";
 import { useRoomTracks } from "@/components/call/useRoomTracks";
@@ -177,11 +176,6 @@ export function CallViewer({
         />
       </div>
 
-      {/* The audio sinks live outside the stage: a tile unmounts whenever the
-          roster changes shape, and taking the <audio> element with it would cut
-          the speaker off mid-sentence. */}
-      {connected && <CallAudio />}
-
       {/* The controls sit above the join button and stay put, so the row does
           not reshuffle under the cursor the moment a call connects — and so
           what a call offers is legible before joining one. Off the call they
@@ -278,11 +272,13 @@ export function CallViewer({
       <EmojiPickerDialog
         open={pickerOpen}
         onOpenChange={setPickerOpen}
-        onEmojiSelect={(emoji) => {
-          // Unicode only: a NIP-30 custom emoji is a URL the receiver would
-          // have to fetch, and a reaction that arrives after it has already
-          // floated away is worse than one that never arrived.
-          sendReaction(emoji);
+        onEmojiSelect={(emoji, custom) => {
+          sendReaction(
+            emoji,
+            custom
+              ? { shortcode: custom.shortcode, url: custom.url }
+              : undefined,
+          );
           setPickerOpen(false);
         }}
       />
