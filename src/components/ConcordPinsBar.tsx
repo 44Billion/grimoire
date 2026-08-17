@@ -1,84 +1,114 @@
 /**
- * The channel's pins, as a strip above the timeline (CORD-04 §7).
+ * A channel's pins (CORD-04 §7): a count in the header, the list below it.
  *
- * A pin does not quote its message, it PROVES one: the entry carries the
- * original seal plus that message's own 76-byte NIP-44 key expansion, and this
- * client re-derives author, words, channel and signed timestamp for itself.
- * Nothing here is taken on the curator's word — which is exactly why a pin
- * reaches a member who holds none of the history it came from.
+ * A pin does not quote its message, it PROVES one — the entry carries the
+ * original seal plus that message's own 76-byte NIP-44 key expansion, so a
+ * member holding none of the chat history can still verify author, words,
+ * channel and signed timestamp for themselves.
  *
- * Two states that look alike are kept apart: no pins (nothing renders at all)
- * and a list this member's keys cannot open (rendered as unavailable). An
- * unopenable list must never read as an empty one.
+ * Two states that look alike are kept apart: a channel with no pins shows
+ * nothing at all, while a list sealed under a key epoch this member never held
+ * shows as unavailable. §7 hangs a write refusal on that distinction, and an
+ * empty view is the one thing it must not look like.
  */
 
-import { useState } from "react";
-import { ChevronDown, Lock, Pin } from "lucide-react";
+import { Lock, Pin } from "lucide-react";
 
 import { RichText } from "@/components/nostr/RichText";
 import Timestamp from "@/components/Timestamp";
 import { UserName } from "@/components/nostr/UserName";
 import type { VerifiedPin } from "@/lib/concord/pins";
 import { cn } from "@/lib/utils";
+import type { NostrEvent } from "@/types/nostr";
 
-export function ConcordPinsBar({
-  pins,
+/** The header control: a pin and a count, or a padlock when it cannot open. */
+export function PinsHeaderButton({
+  count,
   unavailable,
+  open,
+  onToggle,
 }: {
-  pins: VerifiedPin[];
+  count: number;
   unavailable: boolean;
+  open: boolean;
+  onToggle: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   if (unavailable) {
     return (
-      <div className="flex items-center gap-1.5 border-b px-3 py-1 text-xs text-muted-foreground">
-        <Lock className="size-3 shrink-0" />
-        <span>
-          This channel has pinned messages sealed under a key epoch you never
-          held — they cannot be opened here.
-        </span>
-      </div>
+      <span
+        className="flex items-center gap-0.5 text-muted-foreground"
+        title="This channel has pinned messages sealed under a key epoch you never held — they cannot be opened here."
+      >
+        <Lock className="size-3.5" />
+      </span>
     );
   }
-  if (pins.length === 0) return null;
-
+  if (count === 0) return null;
   return (
-    <div className="border-b">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 px-3 py-1 text-left text-xs text-muted-foreground hover:bg-muted/50"
-      >
-        <Pin className="size-3 shrink-0" />
-        <span className="min-w-0 flex-1 truncate">
-          {pins.length === 1 ? "1 pinned message" : `${pins.length} pinned`}
-          {!open && pins[0] && (
-            <span className="ml-2 opacity-70">
-              {(pins[0].edited?.content ?? pins[0].content).slice(0, 120)}
-            </span>
-          )}
-        </span>
-        <ChevronDown
-          className={cn(
-            "size-3 shrink-0 transition-transform",
-            open && "rotate-180",
-          )}
-        />
-      </button>
-      {open && (
-        <div className="max-h-64 overflow-y-auto border-t">
-          {pins.map((pin) => (
-            <PinRow key={pin.rumorId} pin={pin} />
-          ))}
-        </div>
+    <button
+      type="button"
+      onClick={onToggle}
+      title={count === 1 ? "1 pinned message" : `${count} pinned messages`}
+      className={cn(
+        "flex items-center gap-0.5 rounded px-1 py-0.5 hover:bg-muted",
+        open && "bg-muted",
       )}
+    >
+      <Pin className="size-3.5" />
+      {count}
+    </button>
+  );
+}
+
+/**
+ * The list, rendered under the header rather than inside the timeline: a pin
+ * reaches members who hold none of the history it came from, so it has no
+ * position in the conversation to sit at.
+ */
+export function ConcordPinsList({
+  pins,
+  onOpen,
+}: {
+  pins: VerifiedPin[];
+  onOpen: (rumorId: string) => void;
+}) {
+  if (pins.length === 0) return null;
+  return (
+    <div className="max-h-56 overflow-y-auto border-b bg-muted/20">
+      {pins.map((pin) => (
+        <PinRow key={pin.rumorId} pin={pin} onOpen={onOpen} />
+      ))}
     </div>
   );
 }
 
-function PinRow({ pin }: { pin: VerifiedPin }) {
+function PinRow({
+  pin,
+  onOpen,
+}: {
+  pin: VerifiedPin;
+  onOpen: (rumorId: string) => void;
+}) {
+  // A pseudo-event so the renderer can resolve what the rumor itself carries:
+  // NIP-30 custom emoji live in its tags, and a pin that renders `:shortcode:`
+  // as text shows something its author never wrote.
+  const asEvent = {
+    id: pin.rumorId,
+    pubkey: pin.authorHex,
+    created_at: pin.edited?.createdAt ?? pin.createdAt,
+    kind: pin.kind,
+    tags: pin.tags,
+    content: pin.edited?.content ?? pin.content,
+    sig: "",
+  } as NostrEvent;
+
   return (
-    <div className="border-b px-3 py-1.5 last:border-b-0">
+    <button
+      type="button"
+      onClick={() => onOpen(pin.rumorId)}
+      className="block w-full cursor-crosshair border-b px-3 py-1.5 text-left last:border-b-0 hover:bg-muted/50"
+      title="Jump to this message"
+    >
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <UserName pubkey={pin.authorHex} className="text-xs" />
         <Timestamp timestamp={pin.createdAt} />
@@ -92,8 +122,11 @@ function PinRow({ pin }: { pin: VerifiedPin }) {
         )}
       </div>
       <div className="mt-0.5 text-sm break-words">
-        <RichText content={pin.edited?.content ?? pin.content} />
+        <RichText
+          event={asEvent}
+          options={{ showMedia: false, showEventEmbeds: false }}
+        />
       </div>
-    </div>
+    </button>
   );
 }

@@ -117,6 +117,10 @@ interface ChatViewerProps {
   customTitle?: string;
   /** Optional content to render before the title (e.g., sidebar toggle on mobile) */
   headerPrefix?: React.ReactNode;
+  /** Optional control in the header's right-hand group (e.g. a pin count). */
+  headerExtra?: React.ReactNode;
+  /** Optional panel between the header and the timeline (e.g. the pin list). */
+  belowHeader?: React.ReactNode;
   /**
    * Land on a message the caller already knows about — a search hit, typically.
    *
@@ -883,6 +887,8 @@ export function ChatViewer({
   identifier,
   customTitle,
   headerPrefix,
+  headerExtra,
+  belowHeader,
   jumpTo,
   onJumpHandled,
 }: ChatViewerProps) {
@@ -1909,6 +1915,7 @@ export function ChatViewer({
                 slot next to members and relays without being reached for at
                 that rate. `jump({kind:"date"})` and the whole paging walk stay,
                 so a date entry point costs one element wherever it belongs. */}
+            {headerExtra}
             <MembersDropdown participants={derivedParticipants} />
             <RelaysDropdown conversation={conversation} />
             <button
@@ -1920,6 +1927,8 @@ export function ChatViewer({
           </div>
         </div>
       </div>
+
+      {belowHeader}
 
       {/* Message timeline with virtualization */}
       <div

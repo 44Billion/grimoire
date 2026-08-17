@@ -800,6 +800,8 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
   const concordBadge = useConcordUnreadTotal(isConcord);
   const concordCommunityId = isConcord ? props.communityId : undefined;
   const concordChannelId = isConcord ? props.channelId : undefined;
+  /** Which pane the window is showing, when it is not a channel. */
+  const concordView = isConcord ? props.view : undefined;
   const [concordTitle, setConcordTitle] = useState<string>();
   useEffect(() => {
     if (!concordCommunityId || !accountPubkey) return;
@@ -815,7 +817,7 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
         : undefined;
       if (cancelled) return;
       if (channel) {
-        setConcordTitle(`${channel.channelName}@${channel.communityName}`);
+        setConcordTitle(`${channel.communityName} › ${channel.channelName}`);
         return;
       }
       const communities = await loadStoredCommunities(accountPubkey).catch(
@@ -921,7 +923,12 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
       icon = getCommandIcon("chat");
       tooltip = rawCommand;
     } else if (appId === "concord") {
-      title = concordTitle ?? staticTitle ?? "Concord";
+      // A pane that is not a channel names itself: the window is showing
+      // invites, not the room its props still remember.
+      title =
+        concordView === "invites"
+          ? "Invites"
+          : (concordTitle ?? staticTitle ?? "Concord");
       icon = getCommandIcon("concord");
       tooltip = rawCommand;
     } else {
@@ -933,6 +940,7 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
   }, [
     concordBadge,
     concordTitle,
+    concordView,
     appId,
     props,
     event,

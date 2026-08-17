@@ -16,7 +16,11 @@ import {
   UnreadBadge,
 } from "./concord/ConcordChannelList";
 import { NoCommunitiesEmpty, StrandedBanner } from "./concord/ArmadaHandoff";
-import { ConcordPinsBar } from "@/components/ConcordPinsBar";
+import { ConcordPinsList, PinsHeaderButton } from "@/components/ConcordPinsBar";
+import {
+  ConcordInvitesPanel,
+  InvitesRow,
+} from "@/components/ConcordInvitesPanel";
 import { ConcordGuestbookPanel } from "./ConcordGuestbookPanel";
 import { ConcordSearchPanel } from "./ConcordSearchPanel";
 import { Button } from "@/components/ui/button";
@@ -47,8 +51,15 @@ import { useConcordImage } from "@/hooks/useConcordImage";
 import type { ImagePointer } from "@/lib/concord/types";
 import { resolveOpenChannel } from "@/lib/concord/channels";
 import { buildConcordWindowUpdate } from "@/lib/concord/window-props";
+import { useConcordInvites } from "@/hooks/useConcordInvites";
 import { useConcordPins } from "@/hooks/useConcordPins";
 import { useConcordPrefs } from "@/hooks/useConcordPrefs";
+import { useAccount } from "@/hooks/useAccount";
+import { inviteStanding } from "@/lib/concord/invite";
+import { bytesToHex } from "@/lib/concord/derive";
+import { joinFromInvite } from "@/services/concord-join";
+import { openInviteLink } from "@/services/concord-invites";
+import type { PendingInvite } from "@/services/concord-invites";
 import { useGrimoire } from "@/core/state";
 import { cn } from "@/lib/utils";
 import type { ConcordIdentifier, ProtocolIdentifier } from "@/types/chat";
@@ -215,6 +226,141 @@ export function ConcordViewer({
     state?.folded,
     openChannel,
   );
+  const [showPins, setShowPins] = useState(false);
+
+  /**
+   * Clicking a pin lands on the message itself — the same walk a search hit
+   * takes, since a pin names a rumor id and nothing else about where it sits.
+   */
+  const handleOpenPin = useCallback((rumorId: string) => {
+    setJumpTo({ messageId: rumorId, nonce: Date.now() });
+    setShowPins(false);
+  }, []);
+
+  // The invite inbox: pulled once per session (and on demand), never pushed —
+  // an invite is a giftwrap sitting on a relay, and nothing about it is urgent.
+  const { account } = useAccount();
+  const [showInvites, setShowInvites] = useState(false);
+  // Only while the panel is open. Reading the inbox costs two signer
+  // round-trips per wrap, and a stranger can put wraps there — so it must not
+  // be something every Concord window does on mount.
+  const {
+    invites,
+    loading: invitesLoading,
+    error: invitesError,
+    refresh: refreshInvites,
+  } = useConcordInvites(showInvites);
+  const [joining, setJoining] = useState<string>();
+  const [joinError, setJoinError] = useState<string>();
+  /** Invites opened from a pasted link — they arrive by no other route. */
+  const [linkInvites, setLinkInvites] = useState<PendingInvite[]>([]);
+
+  /**
+   * Open or close the invites pane, and say so in the window's props — the
+   * title is derived from those, and a reload should come back where it was.
+   */
+  /** Leave the invites pane — navigation does this implicitly. */
+  const closeInvites = useCallback(() => {
+    setShowInvites(false);
+    if (!windowId) return;
+    const existing = grimoire.windows[windowId]?.props;
+    if (!existing || existing.view === undefined) return;
+    const { view: _was, ...rest } = existing;
+    updateWindow(windowId, { props: rest });
+  }, [grimoire.windows, updateWindow, windowId]);
+
+  const toggleInvites = useCallback(() => {
+    setShowInvites((open) => {
+      const next = !open;
+      if (windowId) {
+        const existing = grimoire.windows[windowId]?.props;
+        if (existing) {
+          const { view: _was, ...rest } = existing;
+          updateWindow(windowId, {
+            props: { ...rest, ...(next ? { view: "invites" } : {}) },
+          });
+        }
+      }
+      return next;
+    });
+  }, [grimoire.windows, updateWindow, windowId]);
+
+  const handleOpenLink = useCallback(
+    async (url: string) => {
+      const invite = await openInviteLink(url, account?.pubkey);
+      setLinkInvites((prev) => [
+        invite,
+        ...prev.filter((p) => p.id !== invite.id),
+      ]);
+    },
+    [account?.pubkey],
+  );
+
+  /**
+   * A link-opened invite and a giftwrapped one are the same thing once open;
+   * the link's own copy wins, being the fresher fetch.
+   *
+   * Standing is resolved HERE, against the live vault, rather than trusting the
+   * snapshot each invite was fetched with: joining does not re-fetch the inbox,
+   * and an invite for a community you are now in must stop presenting itself as
+   * something waiting the moment you are in it.
+   */
+  const allInvites = useMemo(() => {
+    const seen = new Set(linkInvites.map((i) => i.bundle.community_id));
+    const held = new Map(communities.map((c) => [c.idHex, c]));
+    return [
+      ...linkInvites,
+      ...invites.filter((i) => !seen.has(i.bundle.community_id)),
+    ].map((invite) => {
+      const standing = inviteStanding(
+        invite.bundle,
+        held.get(invite.bundle.community_id.toLowerCase()),
+        bytesToHex,
+      );
+      return { ...invite, standing, alreadyJoined: standing !== "new" };
+    });
+  }, [linkInvites, invites, communities]);
+
+  /** Only what is worth acting on gets counted — a held invite is not news. */
+  const pendingInviteCount = useMemo(
+    () => allInvites.filter((i) => i.standing !== "held" && !i.expired).length,
+    [allInvites],
+  );
+
+  /**
+   * Accept: keep the keys, save the membership, announce it. The vault re-read
+   * is what makes the community appear — the join wrote it, this reads it back.
+   */
+  const handleJoin = useCallback(
+    async (invite: PendingInvite) => {
+      if (!account?.pubkey || !account.signer) return;
+      setJoining(invite.id);
+      setJoinError(undefined);
+      try {
+        const outcome = await joinFromInvite(
+          invite.bundle,
+          account.pubkey,
+          account.signer,
+        );
+        refreshList();
+        refreshInvites();
+        setSelectedId(outcome.communityId);
+        setShowInvites(false);
+        if (outcome.guestbook === "failed") {
+          // The membership is real regardless: the Guestbook is off-consensus,
+          // and a missing Join costs a row in the members list, never access.
+          setJoinError(
+            `You are in, but your arrival was not announced: ${outcome.guestbookError ?? "the guestbook publish failed"}`,
+          );
+        }
+      } catch (err) {
+        setJoinError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setJoining(undefined);
+      }
+    },
+    [account, refreshList, refreshInvites],
+  );
 
   /**
    * Record a deliberate move: on this device, and in this window's own props.
@@ -243,6 +389,8 @@ export function ConcordViewer({
       setSelectedChannel(idHex);
       rememberNavigation(communityIdHex, idHex);
       setShowGuestbook(false);
+      setShowPins(false);
+      closeInvites();
       // Abandon any pending jump. It is only ever pending because the channel
       // it named would not resolve, and picking a channel by hand says the
       // reader has moved on — without this, the next channel that DOES resolve
@@ -251,7 +399,7 @@ export function ConcordViewer({
       setJumpTo(undefined);
       if (isMobile) setSidebarOpen(false);
     },
-    [isMobile, communityIdHex, rememberNavigation],
+    [isMobile, communityIdHex, rememberNavigation, closeInvites],
   );
 
   const { feed: guestbook, loading: guestbookLoading } = useConcordGuestbook(
@@ -310,6 +458,8 @@ export function ConcordViewer({
       // mounted.
       setQuery("");
       setShowGuestbook(false);
+      setShowPins(false);
+      closeInvites();
       setSelectedChannel(hit.channelIdHex);
       // A result is a deliberate pick of the channel it was found in, so it is
       // remembered exactly like a click on the row would be. Leaving it out
@@ -318,7 +468,7 @@ export function ConcordViewer({
       setJumpTo({ messageId: hit.message.rumorId, nonce: Date.now() });
       if (isMobile) setSidebarOpen(false);
     },
-    [isMobile, communityIdHex, rememberNavigation],
+    [isMobile, communityIdHex, rememberNavigation, closeInvites],
   );
 
   /**
@@ -437,6 +587,14 @@ export function ConcordViewer({
       {/* The scope control moved to the results heading — it describes what
           was searched, so it belongs beside the count, not under the box where
           it pushed the channel list down on every keystroke. */}
+      {/* Always offered, not only when something is waiting: a link is opened
+          from here, and a panel that appears only when you already have an
+          invite is one you cannot reach to paste one into. */}
+      <InvitesRow
+        count={pendingInviteCount}
+        active={showInvites}
+        onClick={toggleInvites}
+      />
       <CommunityPicker
         communities={communities.map((c) => ({
           idHex: c.idHex,
@@ -445,6 +603,10 @@ export function ConcordViewer({
           ...(totals.get(c.idHex) ? { unread: totals.get(c.idHex) } : {}),
         }))}
         selected={community?.idHex}
+        // The channels stay listed — only the ACTIVE marks go, because while
+        // the invites pane is open neither a channel nor a community is what
+        // the window is showing.
+        highlight={!showInvites}
         openness={openness}
         opennessDetail={opennessDetail}
         onSelect={(idHex) => {
@@ -455,6 +617,7 @@ export function ConcordViewer({
           setSelectedChannel(remembered);
           rememberNavigation(idHex, remembered);
           setShowGuestbook(false);
+          setShowInvites(false);
           setJumpTo(undefined);
         }}
       >
@@ -462,7 +625,9 @@ export function ConcordViewer({
           <ChannelList
             channels={channels}
             communityId={community?.idHex}
-            selected={showGuestbook ? undefined : openChannel?.idHex}
+            selected={
+              showGuestbook || showInvites ? undefined : openChannel?.idHex
+            }
             loading={loading}
             error={error}
             unread={unread}
@@ -524,7 +689,19 @@ export function ConcordViewer({
             everything written before the rotation. */}
         {stranded && <StrandedBanner />}
         <div className="min-h-0 flex-1">
-          {searchActive ? (
+          {showInvites ? (
+            <ConcordInvitesPanel
+              invites={allInvites}
+              loading={invitesLoading}
+              {...(invitesError ? { error: invitesError } : {})}
+              {...(joining ? { joining } : {})}
+              {...(joinError ? { joinError } : {})}
+              onJoin={(invite) => void handleJoin(invite)}
+              onOpenLink={handleOpenLink}
+              headerPrefix={headerPrefix}
+              onRefresh={refreshInvites}
+            />
+          ) : searchActive ? (
             <ConcordSearchPanel
               hits={hits}
               searching={searching}
@@ -546,15 +723,24 @@ export function ConcordViewer({
             />
           ) : identifier ? (
             <div className="flex h-full min-h-0 flex-col">
-              {/* Above the timeline: a pin reaches members who hold none of
-                  the history it came from, so it cannot live inside the
-                  message list. */}
-              <ConcordPinsBar pins={pins} unavailable={pinsUnavailable} />
               <div className="min-h-0 flex-1">
                 <ChatViewer
                   protocol="concord"
                   identifier={identifier as ProtocolIdentifier}
                   headerPrefix={headerPrefix}
+                  headerExtra={
+                    <PinsHeaderButton
+                      count={pins.length}
+                      unavailable={pinsUnavailable}
+                      open={showPins}
+                      onToggle={() => setShowPins((v) => !v)}
+                    />
+                  }
+                  belowHeader={
+                    showPins ? (
+                      <ConcordPinsList pins={pins} onOpen={handleOpenPin} />
+                    ) : undefined
+                  }
                   onJumpHandled={handleJumpHandled}
                   {...(jumpTo ? { jumpTo } : {})}
                 />
@@ -598,7 +784,7 @@ function OpennessBadge({
   const Icon = openness === "public" ? Globe : Lock;
   return (
     <span
-      className="ml-auto shrink-0 text-muted-foreground"
+      className="flex shrink-0 items-center text-muted-foreground"
       title={
         openness === "public"
           ? `Public: anyone holding a live invite link can join (${detail}). Retiring the last one turns the community private again.`
@@ -613,6 +799,7 @@ function OpennessBadge({
 function CommunityRow({
   community,
   selected,
+  highlight = true,
   openness,
   opennessDetail,
   onSelect,
@@ -624,6 +811,7 @@ function CommunityRow({
     unread?: CommunityUnread;
   };
   selected: boolean;
+  highlight?: boolean;
   openness?: "public" | "private";
   opennessDetail?: string;
   onSelect: (idHex: string) => void;
@@ -638,7 +826,7 @@ function CommunityRow({
         onClick={() => onSelect(community.idHex)}
         className={cn(
           "flex w-full cursor-crosshair items-center gap-1.5 px-2 py-1 text-left text-sm hover:bg-muted/50",
-          selected && "bg-muted/70 font-medium",
+          selected && highlight && "bg-muted/70 font-medium",
           hasUnread && "font-semibold text-foreground",
         )}
       >
@@ -659,10 +847,14 @@ function CommunityRow({
           </span>
         )}
         <span className="truncate">{label}</span>
-        {openness && (
-          <OpennessBadge openness={openness} detail={opennessDetail ?? ""} />
-        )}
-        {community.unread && <UnreadBadge unread={community.unread} />}
+        {/* One right-aligned group, so the openness icon and the unread count
+            sit together instead of the icon floating off on its own. */}
+        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          {openness && (
+            <OpennessBadge openness={openness} detail={opennessDetail ?? ""} />
+          )}
+          {community.unread && <UnreadBadge unread={community.unread} />}
+        </span>
       </button>
     </NotifLevelMenu>
   );
@@ -679,6 +871,7 @@ function CommunityRow({
 function CommunityPicker({
   communities,
   selected,
+  highlight,
   openness,
   opennessDetail,
   onSelect,
@@ -691,6 +884,8 @@ function CommunityPicker({
     unread?: CommunityUnread;
   }>;
   selected: string | undefined;
+  /** Whether the selected row renders as active (false while a pane overrides it). */
+  highlight: boolean;
   /** Known for the SELECTED community only — it is the one whose fold is read. */
   openness?: "public" | "private";
   opennessDetail: string;
@@ -715,6 +910,7 @@ function CommunityPicker({
           <CommunityRow
             community={c}
             selected={c.idHex === selected}
+            highlight={highlight}
             {...(c.idHex === selected && openness
               ? { openness, opennessDetail }
               : {})}
