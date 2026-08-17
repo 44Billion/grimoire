@@ -16,9 +16,13 @@ import { use$ } from "applesauce-react/hooks";
 import accountManager from "@/services/accounts";
 import { DM_LIST_SCOPE, onDmScope } from "@/services/dm-bus";
 import {
+  backfillDmHistory,
   grantDecryptConsent,
   hasDecryptConsent,
+  isHistoryExhausted,
+  resetHistoryWalk,
   syncDmInbox,
+  type BackfillProgress,
 } from "@/services/dm-inbox";
 import { listDmConversations } from "@/services/dm-store";
 import { readDmLastRead } from "@/services/dm-reads";
@@ -60,6 +64,15 @@ export interface DirectMessagesResult {
   /** Open the inbox. Permanent for this account. */
   grantConsent: () => Promise<void>;
   refresh: () => void;
+  /**
+   * The walk back through the whole history, while it is running.
+   *
+   * Absent once it has reached the beginning — which is sticky, so it is
+   * absent on every load after the first successful one.
+   */
+  backfill?: BackfillProgress;
+  /** Walk it again from the top: for a new relay, or a run that went wrong. */
+  rescan: () => Promise<void>;
 }
 
 export function useDirectMessages(
@@ -82,8 +95,15 @@ export function useDirectMessages(
     status: DirectMessagesStatus;
   }>();
   const [nonce, setNonce] = useState(0);
+  const [backfill, setBackfill] = useState<BackfillProgress>();
 
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
+
+  const rescan = useCallback(async () => {
+    if (!pubkey) return;
+    await resetHistoryWalk(pubkey);
+    refresh();
+  }, [pubkey, refresh]);
 
   const grantConsent = useCallback(async () => {
     if (!pubkey) return;
@@ -98,6 +118,9 @@ export function useDirectMessages(
     if (!enabled || !pubkey) return;
 
     let cancelled = false;
+    // A long walk must stop when the pane closes or the account changes, not
+    // grind on against relays nobody is reading from any more.
+    const abort = new AbortController();
 
     const read = async (status: DirectMessagesStatus) => {
       const rows = await listDmConversations(pubkey);
@@ -133,19 +156,37 @@ export function useDirectMessages(
       // Paint what is already on disk before touching a relay.
       await read("ready");
       try {
-        // Several pages on the list's own sync: one page is the newest 200
-        // wraps, and a wrap says nothing about whose conversation it is until
-        // it is open — so one page of an active inbox can be a single
-        // correspondent while everyone else stays missing from the sidebar.
-        await syncDmInbox(pubkey, signer, { pages: 5 });
+        // The fresh end first: whatever arrived since last time, so a reader
+        // who opens the pane sees today's mail before a long walk starts.
+        await syncDmInbox(pubkey, signer, { pages: 2 });
+        if (cancelled) return;
+        await read("ready");
+
+        // Then the whole history, once. A wrap says nothing about whose
+        // conversation it belongs to until it is open, so a complete
+        // conversation list has no cheaper answer than opening everything —
+        // and every wrap is opened once, ever, so this is a first-run cost.
+        if (!(await isHistoryExhausted(pubkey))) {
+          await backfillDmHistory(pubkey, signer, {
+            signal: abort.signal,
+            onProgress: (progress) => {
+              if (!cancelled)
+                setBackfill(progress.exhausted ? undefined : progress);
+            },
+          });
+        }
       } catch (error) {
         console.warn("[dm] could not sync the inbox:", error);
       }
-      if (!cancelled) await read("ready");
+      if (!cancelled) {
+        setBackfill(undefined);
+        await read("ready");
+      }
     })();
 
     return () => {
       cancelled = true;
+      abort.abort();
     };
   }, [enabled, pubkey, signer, nonce]);
 
@@ -164,5 +205,7 @@ export function useDirectMessages(
     status: current?.status ?? "loading",
     grantConsent,
     refresh,
+    rescan,
+    ...(backfill ? { backfill } : {}),
   };
 }

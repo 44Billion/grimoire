@@ -67,6 +67,7 @@ export const BACKFILL_PAGE = 200;
 
 const consentKey = (viewer: string) => `${viewer}:consent`;
 const cursorKey = (viewer: string) => `${viewer}:cursor`;
+const exhaustedKey = (viewer: string) => `${viewer}:exhausted`;
 
 /** Has this account agreed to have its inbox opened? */
 export async function hasDecryptConsent(viewer: string): Promise<boolean> {
@@ -87,6 +88,23 @@ export async function grantDecryptConsent(viewer: string): Promise<void> {
 /** The oldest wrap timestamp this account has walked back to, if any. */
 async function readCursor(viewer: string): Promise<number | undefined> {
   return readDmKv<number>(cursorKey(viewer));
+}
+
+/**
+ * Whether the walk backwards has reached the end of what the relays hold.
+ *
+ * Sticky, and per account. Reaching the beginning once is a fact about the
+ * history, not about the session — re-walking it on every load would cost a
+ * full relay sweep to discover the same nothing.
+ */
+export async function isHistoryExhausted(viewer: string): Promise<boolean> {
+  return (await readDmKv<boolean>(exhaustedKey(viewer))) === true;
+}
+
+/** Walk the history again from the top — for a new relay, or a bad first run. */
+export async function resetHistoryWalk(viewer: string): Promise<void> {
+  await writeDmKv(exhaustedKey(viewer), false);
+  await writeDmKv(cursorKey(viewer), undefined);
 }
 
 /** A signer that can open a wrap. Absent `nip44` means it cannot. */
@@ -351,6 +369,161 @@ export async function syncDmInbox(
     fetched,
     ...(oldest !== undefined ? { oldest } : {}),
   };
+}
+
+/** How long a single backfill page waits before the walk gives up on it. */
+const BACKFILL_PAGE_TIMEOUT_MS = 15_000;
+
+export interface BackfillProgress {
+  /** Pages walked so far. */
+  pages: number;
+  /** Wraps the relays have handed over. */
+  fetched: number;
+  /** Messages stored. Lower than `fetched`: most pages are mostly re-runs. */
+  written: number;
+  /** The walk reached the beginning of what the relays hold. */
+  exhausted: boolean;
+}
+
+/**
+ * Walk this account's whole gift-wrap history, oldest-ward, until it runs dry.
+ *
+ * A DM inbox is one undifferentiated stream: a wrap says nothing about whose
+ * conversation it belongs to until it is open, so "show me my conversations"
+ * has no cheaper answer than "open everything". One page of an active inbox
+ * can be a single correspondent repeated two hundred times while everyone else
+ * stays invisible — which is exactly what a short conversation list looks like.
+ *
+ * Three properties make that affordable rather than reckless:
+ *
+ * - **Resumable.** The cursor records how far back the walk has got and only
+ *   ever recedes, so a reload continues rather than restarting. Reaching the
+ *   beginning is recorded too, and is sticky.
+ * - **Paid once.** Every wrap opened is mirrored, and the seen memo covers the
+ *   ones that would not open — so the expensive run is the first one, and
+ *   every run after it is a handful of pages of already-known ids.
+ * - **Interruptible.** The walk yields between pages and stops on `signal`, so
+ *   closing the window does not leave it grinding.
+ *
+ * It rings the doorbell as it goes, so the list fills in while it runs rather
+ * than appearing all at once at the end.
+ */
+export async function backfillDmHistory(
+  viewer: string,
+  signer: DmSigner,
+  options: {
+    relays?: string[];
+    /** Stop after this many pages. Absent means walk to the end. */
+    maxPages?: number;
+    signal?: AbortSignal;
+    onProgress?: (progress: BackfillProgress) => void;
+  } = {},
+): Promise<BackfillProgress> {
+  const relays = options.relays ?? (await ownDmReadRelays(viewer));
+  const progress: BackfillProgress = {
+    pages: 0,
+    fetched: 0,
+    written: 0,
+    exhausted: false,
+  };
+  if (relays.length === 0) return progress;
+
+  let until = await readCursor(viewer);
+  // Ids this walk has already been handed. A relay that ignores `until` — or
+  // one whose page cap is filled by the boundary wrap alone — would otherwise
+  // serve the same page forever, and the walk would never end.
+  const seenThisWalk = new Set<string>();
+  /**
+   * Whether the last page came back with nothing new.
+   *
+   * `until` is inclusive, so the wrap the bound was taken from comes back in
+   * the next page. That is deliberate — an exclusive bound would drop its
+   * same-second siblings — but it means a page can be entirely repeats while
+   * older wraps still exist behind the relay's page cap. One strict step past
+   * the boundary distinguishes "the cap hid the rest" from "there is no rest";
+   * two in a row means there is genuinely nothing older.
+   */
+  let steppedPast = false;
+
+  while (!options.signal?.aborted) {
+    if (options.maxPages !== undefined && progress.pages >= options.maxPages)
+      break;
+
+    const wraps = await requestEvents(
+      relays,
+      [
+        {
+          ...inboxFilter(viewer),
+          limit: BACKFILL_PAGE,
+          ...(until !== undefined ? { until } : {}),
+        },
+      ],
+      { eventStore: null, timeout: BACKFILL_PAGE_TIMEOUT_MS },
+    );
+
+    progress.pages += 1;
+
+    if (wraps.length === 0) {
+      progress.exhausted = true;
+      break;
+    }
+
+    const fresh = wraps.filter((w) => !seenThisWalk.has(w.id));
+    for (const wrap of wraps) seenThisWalk.add(wrap.id);
+
+    if (fresh.length === 0) {
+      if (steppedPast || until === undefined) {
+        // Stepping past the boundary changed nothing: there is nothing older.
+        progress.exhausted = true;
+        break;
+      }
+      // Everything in this page was already seen. Either the relay is ignoring
+      // the bound, or its page cap was filled by the boundary wrap's own
+      // second — one strict step tells us which. The cost, in the pathological
+      // case where a whole page shares one timestamp, is the rest of that
+      // second; the alternative is a walk that does not terminate.
+      steppedPast = true;
+      until -= 1;
+      continue;
+    }
+    steppedPast = false;
+
+    const outcome = await unlockWraps(viewer, signer, fresh);
+    progress.fetched += fresh.length;
+    progress.written += outcome.written;
+
+    const pageOldest = fresh.reduce(
+      (min, w) => Math.min(min, w.created_at),
+      Number.POSITIVE_INFINITY,
+    );
+    if (!Number.isFinite(pageOldest)) {
+      progress.exhausted = true;
+      break;
+    }
+
+    // Inclusive, so a run of same-second wraps is not split across the bound;
+    // `seenThisWalk` is what stops that from looping.
+    until = pageOldest;
+    await writeDmKv(cursorKey(viewer), pageOldest);
+
+    console.info(
+      `[dm] backfill page ${progress.pages}: ${fresh.length} new wraps, ` +
+        `${outcome.written} stored, back to ${new Date(pageOldest * 1000).toISOString()}`,
+    );
+    options.onProgress?.({ ...progress });
+
+    // Between pages, not inside them: the decrypt waves already yield, and
+    // this is what keeps the window responsive across a long walk.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  if (progress.exhausted) await writeDmKv(exhaustedKey(viewer), true);
+  options.onProgress?.({ ...progress });
+  console.info(
+    `[dm] backfill ${progress.exhausted ? "complete" : "paused"}: ` +
+      `${progress.pages} pages, ${progress.fetched} wraps, ${progress.written} stored`,
+  );
+  return progress;
 }
 
 /**

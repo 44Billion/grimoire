@@ -12,22 +12,26 @@
  */
 
 import { useState } from "react";
-import { AtSign, Bookmark, Plus } from "lucide-react";
+import { AtSign, Bookmark, Loader2, Plus } from "lucide-react";
 import { UserName } from "@/components/nostr/UserName";
 import { formatTimestamp, useLocale } from "@/hooks/useLocale";
 import { resolveRecipient } from "@/lib/dm/recipient";
 import { cn } from "@/lib/utils";
 import type { DmConversationSummary } from "@/hooks/useDirectMessages";
+import type { BackfillProgress } from "@/services/dm-inbox";
 
 export function DirectMessageList({
   conversations,
   selected,
   onSelect,
+  backfill,
 }: {
   conversations: DmConversationSummary[];
   /** The open conversation's peer pubkey, if a DM is what is on screen. */
   selected?: string;
   onSelect: (peer: string) => void;
+  /** The walk back through the whole history, while one is running. */
+  backfill?: BackfillProgress;
 }) {
   return (
     <div className="flex flex-col">
@@ -35,7 +39,7 @@ export function DirectMessageList({
           exactly as a community's channels need no "Channels" label. */}
       <NewConversationInput onResolved={onSelect} />
 
-      {conversations.length === 0 ? (
+      {conversations.length === 0 && !backfill ? (
         <p className="px-2 pb-1 text-xs text-muted-foreground">
           No conversations yet.
         </p>
@@ -48,6 +52,18 @@ export function DirectMessageList({
             onSelect={onSelect}
           />
         ))
+      )}
+
+      {/* The list grows while this runs — the walk rings the doorbell per page
+          — so the line says what is still coming rather than blocking on it.
+          Only ever shown on the first complete pass for an account. */}
+      {backfill && (
+        <div className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] text-muted-foreground">
+          <Loader2 className="size-3 shrink-0 animate-spin" />
+          <span className="truncate">
+            reading older messages — {backfill.written} so far
+          </span>
+        </div>
       )}
     </div>
   );

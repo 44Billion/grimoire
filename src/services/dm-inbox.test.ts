@@ -9,10 +9,13 @@ import type { NostrEvent } from "nostr-tools";
 import db from "./db";
 import { listDmConversations, queryConversation } from "./dm-store";
 import {
+  backfillDmHistory,
   DECRYPT_WAVE,
   grantDecryptConsent,
   hasDecryptConsent,
   inboxFilter,
+  isHistoryExhausted,
+  resetHistoryWalk,
   syncDmInbox,
   unlockWraps,
   WRAP_BACKDATE_SECS,
@@ -333,5 +336,87 @@ describe("syncDmInbox", () => {
     const second = await db.dmKv.get(`${ALICE}:cursor`);
 
     expect(second?.value).toBe(first?.value);
+  });
+});
+
+describe("backfillDmHistory", () => {
+  it("walks until the relays run dry, and remembers that they did", async () => {
+    const wraps = await Promise.all([
+      wrapMessage(bob, ALICE, "old one"),
+      wrapMessage(bob, ALICE, "old two"),
+    ]);
+    const r = await relay({ kind: "paged", events: wraps, pageLimit: 1 });
+
+    const progress = await backfillDmHistory(ALICE, alice, {
+      relays: [r.url],
+    });
+
+    expect(progress.exhausted).toBe(true);
+    expect(progress.written).toBe(2);
+    expect(await isHistoryExhausted(ALICE)).toBe(true);
+  });
+
+  it("does not walk again once it has reached the beginning", async () => {
+    // Sticky per account: reaching the end is a fact about the history, and
+    // re-walking it every load costs a full relay sweep to find the same
+    // nothing.
+    const r = await relay({ kind: "normal", events: [] });
+    await backfillDmHistory(ALICE, alice, { relays: [r.url] });
+
+    expect(await isHistoryExhausted(ALICE)).toBe(true);
+    await resetHistoryWalk(ALICE);
+    expect(await isHistoryExhausted(ALICE)).toBe(false);
+  });
+
+  it("stops against a relay that ignores `until` and repeats itself", async () => {
+    // The loop's real hazard. `until` is inclusive so a run of same-second
+    // wraps is not split across the bound — which means a relay serving the
+    // same page forever would otherwise never let the walk end.
+    const wrap = await wrapMessage(bob, ALICE, "the only one");
+    const r = await relay({ kind: "normal", events: [wrap] });
+
+    const progress = await backfillDmHistory(ALICE, alice, {
+      relays: [r.url],
+      maxPages: 50,
+    });
+
+    expect(progress.exhausted).toBe(true);
+    expect(progress.pages).toBeLessThan(4);
+  });
+
+  it("stops when the caller aborts", async () => {
+    const wraps = await Promise.all(
+      Array.from({ length: 6 }, (_, i) => wrapMessage(bob, ALICE, `m${i}`)),
+    );
+    const r = await relay({ kind: "paged", events: wraps, pageLimit: 1 });
+
+    const abort = new AbortController();
+    const progress = await backfillDmHistory(ALICE, alice, {
+      relays: [r.url],
+      signal: abort.signal,
+      onProgress: () => abort.abort(),
+    });
+
+    // Aborted rather than finished, so the end is NOT recorded — the next
+    // session has to pick the walk back up.
+    expect(progress.exhausted).toBe(false);
+    expect(await isHistoryExhausted(ALICE)).toBe(false);
+  });
+
+  it("resumes from where the last walk stopped", async () => {
+    const wraps = await Promise.all(
+      Array.from({ length: 4 }, (_, i) => wrapMessage(bob, ALICE, `m${i}`)),
+    );
+    const r = await relay({ kind: "paged", events: wraps, pageLimit: 1 });
+
+    await backfillDmHistory(ALICE, alice, { relays: [r.url], maxPages: 1 });
+    const afterFirst = await db.dmRumors.count();
+
+    await backfillDmHistory(ALICE, alice, { relays: [r.url] });
+
+    // The cursor only recedes, so the second walk continued rather than
+    // re-fetching the newest page it had already opened.
+    expect(await db.dmRumors.count()).toBeGreaterThan(afterFirst);
+    expect(await isHistoryExhausted(ALICE)).toBe(true);
   });
 });
