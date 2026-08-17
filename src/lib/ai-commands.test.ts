@@ -1,0 +1,59 @@
+import { describe, expect, it } from "vitest";
+
+import { proposeCommand, proposeCommands } from "./ai-commands";
+
+describe("proposeCommand", () => {
+  it("recognises a real command", () => {
+    expect(proposeCommand("nip 01")).toEqual({
+      command: "nip 01",
+      appId: "nip",
+    });
+  });
+
+  it("ignores a command grimoire does not have", () => {
+    expect(proposeCommand("rm -rf /")).toBeUndefined();
+    expect(proposeCommand("sudo publish everything")).toBeUndefined();
+  });
+
+  it("ignores blank lines and comments", () => {
+    expect(proposeCommand("   ")).toBeUndefined();
+    expect(proposeCommand("# open a profile")).toBeUndefined();
+  });
+
+  it("refuses commands that act on the user's behalf", () => {
+    // A model reading untrusted note text must not be able to cause a post.
+    expect(proposeCommand("post hello world")?.refusal).toMatch(
+      /only opens when you run it yourself/,
+    );
+    expect(proposeCommand("zap alice 1000")?.refusal).toBeTruthy();
+    expect(proposeCommand("wallet")?.refusal).toBeTruthy();
+  });
+
+  it("does not refuse read-only commands", () => {
+    expect(
+      proposeCommand("relay wss://relay.example")?.refusal,
+    ).toBeUndefined();
+    expect(proposeCommand("kinds")?.refusal).toBeUndefined();
+  });
+});
+
+describe("proposeCommands", () => {
+  it("keeps the commands and drops the prose", () => {
+    const block = [
+      "# these two are worth a look",
+      "nip 65",
+      "not-a-command --flag",
+      "kinds",
+      "",
+    ].join("\n");
+
+    expect(proposeCommands(block).map((p) => p.command)).toEqual([
+      "nip 65",
+      "kinds",
+    ]);
+  });
+
+  it("returns nothing for a block with no commands", () => {
+    expect(proposeCommands("just some text\nand more")).toEqual([]);
+  });
+});

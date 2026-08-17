@@ -22,6 +22,12 @@ vi.mock("@/services/db", () => ({
     profiles: { get: (...args: unknown[]) => profilesGet(...args) },
     nips: { get: () => Promise.resolve(undefined) },
   },
+  // The command catalogue in the system prompt pulls in the man pages, which
+  // reach the relay singletons; they need this at module init.
+  relayLivenessStorage: {
+    getItem: () => Promise.resolve(null),
+    setItem: () => Promise.resolve(),
+  },
 }));
 
 vi.mock("@/services/nip-text", () => ({

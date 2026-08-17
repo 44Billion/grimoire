@@ -1,4 +1,6 @@
-import { parseAiTarget, type AiTarget } from "./ai-context";
+// From the leaf module, not ai-context: the man pages import this parser, and
+// ai-context imports the man pages.
+import { parseAiTarget, type AiTarget } from "./ai-target";
 
 export interface AiCommandProps {
   prompt?: string;

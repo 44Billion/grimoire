@@ -1,5 +1,6 @@
 import {
   Fragment,
+  isValidElement,
   useCallback,
   useEffect,
   useMemo,
@@ -48,6 +49,8 @@ import {
 } from "@/lib/ai-context";
 import { Suggestion, Suggestions } from "./ai-elements/suggestion";
 import { SystemPromptDisclosure } from "./ai/SystemPromptDisclosure";
+import { CommandChips } from "./ai/CommandChips";
+import { COMMAND_FENCE } from "@/lib/ai-commands";
 import { ProviderLogo, providerFromModel } from "./ai/ProviderLogo";
 import { useAddWindow } from "@/core/state";
 import {
@@ -144,6 +147,23 @@ interface Turn {
   /** From the `done` chunk. The model is the extension's choice, not ours. */
   model?: string;
   usage?: Usage;
+}
+
+/**
+ * Source of a ```grimoire fence, or null for any other code block. Markdown
+ * renders a fence as `<pre><code class="language-grimoire">…`, so the language
+ * lives on the child.
+ */
+function fencedCommandBlock(children: ReactNode): string | null {
+  if (!isValidElement(children)) return null;
+  const props = children.props as {
+    className?: unknown;
+    children?: unknown;
+  };
+  const className =
+    typeof props.className === "string" ? props.className : undefined;
+  if (!className?.includes(`language-${COMMAND_FENCE}`)) return null;
+  return typeof props.children === "string" ? props.children : null;
 }
 
 /** True when any string leaf holds a reference that renders as a block embed. */
@@ -274,6 +294,16 @@ export default function AiViewer({
     const onOpen = (target: NostrRefTarget, label: string) =>
       addWindow(target.appId, target.props, `open ${label}`);
     return {
+      // A ```grimoire fence is a command proposal, not code to read. Render it
+      // as buttons; anything else stays a normal code block.
+      pre: ({ children, ...rest }: { children?: ReactNode }) => {
+        const block = fencedCommandBlock(children);
+        return block == null ? (
+          <pre {...rest}>{children}</pre>
+        ) : (
+          <CommandChips block={block} />
+        );
+      },
       // An event embed is a block, and a <div> inside a <p> is invalid HTML
       // that browsers repair by splitting the paragraph. Swap the tag instead.
       p: ({ children }: { children?: ReactNode }) =>

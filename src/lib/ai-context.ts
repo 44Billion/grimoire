@@ -7,7 +7,11 @@ import {
   type NostrRefTarget,
 } from "./open-nostr-ref";
 
+import { COMMAND_FENCE, PROPOSAL_DENIED } from "./ai-commands";
+import type { AiTarget } from "./ai-target";
+
 import { getKindInfo } from "@/constants/kinds";
+import { manPages } from "@/types/man";
 import db from "@/services/db";
 import eventStore from "@/services/event-store";
 import { addressLoader, eventLoader } from "@/services/loaders";
@@ -41,40 +45,35 @@ export const GENERAL_SUGGESTIONS = [
   "How do NIP-05 identifiers work?",
 ];
 
-export type AiTargetKind = "event" | "kind" | "nip";
-
-export interface AiTarget {
-  type: AiTargetKind;
-  /** Bech32 entity, kind number, or NIP id, as typed. */
-  value: string;
-}
+export type { AiTarget, AiTargetKind } from "./ai-target";
+export { parseAiTarget } from "./ai-target";
 
 /**
- * Classify a bare `ai` argument. `nip-01`/`nip01` and a plain number are
- * unambiguous; anything bech32 is an event or a profile.
+ * Commands the model may propose, as `name — synopsis`. Generated from the man
+ * pages so the list cannot drift from what grimoire actually has, and filtered
+ * to the ones a proposal may run (see NEEDS_HUMAN in ai-commands).
  */
-export function parseAiTarget(token: string): AiTarget | undefined {
-  const value = token.trim();
-  if (!value) return undefined;
-
-  const nip = /^nip-?([0-9a-z]{1,3})$/i.exec(value);
-  if (nip) return { type: "nip", value: nip[1].toUpperCase().padStart(2, "0") };
-
-  if (/^(kind-?)?\d{1,5}$/i.test(value)) {
-    return { type: "kind", value: value.replace(/^kind-?/i, "") };
-  }
-
-  if (/^(nostr:)?(npub|nprofile|note|nevent|naddr)1/.test(value)) {
-    return { type: "event", value };
-  }
-
-  return undefined;
+function commandCatalogue(): string {
+  return Object.values(manPages)
+    .filter((page) => !PROPOSAL_DENIED.has(page.appId))
+    .map((page) => `  ${page.synopsis} — ${page.name}`)
+    .join("\n");
 }
 
-const BASE_SYSTEM =
-  "You are answering inside grimoire, a Nostr protocol explorer. " +
-  "Be concrete and brief. Cite kind numbers and NIP ids where they apply. " +
-  "Reference people and events as nostr: bech32 entities so they render.";
+const BASE_SYSTEM = [
+  "You are answering inside grimoire, a Nostr protocol explorer whose windows" +
+    " are opened by Unix-style commands.",
+  "Be concrete and brief. Cite kind numbers and NIP ids where they apply." +
+    " Reference people and events as nostr: bech32 entities so they render as" +
+    " profiles and embedded events.",
+  "Never state spec details as fact when the spec text is not in this prompt;" +
+    " say you are answering from memory instead.",
+  "When a grimoire window would answer better than prose, propose the command" +
+    ` in a fenced ${COMMAND_FENCE} block, one command per line, and say in a` +
+    " sentence what it will show. The user clicks to run it; you cannot run it" +
+    " yourself, and you must not claim to have opened anything.",
+  `Commands available:\n${commandCatalogue()}`,
+].join("\n\n");
 
 /** Build the system prompt for a target, or undefined when it resolves to nothing. */
 export async function buildAiContext(
