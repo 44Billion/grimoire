@@ -1,0 +1,285 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Send, Sparkles, Square } from "lucide-react";
+
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton,
+} from "./ai-elements/conversation";
+import {
+  Message,
+  MessageContent,
+  MessageResponse,
+} from "./ai-elements/message";
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from "./ai-elements/reasoning";
+import { Button } from "./ui/button";
+import { Textarea } from "./ui/textarea";
+import {
+  describeInferenceError,
+  getInference,
+  getInferenceFeatures,
+  isInferenceAvailable,
+} from "@/services/inference";
+import type { InferenceMessage } from "@/types/inference";
+
+interface AiViewerProps {
+  /** Prompt from the command line, sent once on mount. */
+  prompt?: string;
+  system?: string;
+}
+
+/** A turn as rendered. `pending` marks the assistant turn currently streaming. */
+interface Turn {
+  role: "user" | "assistant";
+  content: string;
+  reasoning?: string;
+  pending?: boolean;
+}
+
+export default function AiViewer({ prompt, system }: AiViewerProps) {
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [input, setInput] = useState("");
+  const [streaming, setStreaming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const controllerRef = useRef<AbortController | null>(null);
+  const sentInitial = useRef(false);
+
+  // Availability is read once: an injector that appears later is picked up on
+  // the next send, which throws `unavailable` with the same message.
+  const available = isInferenceAvailable();
+  const features = available ? getInferenceFeatures() : {};
+
+  const send = useCallback(
+    async (text: string) => {
+      const history: InferenceMessage[] = [
+        ...(system ? [{ role: "system" as const, content: system }] : []),
+        ...turns
+          .filter((turn) => !turn.pending)
+          .map((turn) =>
+            turn.role === "user"
+              ? { role: "user" as const, content: turn.content }
+              : {
+                  role: "assistant" as const,
+                  content: turn.content,
+                  ...(turn.reasoning ? { reasoning: turn.reasoning } : {}),
+                },
+          ),
+        { role: "user", content: text },
+      ];
+
+      setError(null);
+      setTurns((previous) => [
+        ...previous,
+        { role: "user", content: text },
+        { role: "assistant", content: "", pending: true },
+      ]);
+      setStreaming(true);
+
+      const controller = new AbortController();
+      controllerRef.current = controller;
+
+      // Accumulate off-state and flush on a frame so a token-per-render
+      // stream does not thrash the tree.
+      let content = "";
+      let reasoning = "";
+      let queued = false;
+      const flush = () => {
+        queued = false;
+        setTurns((previous) =>
+          previous.map((turn, index) =>
+            index === previous.length - 1 && turn.pending
+              ? {
+                  ...turn,
+                  content,
+                  ...(reasoning ? { reasoning } : {}),
+                }
+              : turn,
+          ),
+        );
+      };
+      const schedule = () => {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(flush);
+      };
+
+      try {
+        for await (const chunk of getInference().request({
+          method: "chat",
+          messages: history,
+          signal: controller.signal,
+          // Unadvertised option keys must be ignored, not rejected, so this is
+          // safe to send unconditionally.
+          options: { reasoningEffort: "auto" },
+        })) {
+          switch (chunk.type) {
+            case "delta":
+              content += chunk.content;
+              schedule();
+              break;
+            case "reasoning_delta":
+              reasoning += chunk.content;
+              schedule();
+              break;
+            case "done":
+              content =
+                chunk.message.role === "assistant"
+                  ? (chunk.message.content ?? content)
+                  : content;
+              if (
+                chunk.message.role === "assistant" &&
+                chunk.message.reasoning
+              ) {
+                reasoning = chunk.message.reasoning;
+              }
+              break;
+            default:
+              break;
+          }
+        }
+        setTurns((previous) =>
+          previous.map((turn, index) =>
+            index === previous.length - 1 && turn.pending
+              ? {
+                  role: "assistant",
+                  content,
+                  ...(reasoning ? { reasoning } : {}),
+                }
+              : turn,
+          ),
+        );
+      } catch (caught) {
+        setError(describeInferenceError(caught));
+        // Drop the empty pending turn; the error is shown instead.
+        setTurns((previous) =>
+          previous.filter(
+            (turn, index) =>
+              !(index === previous.length - 1 && turn.pending && !turn.content),
+          ),
+        );
+      } finally {
+        controllerRef.current = null;
+        setStreaming(false);
+      }
+    },
+    [system, turns],
+  );
+
+  // Fire the command-line prompt once.
+  useEffect(() => {
+    if (sentInitial.current || !prompt || !available) return;
+    sentInitial.current = true;
+    void send(prompt);
+    // `send` closes over `turns`, but this must run exactly once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prompt, available]);
+
+  // Closing the window must cancel in-flight provider work.
+  useEffect(() => () => controllerRef.current?.abort(), []);
+
+  const submit = () => {
+    const text = input.trim();
+    if (!text || streaming) return;
+    setInput("");
+    void send(text);
+  };
+
+  if (!available) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
+        <Sparkles className="size-8 text-muted-foreground" />
+        <div className="space-y-1">
+          <h3 className="text-sm font-medium">No inference provider</h3>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            Install an extension that injects{" "}
+            <code className="text-xs">window.inference</code> — grimoire never
+            sees your API keys. Reopen this window once it is installed.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <Conversation>
+        <ConversationContent>
+          {turns.length === 0 ? (
+            <ConversationEmptyState
+              icon={<Sparkles className="size-8" />}
+              title="Ask anything"
+              description="Your extension picks the provider and model."
+            />
+          ) : (
+            turns.map((turn, index) => (
+              <Message from={turn.role} key={index}>
+                <MessageContent>
+                  {turn.reasoning && (
+                    <Reasoning isStreaming={Boolean(turn.pending)}>
+                      <ReasoningTrigger />
+                      <ReasoningContent>{turn.reasoning}</ReasoningContent>
+                    </Reasoning>
+                  )}
+                  <MessageResponse>{turn.content}</MessageResponse>
+                </MessageContent>
+              </Message>
+            ))
+          )}
+        </ConversationContent>
+        <ConversationScrollButton />
+      </Conversation>
+
+      {error && (
+        <div className="mx-4 mb-2 rounded-md border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
+          {error}
+        </div>
+      )}
+
+      <div className="flex items-end gap-2 border-t border-border p-3">
+        <Textarea
+          className="max-h-40 min-h-9 resize-none"
+          onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              submit();
+            }
+          }}
+          placeholder="Ask anything…"
+          rows={1}
+          value={input}
+        />
+        {streaming ? (
+          <Button
+            onClick={() => controllerRef.current?.abort()}
+            size="icon"
+            title="Stop"
+            variant="outline"
+          >
+            <Square className="size-4" />
+          </Button>
+        ) : (
+          <Button
+            disabled={!input.trim()}
+            onClick={submit}
+            size="icon"
+            title="Send"
+          >
+            <Send className="size-4" />
+          </Button>
+        )}
+      </div>
+
+      {features.toolCalling && (
+        <div className="px-3 pb-2 text-xs text-muted-foreground">
+          Provider advertises tool calling.
+        </div>
+      )}
+    </div>
+  );
+}

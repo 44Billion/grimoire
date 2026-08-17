@@ -64,6 +64,7 @@ const SettingsViewer = lazy(() =>
 const EventLogViewer = lazy(() =>
   import("./EventLogViewer").then((m) => ({ default: m.EventLogViewer })),
 );
+const AiViewer = lazy(() => import("./AiViewer"));
 
 // Loading fallback component
 function ViewerLoading() {
@@ -317,6 +318,11 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
         break;
       case "log":
         content = <EventLogViewer />;
+        break;
+      case "ai":
+        content = (
+          <AiViewer prompt={window.props.prompt} system={window.props.system} />
+        );
         break;
       default:
         content = (

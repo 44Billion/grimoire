@@ -14,6 +14,7 @@ import {
 import { parseChatCommand } from "@/lib/chat-parser";
 import { parseBlossomCommand } from "@/lib/blossom-parser";
 import { parseZapCommand } from "@/lib/zap-parser";
+import { parseAiCommand } from "@/lib/ai-parser";
 
 export interface ManPageEntry {
   name: string;
@@ -988,6 +989,33 @@ export const manPages: Record<string, ManPageEntry> = {
     seeAlso: ["conn", "relay", "post"],
     appId: "log",
     category: "System",
+    defaultProps: {},
+  },
+  ai: {
+    name: "ai",
+    section: "1",
+    synopsis: "ai [--system <text>] [prompt...]",
+    description:
+      "Chat with a language model through the Inference Provider API (window.inference). An extension you install owns the API keys, provider, and model — grimoire never sees them, and the extension asks your permission per origin. Without such an extension this window explains what to install.",
+    options: [
+      {
+        flag: "--system <text>",
+        description: "System prompt prepended to the conversation",
+      },
+      {
+        flag: "prompt...",
+        description: "Sent immediately when the window opens",
+      },
+    ],
+    examples: [
+      "ai                                   Open an empty chat",
+      "ai is nostr dead                     Ask on open",
+      'ai --system "Be terse." explain relays',
+    ],
+    seeAlso: ["settings", "man"],
+    appId: "ai",
+    category: "System",
+    argParser: (args: string[]) => parseAiCommand(args),
     defaultProps: {},
   },
 };
