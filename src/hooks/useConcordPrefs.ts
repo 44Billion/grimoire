@@ -13,15 +13,33 @@ import { use$ } from "applesauce-react/hooks";
 import {
   concordPrefsManager,
   isCategoryCollapsed,
+  isChannelMuted,
   isChannelPinned,
+  isMutedFor,
+  isPinnedFor,
   lastChannelOf,
   type ChatPrefs,
 } from "@/services/concord-prefs";
+import type { ChatProtocol } from "@/types/chat";
+
+/** One row, in whichever family it belongs to. */
+export type RowRef = [
+  protocol: ChatProtocol,
+  containerId: string,
+  channelId: string,
+];
 
 export interface ConcordPrefs {
   prefs: ChatPrefs;
   isPinned: (communityIdHex: string, channelIdHex: string) => boolean;
   togglePin: (communityIdHex: string, channelIdHex: string) => void;
+  isMuted: (communityIdHex: string, channelIdHex: string) => boolean;
+  toggleMute: (communityIdHex: string, channelIdHex: string) => void;
+  /** The same two, for a private conversation or a relay group. */
+  isRowPinned: (row: RowRef) => boolean;
+  toggleRowPin: (row: RowRef) => void;
+  isRowMuted: (row: RowRef) => boolean;
+  toggleRowMute: (row: RowRef) => void;
   isCollapsed: (communityIdHex: string, categoryKey: string) => boolean;
   toggleCollapsed: (communityIdHex: string, categoryKey: string) => void;
   lastChannel: (communityIdHex: string) => string | undefined;
@@ -48,9 +66,40 @@ export function useConcordPrefs(): ConcordPrefs {
     [prefs],
   );
 
+  const isMuted = useCallback(
+    (communityIdHex: string, channelIdHex: string) =>
+      isChannelMuted(prefs, communityIdHex, channelIdHex),
+    [prefs],
+  );
+  const isRowPinned = useCallback(
+    ([protocol, containerId, channelId]: RowRef) =>
+      isPinnedFor(prefs, protocol, containerId, channelId),
+    [prefs],
+  );
+  const isRowMuted = useCallback(
+    ([protocol, containerId, channelId]: RowRef) =>
+      isMutedFor(prefs, protocol, containerId, channelId),
+    [prefs],
+  );
+
   const togglePin = useCallback(
     (communityIdHex: string, channelIdHex: string) =>
       concordPrefsManager.togglePin(communityIdHex, channelIdHex),
+    [],
+  );
+  const toggleMute = useCallback(
+    (communityIdHex: string, channelIdHex: string) =>
+      concordPrefsManager.toggleMute(communityIdHex, channelIdHex),
+    [],
+  );
+  const toggleRowPin = useCallback(
+    ([protocol, containerId, channelId]: RowRef) =>
+      concordPrefsManager.togglePinFor(protocol, containerId, channelId),
+    [],
+  );
+  const toggleRowMute = useCallback(
+    ([protocol, containerId, channelId]: RowRef) =>
+      concordPrefsManager.toggleMuteFor(protocol, containerId, channelId),
     [],
   );
   const toggleCollapsed = useCallback(
@@ -69,6 +118,12 @@ export function useConcordPrefs(): ConcordPrefs {
       prefs,
       isPinned,
       togglePin,
+      isMuted,
+      toggleMute,
+      isRowPinned,
+      toggleRowPin,
+      isRowMuted,
+      toggleRowMute,
       isCollapsed,
       toggleCollapsed,
       lastChannel,
@@ -78,6 +133,12 @@ export function useConcordPrefs(): ConcordPrefs {
       prefs,
       isPinned,
       togglePin,
+      isMuted,
+      toggleMute,
+      isRowPinned,
+      toggleRowPin,
+      isRowMuted,
+      toggleRowMute,
       isCollapsed,
       toggleCollapsed,
       lastChannel,

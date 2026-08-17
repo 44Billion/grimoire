@@ -69,6 +69,7 @@ import {
   useCommunityVoiceCounts,
 } from "@/hooks/useConcordVoice";
 import { DirectMessageList } from "./dm/DirectMessageList";
+import { dmRowRef } from "@/lib/dm/row-ref";
 import { NewConversationDialog } from "./dm/NewConversationDialog";
 import { DmConsentGate } from "./dm/DmConsentGate";
 import { useDirectMessages } from "@/hooks/useDirectMessages";
@@ -132,7 +133,7 @@ export function ConcordViewer({
 }: ConcordViewerProps) {
   const isMobile = useIsMobile();
   const { state: grimoire, updateWindow } = useGrimoire();
-  const { lastChannel, setLastChannel } = useConcordPrefs();
+  const { lastChannel, setLastChannel, isRowMuted } = useConcordPrefs();
   const { communities, status, refresh: refreshList } = useConcordCommunities();
   const icons = useConcordIcons(communities);
   const [selectedId, setSelectedId] = useState<string | undefined>(communityId);
@@ -577,9 +578,13 @@ export function ConcordViewer({
    * MESSAGES, not conversations: a row saying 2 when four messages are waiting
    * in two conversations is counting the wrong noun, and the channel badge
    * beside it counts messages.
+   *
+   * A muted conversation adds nothing. A count on the heading that a muted row
+   * underneath refuses to explain is worse than no count at all.
    */
   const dmUnreadCount = dms.conversations.reduce(
-    (total, c) => total + c.unreadCount,
+    (total, c) =>
+      isRowMuted(dmRowRef(c.conversationId)) ? total : total + c.unreadCount,
     0,
   );
 
@@ -613,7 +618,17 @@ export function ConcordViewer({
     [command, grimoire.windows, isMobile, updateWindow, windowId],
   );
 
-  const { groups: nip29Groups, loading: nip29Loading } = useNip29Groups();
+  /**
+   * Only while the section is open, or a group is the thing on screen.
+   *
+   * Listing the groups costs one standing REQ per relay for their last
+   * messages, and a `concord` window whose reader never expands the section
+   * would hold every one of them for nothing. The heading carries no count, so
+   * there is nothing a closed section needs the data for.
+   */
+  const { groups: nip29Groups, loading: nip29Loading } = useNip29Groups(
+    groupSectionOpen || selectedGroup !== undefined,
+  );
 
   const handleGroupSelect = useCallback(
     (selection: GroupSelection) => {
@@ -811,16 +826,23 @@ export function ConcordViewer({
           ...(icons.get(c.idHex) ? { icon: icons.get(c.idHex) } : {}),
           ...(totals.get(c.idHex) ? { unread: totals.get(c.idHex) } : {}),
         }))}
-        selected={selectedDm ? undefined : community?.idHex}
+        selected={selectedDm || selectedGroup ? undefined : community?.idHex}
         // The channels stay listed — only the ACTIVE marks go, because while
-        // the invites pane or a conversation is open, neither a channel nor a
-        // community is what the window is showing.
-        highlight={!showInvites && !selectedDm}
+        // the invites pane, a conversation or a group is open, neither a
+        // channel nor a community is what the window is showing.
+        highlight={!showInvites && !selectedDm && !selectedGroup}
         openness={openness}
         opennessDetail={opennessDetail}
         onSelect={(idHex) => {
           setSelectedDm(undefined);
           setDmSectionOpen(false);
+          // The group too. Without this the pane kept rendering the group —
+          // it branches before the channel — while `rememberNavigation` below
+          // wrote a channel into the window props and dropped the group's
+          // address from them. The window then reloaded somewhere the reader
+          // had never navigated to.
+          setSelectedGroup(undefined);
+          setGroupSectionOpen(false);
           setSelectedId(idHex);
           // Come back to where you left this community, not to its first
           // channel. Undefined is fine — the derived fallback covers it.
@@ -837,7 +859,7 @@ export function ConcordViewer({
             channels={channels}
             communityId={community?.idHex}
             selected={
-              showGuestbook || showInvites || selectedDm
+              showGuestbook || showInvites || selectedDm || selectedGroup
                 ? undefined
                 : openChannel?.idHex
             }

@@ -11,6 +11,7 @@
 import type { ReactNode } from "react";
 import { useMemo } from "react";
 import {
+  BellOff,
   ChevronDown,
   ChevronRight,
   Hash,
@@ -18,15 +19,9 @@ import {
   Lock,
   Phone,
   Pin,
-  PinOff,
 } from "lucide-react";
 
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+import { RowMenu } from "@/components/chat/RowMenu";
 import { useConcordPrefs } from "@/hooks/useConcordPrefs";
 import { useLocale } from "@/hooks/useLocale";
 import type { ChannelUnread } from "@/services/concord-rumor-store";
@@ -90,36 +85,34 @@ export function UnreadBadge({
 export function NotifLevelMenu({
   pinned,
   onTogglePin,
+  muted,
+  onToggleMute,
   children,
 }: {
   /** Channel rows only — a container is not something you pin above itself. */
   pinned?: boolean;
   onTogglePin?: () => void;
+  muted?: boolean;
+  onToggleMute?: () => void;
   children: ReactNode;
 }) {
   // Notification levels are hidden for now: the whole subsystem is off, so a
   // menu offering to tune it would promise something nothing acts on. The
-  // hook, the prefs and the notifier all stay wired — restoring this is the
-  // radio group below, not a rebuild.
+  // hook, the prefs and the notifier all stay wired — restoring this is a
+  // radio group in `RowMenu`, not a rebuild.
   //
-  // What survives is Pin, styled like every other menu in the app:
-  // `size-4 mr-2` on the icon, one verb as the label. "Pin to the top"
-  // described the effect where the other items name the action.
-  if (!onTogglePin) return <>{children}</>;
+  // The menu itself is shared with the private conversations and the relay
+  // groups. All three are rows in one column, and a gesture that worked on one
+  // and not the next reads as a bug rather than as a distinction.
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent className="w-40">
-        <ContextMenuItem onSelect={onTogglePin}>
-          {pinned ? (
-            <PinOff className="size-4 mr-2" />
-          ) : (
-            <Pin className="size-4 mr-2" />
-          )}
-          {pinned ? "Unpin" : "Pin"}
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
+    <RowMenu
+      {...(pinned !== undefined ? { pinned } : {})}
+      {...(onTogglePin ? { onTogglePin } : {})}
+      {...(muted !== undefined ? { muted } : {})}
+      {...(onToggleMute ? { onToggleMute } : {})}
+    >
+      {children}
+    </RowMenu>
   );
 }
 
@@ -272,14 +265,21 @@ function ChannelRow({
   onSelect: (idHex: string) => void;
 }) {
   const Icon = channel.isPrivate ? Lock : Hash;
-  const hasUnread = (unread?.count ?? 0) > 0;
-  const { isPinned, togglePin } = useConcordPrefs();
+  const { isPinned, togglePin, isMuted, toggleMute } = useConcordPrefs();
   const pinned = isPinned(communityId ?? "", channel.idHex);
+  const muted = isMuted(communityId ?? "", channel.idHex);
+  // A muted row carries no count and no weight — that is what muting IS. The
+  // row itself stays exactly where it was and stays readable.
+  const hasUnread = !muted && (unread?.count ?? 0) > 0;
   return (
     <NotifLevelMenu
       pinned={pinned}
       onTogglePin={
         communityId ? () => togglePin(communityId, channel.idHex) : undefined
+      }
+      muted={muted}
+      onToggleMute={
+        communityId ? () => toggleMute(communityId, channel.idHex) : undefined
       }
     >
       <button
@@ -290,6 +290,7 @@ function ChannelRow({
           "flex w-full cursor-crosshair items-center gap-1.5 px-2 py-0.5 text-left text-sm hover:bg-muted/50",
           selected && "bg-muted/70 font-medium",
           hasUnread && "font-semibold text-foreground",
+          muted && "text-muted-foreground",
         )}
       >
         <Icon className="size-3 flex-shrink-0 text-muted-foreground" />
@@ -301,6 +302,9 @@ function ChannelRow({
             height, which is the whole reason the heading went. */}
         <span className="ml-auto flex shrink-0 items-center gap-1">
           {pinned && <Pin className="size-3 shrink-0 text-muted-foreground" />}
+          {/* The call count survives a mute: muting silences the MESSAGES, and
+              who is in a call right now is a fact about the room rather than a
+              notification about it. */}
           {inCall > 0 && (
             <span
               className="flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] leading-none tabular-nums text-muted-foreground"
@@ -314,7 +318,10 @@ function ChannelRow({
               {inCall}
             </span>
           )}
-          {unread && <UnreadBadge unread={unread} />}
+          {muted && (
+            <BellOff className="size-3 shrink-0 text-muted-foreground" />
+          )}
+          {!muted && unread && <UnreadBadge unread={unread} />}
         </span>
       </button>
     </NotifLevelMenu>

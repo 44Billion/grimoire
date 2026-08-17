@@ -8,7 +8,10 @@ import {
   concordPrefsManager,
   containerPrefKey,
   isCategoryCollapsed,
+  isChannelMuted,
   isChannelPinned,
+  isMutedFor,
+  isPinnedFor,
   lastChannelOf,
   loadPrefs,
   resetConcordPrefs,
@@ -88,6 +91,80 @@ describe("pins", () => {
   });
 });
 
+describe("mutes", () => {
+  it("round-trips through storage", () => {
+    concordPrefsManager.toggleMute(COMMUNITY, CHANNEL);
+    expect(isChannelMuted(concordPrefsManager.value, COMMUNITY, CHANNEL)).toBe(
+      true,
+    );
+    expect(isChannelMuted(loadPrefs(), COMMUNITY, CHANNEL)).toBe(true);
+  });
+
+  it("is independent of the pin", () => {
+    // Both are arrangement and neither implies the other: a pinned row can be
+    // silent, and muting one must not quietly unpin it.
+    concordPrefsManager.togglePin(COMMUNITY, CHANNEL);
+    concordPrefsManager.toggleMute(COMMUNITY, CHANNEL);
+    expect(isChannelPinned(concordPrefsManager.value, COMMUNITY, CHANNEL)).toBe(
+      true,
+    );
+    concordPrefsManager.toggleMute(COMMUNITY, CHANNEL);
+    expect(isChannelPinned(concordPrefsManager.value, COMMUNITY, CHANNEL)).toBe(
+      true,
+    );
+    expect(isChannelMuted(concordPrefsManager.value, COMMUNITY, CHANNEL)).toBe(
+      false,
+    );
+  });
+});
+
+describe("the other two families", () => {
+  const RELAY = "wss://relay.example.com/";
+  const CONVERSATION = `${"e".repeat(64)}:${"f".repeat(64)}`;
+
+  it("pins a private conversation without touching a channel", () => {
+    concordPrefsManager.togglePinFor("nip-17", "dm", CONVERSATION);
+    expect(
+      isPinnedFor(concordPrefsManager.value, "nip-17", "dm", CONVERSATION),
+    ).toBe(true);
+    expect(isChannelPinned(concordPrefsManager.value, COMMUNITY, CHANNEL)).toBe(
+      false,
+    );
+  });
+
+  it("keeps the same group id on two relays apart", () => {
+    // A NIP-29 group id is only unique within its relay, which is exactly why
+    // the relay is the container half of the key.
+    concordPrefsManager.togglePinFor("nip-29", RELAY, "bitcoin");
+    expect(
+      isPinnedFor(concordPrefsManager.value, "nip-29", RELAY, "bitcoin"),
+    ).toBe(true);
+    expect(
+      isPinnedFor(
+        concordPrefsManager.value,
+        "nip-29",
+        "wss://other.example.com/",
+        "bitcoin",
+      ),
+    ).toBe(false);
+  });
+
+  it("mutes a group", () => {
+    concordPrefsManager.toggleMuteFor("nip-29", RELAY, "bitcoin");
+    expect(
+      isMutedFor(concordPrefsManager.value, "nip-29", RELAY, "bitcoin"),
+    ).toBe(true);
+  });
+
+  it("wipes both at logout, like every other pin", () => {
+    concordPrefsManager.togglePinFor("nip-17", "dm", CONVERSATION);
+    concordPrefsManager.toggleMuteFor("nip-29", RELAY, "bitcoin");
+    resetConcordPrefs();
+    expect(concordPrefsManager.value.pinnedChannels).toEqual([]);
+    expect(concordPrefsManager.value.mutedChannels).toEqual([]);
+  });
+});
+
 describe("collapsed categories", () => {
   it("collapses and re-opens", () => {
     concordPrefsManager.toggleCategoryCollapsed(COMMUNITY, "voice");
@@ -150,6 +227,7 @@ describe("loading a damaged blob", () => {
     expect(loadPrefs()).toEqual({
       __version: 1,
       pinnedChannels: [],
+      mutedChannels: [],
       collapsedCategories: {},
       lastChannelByContainer: {},
     });
@@ -191,6 +269,7 @@ describe("reset", () => {
     expect(seen[1]).toEqual({
       __version: 1,
       pinnedChannels: [],
+      mutedChannels: [],
       collapsedCategories: {},
       lastChannelByContainer: {},
     });

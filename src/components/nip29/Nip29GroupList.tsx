@@ -11,8 +11,11 @@
  * Sorted by last message upstream, in `useNip29Groups`.
  */
 
-import { Hash } from "lucide-react";
+import { BellOff, Hash, Pin } from "lucide-react";
 import { useGroupMetadata } from "@/hooks/useGroupMetadata";
+import { RowMenu } from "@/components/chat/RowMenu";
+import { useConcordPrefs, type RowRef } from "@/hooks/useConcordPrefs";
+import { partitionPinned } from "@/lib/concord/channels";
 import { cn } from "@/lib/utils";
 import type { GroupEntry } from "@/hooks/useNip29GroupList";
 import { groupKey, type GroupSelection } from "@/lib/nip29/group-selection";
@@ -20,6 +23,19 @@ import { groupKey, type GroupSelection } from "@/lib/nip29/group-selection";
 function relayHost(url: string): string {
   return url.replace(/^wss?:\/\//, "").replace(/\/$/, "");
 }
+
+/**
+ * How a group is named in the arrangement store.
+ *
+ * The relay is the CONTAINER, exactly as a Concord community is: a group id is
+ * only unique within the relay hosting it, so pinning `bitcoin` on one relay
+ * must not pin the unrelated `bitcoin` on another.
+ */
+const groupRowRef = (group: GroupSelection): RowRef => [
+  "nip-29",
+  group.relayUrl,
+  group.groupId,
+];
 
 export function Nip29GroupList({
   groups,
@@ -32,6 +48,16 @@ export function Nip29GroupList({
   onSelect: (selection: GroupSelection) => void;
   loading?: boolean;
 }) {
+  const { isRowPinned } = useConcordPrefs();
+
+  // Pinned above the rest, and only then by recency. A pin is the reader
+  // overriding the sort, which is the only thing a pin can mean in a list that
+  // already orders itself.
+  const { pinned, rest } = partitionPinned(groups, (g) =>
+    isRowPinned(groupRowRef(g)),
+  );
+  const ordered = [...pinned, ...rest];
+
   if (groups.length === 0)
     return (
       <p className="px-2 pb-1 text-xs text-muted-foreground">
@@ -43,7 +69,7 @@ export function Nip29GroupList({
 
   return (
     <div className="flex flex-col">
-      {groups.map((group) => (
+      {ordered.map((group) => (
         <Nip29GroupRow
           key={groupKey(group)}
           group={group}
@@ -72,24 +98,45 @@ function Nip29GroupRow({
     ? relayHost(group.relayUrl)
     : metadata?.name || group.groupId;
 
+  const { isRowPinned, toggleRowPin, isRowMuted, toggleRowMute } =
+    useConcordPrefs();
+  const row = groupRowRef(group);
+  const pinned = isRowPinned(row);
+  const muted = isRowMuted(row);
+
   return (
-    <button
-      type="button"
-      onClick={() =>
-        onSelect({ groupId: group.groupId, relayUrl: group.relayUrl })
-      }
-      className={cn(
-        "flex w-full cursor-crosshair items-center gap-1.5 px-2 py-0.5 text-left text-sm hover:bg-muted/50",
-        selected && "bg-muted/70 font-medium",
-      )}
-      // The relay, because two groups can share a name and only the host tells
-      // them apart — in the title rather than the row, which has no width for it.
-      title={
-        unmanaged ? group.relayUrl : `${name} — ${relayHost(group.relayUrl)}`
-      }
+    <RowMenu
+      pinned={pinned}
+      onTogglePin={() => toggleRowPin(row)}
+      muted={muted}
+      onToggleMute={() => toggleRowMute(row)}
     >
-      <Hash className="size-3 flex-shrink-0 text-muted-foreground" />
-      <span className="truncate">{name}</span>
-    </button>
+      <button
+        type="button"
+        onClick={() =>
+          onSelect({ groupId: group.groupId, relayUrl: group.relayUrl })
+        }
+        className={cn(
+          "flex w-full cursor-crosshair items-center gap-1.5 px-2 py-0.5 text-left text-sm hover:bg-muted/50",
+          selected && "bg-muted/70 font-medium",
+          muted && "text-muted-foreground",
+        )}
+        // The relay, because two groups can share a name and only the host
+        // tells them apart — in the title rather than the row, which has no
+        // width for it.
+        title={
+          unmanaged ? group.relayUrl : `${name} — ${relayHost(group.relayUrl)}`
+        }
+      >
+        <Hash className="size-3 flex-shrink-0 text-muted-foreground" />
+        <span className="truncate">{name}</span>
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {pinned && <Pin className="size-3 shrink-0 text-muted-foreground" />}
+          {muted && (
+            <BellOff className="size-3 shrink-0 text-muted-foreground" />
+          )}
+        </span>
+      </button>
+    </RowMenu>
   );
 }

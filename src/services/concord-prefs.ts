@@ -81,6 +81,19 @@ export interface ChatPrefs {
   __version: 1;
   /** Channel keys ({@link channelPrefKey}) the reader pinned to the top. */
   pinnedChannels: string[];
+  /**
+   * Channel keys the reader muted.
+   *
+   * Muted means SILENT, not hidden: the row stays where it is and stays
+   * readable, it just stops carrying a count and stops adding to the totals
+   * above it. Hiding it would make the only way back a search, and a
+   * conversation someone muted is one they still expect to find.
+   *
+   * No `__version` bump: an older blob simply has no such field, and the
+   * reader below defaults it to empty — nothing to migrate, because nothing
+   * that already existed changed meaning.
+   */
+  mutedChannels: string[];
   /** Container key → the casefolded `categoryKey()`s folded shut in it. */
   collapsedCategories: Record<string, string[]>;
   /** Container key → the channel id last opened there. */
@@ -90,6 +103,7 @@ export interface ChatPrefs {
 const DEFAULT_PREFS: ChatPrefs = {
   __version: 1,
   pinnedChannels: [],
+  mutedChannels: [],
   collapsedCategories: {},
   lastChannelByContainer: {},
 };
@@ -138,6 +152,7 @@ export function loadPrefs(): ChatPrefs {
     return {
       __version: 1,
       pinnedChannels: stringList(parsed.pinnedChannels),
+      mutedChannels: stringList(parsed.mutedChannels),
       collapsedCategories: stringListRecord(parsed.collapsedCategories),
       lastChannelByContainer: stringRecord(parsed.lastChannelByContainer),
     };
@@ -161,15 +176,54 @@ function savePrefs(prefs: ChatPrefs): void {
 // did not subscribe to.
 // ---------------------------------------------------------------------------
 
+/**
+ * Whether this row — a Concord channel, a private conversation, a relay
+ * group — is pinned to the top of its own section.
+ *
+ * Protocol-qualified, which is what lets three different families share one
+ * store: a NIP-29 group is `(relay, id)` and a private conversation is
+ * `("dm", participants)`, and neither id means anything without the protocol
+ * that issued it. See {@link channelPrefKey}.
+ */
+export function isPinnedFor(
+  prefs: ChatPrefs,
+  protocol: ChatProtocol,
+  containerId: string,
+  channelId: string,
+): boolean {
+  return prefs.pinnedChannels.includes(
+    channelPrefKey(protocol, containerId, channelId),
+  );
+}
+
+/** Whether this row is muted: still listed, still readable, just silent. */
+export function isMutedFor(
+  prefs: ChatPrefs,
+  protocol: ChatProtocol,
+  containerId: string,
+  channelId: string,
+): boolean {
+  return prefs.mutedChannels.includes(
+    channelPrefKey(protocol, containerId, channelId),
+  );
+}
+
 /** Whether this Concord channel is pinned above its category. */
 export function isChannelPinned(
   prefs: ChatPrefs,
   communityIdHex: string,
   channelIdHex: string,
 ): boolean {
-  return prefs.pinnedChannels.includes(
-    channelPrefKey(PROTOCOL, communityIdHex, channelIdHex),
-  );
+  return isPinnedFor(prefs, PROTOCOL, communityIdHex, channelIdHex);
+}
+
+/** Whether this Concord channel is muted. */
+export function isChannelMuted(
+  prefs: ChatPrefs,
+  communityIdHex: string,
+  channelIdHex: string,
+): boolean {
+  return isMutedFor(prefs, PROTOCOL, communityIdHex, channelIdHex);
 }
 
 /** Whether this community's category is folded shut. */
@@ -211,15 +265,44 @@ class ConcordPrefsManager {
     this.subject.next(next);
   }
 
-  /** Pin, or unpin, one channel. */
-  togglePin(communityIdHex: string, channelIdHex: string): void {
-    if (!communityIdHex || !channelIdHex) return;
-    const key = channelPrefKey(PROTOCOL, communityIdHex, channelIdHex);
+  /** Pin, or unpin, any row in any of the three families. */
+  togglePinFor(
+    protocol: ChatProtocol,
+    containerId: string,
+    channelId: string,
+  ): void {
+    if (!containerId || !channelId) return;
+    const key = channelPrefKey(protocol, containerId, channelId);
     const current = this.value.pinnedChannels;
     const pinnedChannels = current.includes(key)
       ? current.filter((k) => k !== key)
       : [...current, key];
     this.commit({ ...this.value, pinnedChannels });
+  }
+
+  /** Mute, or unmute, any row in any of the three families. */
+  toggleMuteFor(
+    protocol: ChatProtocol,
+    containerId: string,
+    channelId: string,
+  ): void {
+    if (!containerId || !channelId) return;
+    const key = channelPrefKey(protocol, containerId, channelId);
+    const current = this.value.mutedChannels;
+    const mutedChannels = current.includes(key)
+      ? current.filter((k) => k !== key)
+      : [...current, key];
+    this.commit({ ...this.value, mutedChannels });
+  }
+
+  /** Pin, or unpin, one Concord channel. */
+  togglePin(communityIdHex: string, channelIdHex: string): void {
+    this.togglePinFor(PROTOCOL, communityIdHex, channelIdHex);
+  }
+
+  /** Mute, or unmute, one Concord channel. */
+  toggleMute(communityIdHex: string, channelIdHex: string): void {
+    this.toggleMuteFor(PROTOCOL, communityIdHex, channelIdHex);
   }
 
   /** Fold a category shut, or open it again. */

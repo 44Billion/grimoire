@@ -12,7 +12,7 @@
  * the identifier is always `""` — there is one simple-groups list per account.
  */
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { use$ } from "applesauce-react/hooks";
 import accountManager from "@/services/accounts";
 import eventStore from "@/services/event-store";
@@ -32,16 +32,31 @@ export function useNip29Groups(enabled = true): {
   const account = use$(accountManager.active$);
   const pubkey = enabled ? account?.pubkey : undefined;
 
+  /**
+   * Whether the loader has finished looking, whatever it found.
+   *
+   * Without it, "loading" would be `no list yet`, which is indistinguishable
+   * from `this account has never published one` — and that account would read
+   * "Looking for your groups…" forever instead of being told how to join one.
+   *
+   * Holds WHOSE look finished rather than a boolean, so switching accounts
+   * resets it by comparison instead of by an effect writing state on the way
+   * in — the finished flag of the previous account must not answer for the
+   * next one.
+   */
+  const [settledFor, setSettledFor] = useState<string>();
+
   // The loader picks the relays; no hardcoded set and no hint required. It
   // completes on its own, so this is a fetch with an unsubscribe rather than a
   // standing subscription.
   useEffect(() => {
     if (!pubkey) return;
+    const done = () => setSettledFor(pubkey);
     const sub = addressLoader({
       kind: 10009,
       pubkey,
       identifier: "",
-    }).subscribe();
+    }).subscribe({ complete: done, error: done });
     return () => sub.unsubscribe();
   }, [pubkey]);
 
@@ -72,5 +87,8 @@ export function useNip29Groups(enabled = true): {
     [entries, lastMessages],
   );
 
-  return { groups, loading: !!pubkey && !groupListEvent };
+  return {
+    groups,
+    loading: !!pubkey && !groupListEvent && settledFor !== pubkey,
+  };
 }

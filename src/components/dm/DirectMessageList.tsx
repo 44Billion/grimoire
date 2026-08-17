@@ -11,12 +11,16 @@
  * people use it as a notepad rather than as correspondence.
  */
 
-import { AtSign, Bookmark, Loader2, Plus } from "lucide-react";
+import { AtSign, BellOff, Bookmark, Loader2, Pin, Plus } from "lucide-react";
 import { UserName } from "@/components/nostr/UserName";
+import { RowMenu } from "@/components/chat/RowMenu";
 import { cn } from "@/lib/utils";
 import type { DmConversationSummary } from "@/hooks/useDirectMessages";
 import type { BackfillProgress } from "@/services/dm-inbox";
 import { DM_UNREAD_CAP } from "@/services/dm-store";
+import { useConcordPrefs } from "@/hooks/useConcordPrefs";
+import { partitionPinned } from "@/lib/concord/channels";
+import { dmRowRef } from "@/lib/dm/row-ref";
 
 export function DirectMessageList({
   conversations,
@@ -34,6 +38,15 @@ export function DirectMessageList({
   /** The walk back through the whole history, while one is running. */
   backfill?: BackfillProgress;
 }) {
+  const { isRowPinned } = useConcordPrefs();
+  // Pinned first, in the order the list already had. "Saved messages" is
+  // synthesized at the top of that list, so pinning something above it is the
+  // reader saying they meant it.
+  const { pinned, rest } = partitionPinned(conversations, (c) =>
+    isRowPinned(dmRowRef(c.conversationId)),
+  );
+  const ordered = [...pinned, ...rest];
+
   return (
     <div className="flex flex-col">
       {/* No heading: the row this list hangs under already says what it is,
@@ -47,7 +60,7 @@ export function DirectMessageList({
         <span className="truncate">New conversation</span>
       </button>
 
-      {conversations.map((conversation) => (
+      {ordered.map((conversation) => (
         <DirectMessageRow
           key={conversation.conversationId}
           conversation={conversation}
@@ -89,50 +102,70 @@ function DirectMessageRow({
   onSelect: (peer: string) => void;
 }) {
   const Icon = conversation.isSelf ? Bookmark : AtSign;
+  const { isRowPinned, toggleRowPin, isRowMuted, toggleRowMute } =
+    useConcordPrefs();
+  const row = dmRowRef(conversation.conversationId);
+  const pinned = isRowPinned(row);
+  const muted = isRowMuted(row);
 
   // Deliberately the same row as a Concord channel: `py-0.5`, a `size-3` icon,
   // one `ml-auto` group on the right. They sit in the same column under
   // sibling headings, and two rows that differ by two pixels of padding read
   // as a mistake rather than as a distinction.
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(conversation.peer)}
-      className={cn(
-        "flex w-full cursor-crosshair items-center gap-1.5 px-2 py-0.5 text-left text-sm hover:bg-muted/50",
-        selected && "bg-muted/70 font-medium",
-        conversation.unread && "font-semibold text-foreground",
-      )}
+    <RowMenu
+      pinned={pinned}
+      onTogglePin={() => toggleRowPin(row)}
+      muted={muted}
+      onToggleMute={() => toggleRowMute(row)}
     >
-      <Icon className="size-3 flex-shrink-0 text-muted-foreground" />
-      <span className="truncate">
-        {conversation.isSelf ? (
-          "Saved messages"
-        ) : (
-          // `UserName` and nothing hand-rolled: it is what every other pubkey
-          // in the app renders as, badges and click-through included. Not
-          // clickable here — the row owns the click, and a name that opened a
-          // profile instead of the conversation would be a trap.
-          <UserName
-            pubkey={conversation.peer}
-            className="pointer-events-none"
-          />
+      <button
+        type="button"
+        onClick={() => onSelect(conversation.peer)}
+        className={cn(
+          "flex w-full cursor-crosshair items-center gap-1.5 px-2 py-0.5 text-left text-sm hover:bg-muted/50",
+          selected && "bg-muted/70 font-medium",
+          conversation.unread && !muted && "font-semibold text-foreground",
+          muted && "text-muted-foreground",
         )}
-      </span>
-      {/* ONE `ml-auto`, on the group — the same shape the channel row uses,
-          and for the same reason: two auto margins split the free space and
-          park the first item in the middle of the row. */}
-      {/* A count when there is one, and nothing otherwise — the same right-hand
-          side a channel row has. The relative time was there on every row
-          whether or not it mattered, which made the rows that DID matter
-          harder to find; recency is already what the list is sorted by. */}
-      {conversation.unreadCount > 0 && (
-        <span className="ml-auto shrink-0 rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">
-          {conversation.unreadCount >= DM_UNREAD_CAP
-            ? `${DM_UNREAD_CAP}+`
-            : conversation.unreadCount}
+      >
+        <Icon className="size-3 flex-shrink-0 text-muted-foreground" />
+        <span className="truncate">
+          {conversation.isSelf ? (
+            "Saved messages"
+          ) : (
+            // `UserName` and nothing hand-rolled: it is what every other pubkey
+            // in the app renders as, badges and click-through included. Not
+            // clickable here — the row owns the click, and a name that opened a
+            // profile instead of the conversation would be a trap.
+            <UserName
+              pubkey={conversation.peer}
+              className="pointer-events-none"
+            />
+          )}
         </span>
-      )}
-    </button>
+        {/* ONE `ml-auto`, on the group — the same shape the channel row uses,
+            and for the same reason: two auto margins split the free space and
+            park the first item in the middle of the row. */}
+        {/* A count when there is one, and nothing otherwise — the same
+            right-hand side a channel row has. The relative time was there on
+            every row whether or not it mattered, which made the rows that DID
+            matter harder to find; recency is already what the list is sorted
+            by. A muted row carries neither: silent is what it asked for. */}
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {pinned && <Pin className="size-3 shrink-0 text-muted-foreground" />}
+          {muted && (
+            <BellOff className="size-3 shrink-0 text-muted-foreground" />
+          )}
+          {!muted && conversation.unreadCount > 0 && (
+            <span className="rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">
+              {conversation.unreadCount >= DM_UNREAD_CAP
+                ? `${DM_UNREAD_CAP}+`
+                : conversation.unreadCount}
+            </span>
+          )}
+        </span>
+      </button>
+    </RowMenu>
   );
 }
