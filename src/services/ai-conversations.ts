@@ -21,6 +21,37 @@ export async function loadConversation(windowId: string): Promise<AiTurns> {
   }
 }
 
+export interface ConversationSummary {
+  windowId: string;
+  /** First thing the user asked, which is what they will recognise it by. */
+  title: string;
+  turnCount: number;
+  updatedAt: number;
+}
+
+/**
+ * Every stored conversation, newest first. Titles come from the first user
+ * turn — a conversation is remembered by its question, not by an id.
+ */
+export async function listConversations(): Promise<ConversationSummary[]> {
+  try {
+    const rows = await db.aiConversations
+      .orderBy("updatedAt")
+      .reverse()
+      .toArray();
+    return rows.map((row) => ({
+      windowId: row.windowId,
+      title:
+        row.turns.find((turn) => turn.role === "user")?.content.trim() ||
+        "(no question)",
+      turnCount: row.turns.length,
+      updatedAt: row.updatedAt,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export async function saveConversation(
   windowId: string,
   turns: AiTurns,

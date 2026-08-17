@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ArrowDown, ArrowUp, Send, Sparkles, Square } from "lucide-react";
+import { ArrowDown, ArrowUp, ExternalLink, Send, Square } from "lucide-react";
 
 import {
   Conversation,
@@ -16,11 +16,7 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from "./ai-elements/conversation";
-import {
-  Message,
-  MessageContent,
-  MessageResponse,
-} from "./ai-elements/message";
+import { MessageResponse } from "./ai-elements/message";
 import {
   Reasoning,
   ReasoningContent,
@@ -36,7 +32,7 @@ import {
 } from "@/services/inference";
 import { runToolLoop } from "@/services/tool-loop";
 import type { InferenceMessage, Usage } from "@/types/inference";
-import { useLocale } from "@/hooks/useLocale";
+import { formatTimestamp, useLocale } from "@/hooks/useLocale";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   loadConversation,
@@ -49,8 +45,15 @@ import {
   type AiTarget,
 } from "@/lib/ai-context";
 import { Suggestion, Suggestions } from "./ai-elements/suggestion";
-import { SystemPromptDisclosure } from "./ai/SystemPromptDisclosure";
+import {
+  SystemPromptDisclosure,
+  ToolsDisclosure,
+} from "./ai/SystemPromptDisclosure";
+import { HEX_NAME, HexAvatar } from "./ai/Hex";
+import { Shimmer } from "./ai-elements/shimmer";
 import { CommandChips } from "./ai/CommandChips";
+import { ConversationIndex } from "./ai/ConversationIndex";
+import { ReplyCodeBlock } from "./ai/ReplyCodeBlock";
 import { COMMAND_FENCE, resolveCommand } from "@/lib/ai-commands";
 import { AI_TOOLS, createToolExecutors, refuseIfNeeded } from "@/lib/ai-tools";
 import { ToolRuns } from "./ai/ToolRuns";
@@ -60,18 +63,22 @@ import { ProviderLogo, providerFromModel } from "./ai/ProviderLogo";
 import { useAddWindow } from "@/core/state";
 import {
   hasEventEmbed,
+  nostrRefTarget,
   splitNostrRefs,
   type NostrRefTarget,
 } from "@/lib/open-nostr-ref";
 import { UserName } from "./nostr/UserName";
+import { cn } from "@/lib/utils";
 import { EmbeddedEvent } from "./nostr/EmbeddedEvent";
 
 interface AiViewerProps {
-  /** Prompt from the command line. Prefilled, not sent. */
+  /** Prompt from the command line. Sent once, when nothing is stored yet. */
   prompt?: string;
   system?: string;
   /** Key for persisted turns. Without it the conversation is ephemeral. */
   windowId?: string;
+  /** Adopt an existing stored conversation instead of starting a new one. */
+  conversation?: string;
   /** Object the question is about. Its own data becomes the system prompt. */
   target?: AiTarget;
 }
@@ -147,6 +154,8 @@ function LinkedText({
 interface Turn {
   role: "user" | "assistant";
   content: string;
+  /** Unix seconds, for the row's relative time. */
+  at?: number;
   reasoning?: string;
   pending?: boolean;
   /** From the `done` chunk. The model is the extension's choice, not ours. */
@@ -160,16 +169,19 @@ interface Turn {
  * renders a fence as `<pre><code class="language-grimoire">…`, so the language
  * lives on the child.
  */
-function fencedCommandBlock(children: ReactNode): string | null {
+function fencedBlock(
+  children: ReactNode,
+): { language?: string; code: string } | null {
   if (!isValidElement(children)) return null;
   const props = children.props as {
     className?: unknown;
     children?: unknown;
   };
+  if (typeof props.children !== "string") return null;
   const className =
     typeof props.className === "string" ? props.className : undefined;
-  if (!className?.includes(`language-${COMMAND_FENCE}`)) return null;
-  return typeof props.children === "string" ? props.children : null;
+  const language = /language-([\w-]+)/.exec(className ?? "")?.[1];
+  return { code: props.children, ...(language ? { language } : {}) };
 }
 
 /** True when any string leaf holds a reference that renders as a block embed. */
@@ -220,22 +232,22 @@ function TurnUsage({
   const modelName = provider ? model!.slice(provider.length + 1) : model;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-2 pt-1 text-xs text-muted-foreground">
+    <div className="flex shrink-0 flex-wrap items-center gap-x-2 text-[10px] text-muted-foreground">
       {model && (
         <span className="flex items-center gap-1" title={model}>
-          <ProviderLogo provider={provider} />
+          <ProviderLogo className="size-2.5" provider={provider} />
           <span className="font-mono">{modelName}</span>
         </span>
       )}
       {usage?.inputTokens !== undefined && (
         <span className="flex items-center gap-0.5" title="Input tokens">
-          <ArrowUp className="size-3" />
+          <ArrowUp className="size-2.5" />
           {format(usage.inputTokens)}
         </span>
       )}
       {usage?.outputTokens !== undefined && (
         <span className="flex items-center gap-0.5" title="Output tokens">
-          <ArrowDown className="size-3" />
+          <ArrowDown className="size-2.5" />
           {format(usage.outputTokens)}
         </span>
       )}
@@ -244,11 +256,17 @@ function TurnUsage({
 }
 
 export default function AiViewer({
+  conversation,
   prompt,
   system,
   target,
   windowId,
 }: AiViewerProps) {
+  // An adopted conversation keeps its original key, so reopening it from the
+  // index reads and writes the same row.
+  const storageId = conversation ?? windowId;
+  // Nothing to ground on and nothing asked: this window is the index.
+  const isBare = !target && !prompt && !conversation && !system;
   const { locale } = useLocale();
   const addWindow = useAddWindow();
   const { pubkey } = useAccount();
@@ -256,8 +274,10 @@ export default function AiViewer({
   // The target's own data — event JSON, kind registry entry, cached NIP text —
   // becomes the system prompt. Resolved through a live query so it picks up an
   // event or NIP that arrives after the window opens.
+  // Always a context: without a target it is Hex's own instructions plus the
+  // command catalogue, which every window needs.
   const context = useLiveQuery(
-    () => (target ? buildAiContext(target) : Promise.resolve(undefined)),
+    () => buildAiContext(target),
     [target?.type, target?.value],
   );
 
@@ -265,20 +285,19 @@ export default function AiViewer({
   // seeds the first render; after that local state owns them, so a streaming
   // reply is never fighting a query result.
   const stored = useLiveQuery(
-    () => (windowId ? loadConversation(windowId) : Promise.resolve([])),
-    [windowId],
+    () => (storageId ? loadConversation(storageId) : Promise.resolve([])),
+    [storageId],
   );
   const [local, setLocal] = useState<Turn[] | null>(null);
-  const turns: Turn[] = local ?? stored ?? [];
+  // Memoized so `send`, which closes over it, is not rebuilt every render.
+  const turns: Turn[] = useMemo(() => local ?? stored ?? [], [local, stored]);
   const setTurns = useCallback(
     (update: (previous: Turn[]) => Turn[]) => {
       setLocal((previous) => update(previous ?? stored ?? []));
     },
     [stored],
   );
-  // The command-line prompt is prefilled, not sent. Windows are restored from
-  // localStorage on load, and auto-sending would re-spend on every reload.
-  const [input, setInput] = useState(prompt ?? "");
+  const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   // The exact system prompt of the last send, so the disclosure shows what was
   // sent rather than what would be sent now.
@@ -294,6 +313,15 @@ export default function AiViewer({
   // Before the first send, mentions are unknown, so show the grounding that is
   // already decided. After, show exactly what went out.
   const disclosedSystem = sentSystem ?? system ?? context?.system;
+
+  // A window grounded on an event previews it, so the conversation shows what
+  // it is about rather than only naming it in a hidden prompt.
+  const targetValue = target?.type === "event" ? target.value : undefined;
+  const targetRef = useMemo(() => {
+    if (!targetValue) return undefined;
+    const ref = nostrRefTarget(targetValue);
+    return ref?.eventPointer || ref?.addressPointer ? ref : undefined;
+  }, [targetValue]);
 
   // Tools are offered only when the injector advertises them. Sending `tools`
   // otherwise is invalid_request, and a chat-only grant does not cover them.
@@ -331,11 +359,18 @@ export default function AiViewer({
       // A ```grimoire fence is a command proposal, not code to read. Render it
       // as buttons; anything else stays a normal code block.
       pre: ({ children, ...rest }: { children?: ReactNode }) => {
-        const block = fencedCommandBlock(children);
-        return block == null ? (
-          <pre {...rest}>{children}</pre>
+        const block = fencedBlock(children);
+        if (block?.language === COMMAND_FENCE) {
+          return <CommandChips block={block.code} />;
+        }
+        // Everything else goes through grimoire's code component, so it is
+        // highlighted and copyable like code anywhere else in the app.
+        return block ? (
+          <ReplyCodeBlock code={block.code} language={block.language} />
         ) : (
-          <CommandChips block={block} />
+          <pre className="max-w-full overflow-x-auto" {...rest}>
+            {children}
+          </pre>
         );
       },
       // An event embed is a block, and a <div> inside a <p> is invalid HTML
@@ -367,10 +402,11 @@ export default function AiViewer({
         );
 
       setError(null);
+      const at = Math.floor(Date.now() / 1000);
       setTurns((previous) => [
         ...previous,
-        { role: "user", content: text },
-        { role: "assistant", content: "", pending: true },
+        { role: "user", content: text, at },
+        { role: "assistant", content: "", pending: true, at },
       ]);
       setStreaming(true);
 
@@ -452,9 +488,10 @@ export default function AiViewer({
         // survive; the placeholder is replaced, not patched.
         const settled: Turn[] = [
           ...turns.filter((turn) => !turn.pending),
-          { role: "user", content: text },
+          { role: "user", content: text, at },
           {
             role: "assistant",
+            at: Math.floor(Date.now() / 1000),
             content,
             ...(reasoning ? { reasoning } : {}),
             ...(model ? { model } : {}),
@@ -465,7 +502,7 @@ export default function AiViewer({
         setLocal(settled);
         // Save once the turn is settled, never mid-stream — a partial reply is
         // not worth a write per frame.
-        if (windowId) void saveConversation(windowId, settled);
+        if (storageId) void saveConversation(storageId, settled);
       } catch (caught) {
         setError(describeInferenceError(caught));
         // Drop the empty pending turn; the error is shown instead.
@@ -480,11 +517,35 @@ export default function AiViewer({
         setStreaming(false);
       }
     },
-    [context?.system, system, turns, setTurns, windowId],
+    [
+      context?.system,
+      executors,
+      setTurns,
+      system,
+      toolsEnabled,
+      turns,
+      windowId,
+    ],
   );
 
   // Closing the window must cancel in-flight provider work.
   useEffect(() => () => controllerRef.current?.abort(), []);
+
+  /**
+   * Send the command-line prompt once. Guarded on the *stored* conversation
+   * rather than a ref alone: windows are restored from localStorage, and the
+   * only durable proof this prompt was already answered is that its turns came
+   * back. `stored === undefined` means the query has not resolved yet.
+   */
+  const autoSent = useRef(false);
+  useEffect(() => {
+    if (autoSent.current || !prompt || !available || stored === undefined) {
+      return;
+    }
+    autoSent.current = true;
+    if (stored.length > 0 || turns.length > 0) return;
+    void send(prompt);
+  }, [available, prompt, send, stored, turns.length]);
 
   const submit = () => {
     const text = input.trim();
@@ -496,13 +557,25 @@ export default function AiViewer({
   if (!available) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-        <Sparkles className="size-8 text-muted-foreground" />
+        <HexAvatar className="size-8" />
         <div className="space-y-1">
-          <h3 className="text-sm font-medium">No inference provider</h3>
+          <h3 className="text-sm font-medium">{HEX_NAME} needs a provider</h3>
           <p className="max-w-sm text-sm text-muted-foreground">
-            Install an extension that injects{" "}
-            <code className="text-xs">window.inference</code> — grimoire never
-            sees your API keys. Reopen this window once it is installed.
+            Inference comes from an extension that injects{" "}
+            <code className="text-xs">window.inference</code>. It keeps your API
+            keys — grimoire never sees them, and asks nothing of them.
+          </p>
+          <a
+            className="inline-flex items-center gap-1.5 text-sm text-primary underline underline-offset-2 hover:text-primary/80"
+            href="https://chromewebstore.google.com/detail/inference-bridge/ekjldffogogadhfhgkibgkfdhhikfamd"
+            rel="noreferrer noopener"
+            target="_blank"
+          >
+            Get Inference Bridge
+            <ExternalLink className="size-3" />
+          </a>
+          <p className="text-xs text-muted-foreground">
+            Reopen this window once it is installed.
           </p>
         </div>
       </div>
@@ -526,59 +599,108 @@ export default function AiViewer({
           {disclosedSystem && (
             <SystemPromptDisclosure prompt={disclosedSystem} />
           )}
+          {toolsEnabled && <ToolsDisclosure tools={AI_TOOLS} />}
+          {/* The event under discussion, rendered as itself — the question is
+              about this, so it belongs in the conversation, not just the prompt. */}
+          {targetRef && (
+            <EmbeddedEvent
+              addressPointer={targetRef.addressPointer}
+              eventPointer={targetRef.eventPointer}
+            />
+          )}
           {turns.length === 0 ? (
-            <ConversationEmptyState
-              icon={<Sparkles className="size-8" />}
-              title={context ? `Ask about ${context.label}` : "Ask anything"}
-              description={
-                context
-                  ? "Grounded in the local copy — no data leaves except the prompt."
-                  : "Your extension picks the provider and model."
-              }
-            >
-              <Sparkles className="size-8 text-muted-foreground" />
-              <div className="space-y-1">
-                <h3 className="text-sm font-medium">
-                  {context ? `Ask about ${context.label}` : "Ask anything"}
-                </h3>
-                <p className="max-w-sm text-sm text-muted-foreground">
-                  {context
-                    ? "Grounded in the local copy — no data leaves except the prompt."
-                    : "Your extension picks the provider and model."}
-                </p>
-              </div>
-              {/* Openers, tailored to whatever this window is grounded in.
-                  Clicking sends; nothing fires on its own. */}
-              <Suggestions className="justify-center pt-2">
-                {(context?.suggestions ?? GENERAL_SUGGESTIONS).map(
-                  (suggestion) => (
-                    <Suggestion
-                      key={suggestion}
-                      onClick={(text) => {
-                        if (streaming) return;
-                        setInput("");
-                        void send(text);
-                      }}
-                      suggestion={suggestion}
-                    />
-                  ),
-                )}
-              </Suggestions>
-            </ConversationEmptyState>
-          ) : (
-            turns.map((turn, index) => (
-              <Message from={turn.role} key={index}>
-                <MessageContent>
-                  {turn.reasoning && (
-                    <Reasoning isStreaming={Boolean(turn.pending)}>
-                      <ReasoningTrigger />
-                      <ReasoningContent>{turn.reasoning}</ReasoningContent>
-                    </Reasoning>
+            // A bare `ai` window shows what Hex already remembers; a grounded
+            // one shows openers for the thing it is grounded in.
+            isBare ? (
+              <ConversationIndex currentWindowId={storageId} />
+            ) : (
+              <ConversationEmptyState>
+                <HexAvatar className="size-8" />
+                <div className="space-y-1">
+                  <h3 className="text-sm font-medium">
+                    {context?.label
+                      ? `Ask ${HEX_NAME} about ${context.label}`
+                      : `Ask ${HEX_NAME}`}
+                  </h3>
+                  <p className="max-w-sm text-sm text-muted-foreground">
+                    {context?.label
+                      ? "Grounded in the local copy — no data leaves except the prompt."
+                      : "Your extension picks the provider and model."}
+                  </p>
+                </div>
+                {/* Openers, tailored to whatever this window is grounded in.
+                    Clicking sends; nothing fires on its own. */}
+                <Suggestions className="flex-wrap justify-center pt-2">
+                  {(context?.suggestions ?? GENERAL_SUGGESTIONS).map(
+                    (suggestion) => (
+                      <Suggestion
+                        key={suggestion}
+                        onClick={(text) => {
+                          if (streaming) return;
+                          setInput("");
+                          void send(text);
+                        }}
+                        suggestion={suggestion}
+                      />
+                    ),
                   )}
-                  {turn.toolRuns && <ToolRuns runs={turn.toolRuns} />}
-                  <MessageResponse components={markdownComponents}>
-                    {turn.content}
-                  </MessageResponse>
+                </Suggestions>
+              </ConversationEmptyState>
+            )
+          ) : (
+            // A turn reads like every other message in grimoire: speaker,
+            // relative time, content, separated by a rule — not a bubble.
+            turns.map((turn, index) => (
+              <div
+                className={cn(
+                  "flex flex-col gap-1 px-3 py-2",
+                  // A question and its answer are one exchange; only the answer
+                  // closes it with a rule.
+                  turn.role === "assistant" && "border-b border-border/50",
+                  "last:border-0",
+                )}
+                key={index}
+              >
+                <div className="flex flex-row items-baseline justify-between gap-2">
+                  <div className="flex min-w-0 flex-row items-baseline gap-2">
+                    {turn.role === "assistant" ? (
+                      <>
+                        <HexAvatar
+                          className="self-center"
+                          face={turn.pending ? "working" : "idle"}
+                        />
+                        {turn.pending ? (
+                          // Shimmer while he is thinking, so a long first token
+                          // reads as thought rather than a stall.
+                          <Shimmer
+                            as="span"
+                            className="font-medium"
+                            duration={1.5}
+                          >
+                            {HEX_NAME}
+                          </Shimmer>
+                        ) : (
+                          <span className="font-medium text-accent">
+                            {HEX_NAME}
+                          </span>
+                        )}
+                      </>
+                    ) : pubkey ? (
+                      <UserName className="font-medium" pubkey={pubkey} />
+                    ) : (
+                      <span className="font-medium">you</span>
+                    )}
+                    {turn.at !== undefined && (
+                      <span
+                        className="shrink-0 whitespace-nowrap text-xs text-muted-foreground"
+                        title={formatTimestamp(turn.at, "absolute", locale)}
+                      >
+                        {formatTimestamp(turn.at, "relative", locale)}
+                      </span>
+                    )}
+                  </div>
+                  {/* Which model answered, and what it cost, beside the name
+                      rather than trailing the reply. */}
                   {turn.role === "assistant" && !turn.pending && (
                     <TurnUsage
                       locale={locale}
@@ -586,8 +708,21 @@ export default function AiViewer({
                       usage={turn.usage}
                     />
                   )}
-                </MessageContent>
-              </Message>
+                </div>
+                {turn.reasoning && (
+                  <Reasoning isStreaming={Boolean(turn.pending)}>
+                    <ReasoningTrigger />
+                    <ReasoningContent>{turn.reasoning}</ReasoningContent>
+                  </Reasoning>
+                )}
+                {turn.toolRuns && <ToolRuns runs={turn.toolRuns} />}
+                <MessageResponse
+                  className="max-w-full break-words"
+                  components={markdownComponents}
+                >
+                  {turn.content}
+                </MessageResponse>
+              </div>
             ))
           )}
         </ConversationContent>
@@ -612,7 +747,7 @@ export default function AiViewer({
                 submit();
               }
             }}
-            placeholder="Ask anything..."
+            placeholder={`Ask ${HEX_NAME}...`}
             rows={1}
             value={input}
           />

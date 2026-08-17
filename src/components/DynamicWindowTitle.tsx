@@ -985,6 +985,9 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
       tooltip = rawCommand;
     } else {
       title = staticTitle || appId.toUpperCase();
+      // The registry knows an icon for most appIds; the fallback used to drop
+      // it, so a window with no dynamic title lost its identity.
+      icon = getCommandIcon(appId);
       tooltip = rawCommand;
     }
 

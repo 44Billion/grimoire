@@ -17,9 +17,9 @@ export function ToolRuns({ runs }: { runs: ToolRun[] }) {
   if (runs.length === 0) return null;
 
   return (
-    <div className="space-y-2">
+    <div className="my-2 space-y-3">
       {runs.map((run, index) => (
-        <Tool key={`${run.name}-${index}`}>
+        <Tool className="mb-0" key={`${run.name}-${index}`}>
           <ToolHeader state={run.state} type={`tool-${run.name}`} />
           <ToolContent>
             <ToolInput input={run.input} />

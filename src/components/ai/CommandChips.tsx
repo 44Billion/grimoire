@@ -41,7 +41,7 @@ export function CommandChips({ block }: { block: string }) {
   };
 
   return (
-    <div className="my-3 overflow-hidden rounded border border-border">
+    <div className="my-3 divide-y divide-border/60 overflow-hidden rounded border border-border">
       {proposed.map((command) => (
         <button
           className="command-item block w-full text-left"

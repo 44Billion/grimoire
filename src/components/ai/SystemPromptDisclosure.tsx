@@ -1,5 +1,7 @@
-import { ChevronDown, FileText } from "lucide-react";
+import { ChevronDown, FileText, Wrench } from "lucide-react";
 import { useState } from "react";
+
+import type { InferenceTool } from "@/types/inference";
 
 import {
   Collapsible,
@@ -48,6 +50,62 @@ export function SystemPromptDisclosure({
         <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words border-t border-dashed border-border px-2 py-1 text-xs text-muted-foreground">
           {prompt}
         </pre>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/**
+ * The tools Hex was offered, with their argument schemas.
+ *
+ * Same reasoning as the prompt disclosure: these are capabilities handed to a
+ * model on the user's behalf, and the permission prompt lists only the names.
+ * The schemas say what could actually be asked for.
+ */
+export function ToolsDisclosure({
+  className,
+  tools,
+}: {
+  className?: string;
+  tools: InferenceTool[];
+}) {
+  const [open, setOpen] = useState(false);
+  if (tools.length === 0) return null;
+
+  return (
+    <Collapsible
+      className={cn("rounded border border-dashed border-border", className)}
+      onOpenChange={setOpen}
+      open={open}
+    >
+      <CollapsibleTrigger className="flex w-full items-center gap-2 px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground">
+        <Wrench className="size-3" />
+        <span>
+          Tools · {tools.map((tool) => tool.function.name).join(", ")}
+        </span>
+        <ChevronDown
+          className={cn(
+            "ml-auto size-3 transition-transform",
+            open ? "rotate-180" : "rotate-0",
+          )}
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-2 border-t border-dashed border-border px-2 py-2">
+        {tools.map((tool) => (
+          <div key={tool.function.name}>
+            <div className="font-mono text-xs">{tool.function.name}</div>
+            {tool.function.description && (
+              <p className="text-xs text-muted-foreground">
+                {tool.function.description}
+              </p>
+            )}
+            {tool.function.parameters && (
+              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-muted-foreground">
+                {JSON.stringify(tool.function.parameters, null, 2)}
+              </pre>
+            )}
+          </div>
+        ))}
       </CollapsibleContent>
     </Collapsible>
   );

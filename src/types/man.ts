@@ -994,10 +994,19 @@ export const manPages: Record<string, ManPageEntry> = {
   ai: {
     name: "ai",
     section: "1",
-    synopsis: "ai [--system <text>] [prompt...]",
+    synopsis: "ai [--conversation <id>] [--system <text>] [target] [prompt...]",
     description:
       "Chat with a language model through the Inference Provider API (window.inference). An extension you install owns the API keys, provider, and model — grimoire never sees them, and the extension asks your permission per origin. Without such an extension this window explains what to install.",
     options: [
+      {
+        flag: "--conversation <id>",
+        description: "Reopen a stored conversation",
+      },
+      {
+        flag: "<target>",
+        description:
+          "A leading nevent/npub/naddr, kind number, or nip-XX grounds the chat in that object",
+      },
       {
         flag: "--system <text>",
         description: "System prompt prepended to the conversation",

@@ -1,3 +1,4 @@
+import { HexIcon } from "@/components/ai/Hex";
 import {
   Book,
   Podcast,
@@ -32,6 +33,11 @@ export interface CommandIcon {
 }
 
 export const COMMAND_ICONS: Record<string, CommandIcon> = {
+  // Hex has a face rather than a glyph; the wrapper matches the lucide shape.
+  ai: {
+    icon: HexIcon as unknown as LucideIcon,
+    description: "Ask Hex, grimoire's assistant",
+  },
   // Documentation commands
   nip: {
     icon: Book,

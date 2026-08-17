@@ -28,8 +28,8 @@ import { getNipText } from "@/services/nip-text";
 export interface AiContext {
   /** Prepended as the system message. */
   system: string;
-  /** Short label for the window title. */
-  label: string;
+  /** Short label for what this window is grounded in, if anything. */
+  label?: string;
   /** Opening questions offered before the first turn. */
   suggestions: string[];
 }
@@ -61,8 +61,9 @@ function commandCatalogue(): string {
 }
 
 const BASE_SYSTEM = [
-  "You are answering inside grimoire, a Nostr protocol explorer whose windows" +
-    " are opened by Unix-style commands.",
+  "You are Hex, the assistant inside grimoire — a Nostr protocol explorer" +
+    " whose windows are opened by Unix-style commands. Answer as Hex; do not" +
+    " introduce yourself unless asked.",
   "Be concrete and brief. Cite kind numbers and NIP ids where they apply." +
     " Reference people and events as nostr: bech32 entities so they render as" +
     " profiles and embedded events.",
@@ -75,10 +76,17 @@ const BASE_SYSTEM = [
   `Commands available:\n${commandCatalogue()}`,
 ].join("\n\n");
 
-/** Build the system prompt for a target, or undefined when it resolves to nothing. */
-export async function buildAiContext(
-  target: AiTarget,
-): Promise<AiContext | undefined> {
+/**
+ * Hex's own instructions, with no object attached. Every window gets these —
+ * an ungrounded chat still needs to know who it is and which commands exist.
+ */
+export function baseContext(): AiContext {
+  return { system: BASE_SYSTEM, suggestions: GENERAL_SUGGESTIONS };
+}
+
+/** Build the system prompt for a target, falling back to the base context. */
+export async function buildAiContext(target?: AiTarget): Promise<AiContext> {
+  if (!target) return baseContext();
   switch (target.type) {
     case "event":
       return eventContext(target.value);
@@ -87,13 +95,13 @@ export async function buildAiContext(
     case "nip":
       return nipContext(target.value);
     default:
-      return undefined;
+      return baseContext();
   }
 }
 
-async function eventContext(bech32: string): Promise<AiContext | undefined> {
+async function eventContext(bech32: string): Promise<AiContext> {
   const ref = nostrRefTarget(bech32);
-  if (!ref) return undefined;
+  if (!ref) return baseContext();
 
   // A profile: the pubkey plus whatever metadata is cached.
   if (ref.pubkey) {
@@ -125,7 +133,8 @@ async function eventContext(bech32: string): Promise<AiContext | undefined> {
     label: `kind ${event.kind}`,
     system: `${BASE_SYSTEM}\n\nThe user is asking about this event.\n${describeKind(event.kind)}\n\nRaw event:\n${JSON.stringify(event, null, 2)}`,
     suggestions: [
-      "What is this event saying?",
+      "Summarize this",
+      "Translate this to English",
       "What do its tags mean?",
       `Why kind ${event.kind} and not something else?`,
     ],
@@ -139,8 +148,8 @@ function describeKind(kind: number): string {
     : `Kind ${kind} is not in grimoire's kind registry, so it is either new, experimental, or application-specific.`;
 }
 
-async function kindContext(kind: number): Promise<AiContext | undefined> {
-  if (!Number.isFinite(kind)) return undefined;
+async function kindContext(kind: number): Promise<AiContext> {
+  if (!Number.isFinite(kind)) return baseContext();
   const nipText = await nipTextForKind(kind);
   return {
     label: `kind ${kind}`,
@@ -163,7 +172,7 @@ async function nipTextForKind(kind: number): Promise<string | undefined> {
   return nipText(id);
 }
 
-async function nipContext(id: string): Promise<AiContext | undefined> {
+async function nipContext(id: string): Promise<AiContext> {
   const text = await nipText(id);
   return {
     label: `NIP-${id}`,

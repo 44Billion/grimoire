@@ -35,6 +35,21 @@ describe("parseAiCommand", () => {
   });
 });
 
+describe("conversations", () => {
+  it("reopens a stored conversation", () => {
+    expect(parseAiCommand(["--conversation", "abc-123"])).toEqual({
+      conversation: "abc-123",
+    });
+    expect(parseAiCommand(["-c", "abc-123"]).conversation).toBe("abc-123");
+  });
+
+  it("rejects a dangling --conversation", () => {
+    expect(() => parseAiCommand(["--conversation"])).toThrowError(
+      /requires a conversation id/,
+    );
+  });
+});
+
 describe("targets", () => {
   it("takes a leading nip id as the target", () => {
     expect(parseAiCommand(["nip-01", "why", "the", "id", "field?"])).toEqual({

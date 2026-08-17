@@ -5,12 +5,14 @@ import { parseAiTarget, type AiTarget } from "./ai-target";
 export interface AiCommandProps {
   prompt?: string;
   system?: string;
+  /** Stored conversation to reopen. */
+  conversation?: string;
   /** Object the question is about; its own data becomes the system prompt. */
   target?: AiTarget;
 }
 
 /**
- * `ai [--system <text>] [target] [prompt...]`
+ * `ai [--conversation <id>] [--system <text>] [target] [prompt...]`
  *
  * A leading bech32 entity, kind number, or `nip-XX` is taken as the target —
  * the thing being asked about — and the rest is the question. Global flags
@@ -19,9 +21,19 @@ export interface AiCommandProps {
 export function parseAiCommand(args: string[]): AiCommandProps {
   const rest: string[] = [];
   let system: string | undefined;
+  let conversation: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
+    if (arg === "--conversation" || arg === "-c") {
+      const value = args[i + 1];
+      if (value === undefined) {
+        throw new Error("--conversation requires a conversation id");
+      }
+      conversation = value;
+      i++;
+      continue;
+    }
     if (arg === "--system" || arg === "-s") {
       const value = args[i + 1];
       if (value === undefined) {
@@ -44,5 +56,6 @@ export function parseAiCommand(args: string[]): AiCommandProps {
     ...(prompt ? { prompt } : {}),
     ...(system ? { system } : {}),
     ...(target ? { target } : {}),
+    ...(conversation ? { conversation } : {}),
   };
 }

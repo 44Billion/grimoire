@@ -32,7 +32,9 @@ export function ExplainKindButton({ event }: { event: NostrEvent }) {
         target: { type: "event", value: bech32 },
         prompt: `What is this kind ${event.kind} event, and what is it for?`,
       },
-      `ai ${bech32.slice(0, 16)}`,
+      // Full command: the edit box re-runs this string, and a trimmed nevent
+      // rebuilds the window pointing at nothing.
+      `ai ${bech32}`,
       `EXPLAIN KIND ${event.kind}`,
     );
   };
