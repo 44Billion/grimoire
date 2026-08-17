@@ -1,7 +1,7 @@
 /**
  * The seam between a local adoption and the Community List.
  *
- * Grimoire never publishes kind 13302, so an adoption cannot go where armada
+ * Grimoire never publishes the Community List, so an adoption cannot go where armada
  * puts it. These are the four cases that decide whether the local copy leads,
  * follows, or should be thrown away.
  */

@@ -3,10 +3,14 @@
  *
  * Ported from armada `bc19d1f` (`src/concord/lib/communityList.ts`).
  *
- * A member's memberships sync across devices (and clients) as one kind-13302
- * replaceable event, NIP-44-encrypted to self. Every community they're in AND
- * every one they've left lives in the document — liveness is DERIVED, never
- * deletion, or merges would depend on gossip order.
+ * A member's memberships sync across devices (and clients) as a document
+ * NIP-44-encrypted to self: kind 33302, one addressable event per FRAGMENT
+ * (`d` = the index in decimal), and — before the List outgrew a single event —
+ * the retired kind-13302 replaceable. Grimoire reads both and unions them
+ * ({@link mergeCommunityLists}); every merge here is commutative and idempotent,
+ * so a partial read is news not yet heard rather than a subtraction. Every
+ * community they're in AND every one they've left lives in the document —
+ * liveness is DERIVED, never deletion, or merges would depend on gossip order.
  *
  * Per entry, two snapshots solve opposite problems: `seed` holds the EARLIEST
  * epoch ever held (the full-history backfill anchor) and `current` the LATEST
@@ -131,20 +135,300 @@ export const EMPTY_COMMUNITY_LIST: CommunityList = {
   tombstones: [],
 };
 
+// ── §8 encoding: hex OR unpadded base64url ──────────────────────────────────
+
+/** 64 lowercase-hex characters — the older spelling, and armada's today. */
+const HEX32_RE = /^[0-9a-f]{64}$/i;
+/** 43 characters of unpadded base64url — the spelling CORD-02 §8 now fixes. */
+const B64URL32_RE = /^[A-Za-z0-9_-]{43}$/;
+
+/**
+ * A named 32-byte §8 value in whichever spelling it arrived, as lowercase hex.
+ *
+ * CORD-02 §8 makes every named 32-byte value in this document unpadded
+ * base64url; earlier revisions (and armada today) write hex. A reader cannot
+ * detect a MIS-encoded field — 64 lowercase hex characters are themselves valid
+ * base64url — but the two correct spellings have different lengths, so
+ * accepting both is unambiguous, and the spec's own warning applies: base64url
+ * is case-significant, so only the hex branch may lower-case.
+ *
+ * Hex is the canonical form INSIDE grimoire: every derivation, every Dexie key
+ * and every id comparison downstream is hex, and normalizing once at the parse
+ * boundary is what keeps them all untouched. Grimoire never writes this
+ * document, so nothing has to re-encode on the way out.
+ */
+export function canonical32(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  if (HEX32_RE.test(v)) return v.toLowerCase();
+  if (!B64URL32_RE.test(v)) return undefined;
+  try {
+    const bin = atob(v.replace(/-/g, "+").replace(/_/g, "/") + "=");
+    if (bin.length !== 32) return undefined;
+    let hex = "";
+    for (let i = 0; i < 32; i++) {
+      hex += bin.charCodeAt(i).toString(16).padStart(2, "0");
+    }
+    return hex;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Rewrite `obj[key]` to canonical hex when it holds a recognisable 32 bytes. */
+function canonField(obj: Record<string, unknown> | undefined, key: string) {
+  if (!obj) return;
+  const canon = canonical32(obj[key]);
+  if (canon !== undefined) obj[key] = canon;
+}
+
+/** Canonicalize one join-material snapshot in place. */
+function canonJoinMaterial(jm: Record<string, unknown> | undefined) {
+  if (!jm || typeof jm !== "object") return;
+  for (const key of [
+    "community_id",
+    "owner",
+    "owner_salt",
+    "community_root",
+    "control_pk",
+    "control_root",
+    "refounder",
+  ]) {
+    canonField(jm, key);
+  }
+  for (const ch of Array.isArray(jm.channels) ? jm.channels : []) {
+    if (!ch || typeof ch !== "object") continue;
+    const channel = ch as Record<string, unknown>;
+    canonField(channel, "id");
+    canonField(channel, "key");
+    for (const prior of Array.isArray(channel.priors) ? channel.priors : []) {
+      if (prior && typeof prior === "object") {
+        canonField(prior as Record<string, unknown>, "key");
+      }
+    }
+  }
+  for (const hr of Array.isArray(jm.held_roots) ? jm.held_roots : []) {
+    if (!hr || typeof hr !== "object") continue;
+    const root = hr as Record<string, unknown>;
+    canonField(root, "key");
+    canonField(root, "refounder");
+    canonField(root, "control_pk");
+  }
+}
+
+/**
+ * Normalize every named 32-byte value in a parsed document to hex, in place.
+ *
+ * Only the fields §8 names (plus armada's own extensions, which spell theirs
+ * the same way) are touched. An unknown field keeps its author's encoding
+ * verbatim and is never decoded — §8's rule, and the reason the boundary has to
+ * be a fixed list rather than a shape guess.
+ */
+function canonicalizeList(list: CommunityList): CommunityList {
+  for (const entry of list.entries) {
+    if (!entry || typeof entry !== "object") continue;
+    canonField(entry as unknown as Record<string, unknown>, "community_id");
+    canonJoinMaterial(entry.seed as unknown as Record<string, unknown>);
+    canonJoinMaterial(entry.current as unknown as Record<string, unknown>);
+    for (const cut of Array.isArray(entry.channel_cuts)
+      ? entry.channel_cuts
+      : []) {
+      if (cut && typeof cut === "object") {
+        canonField(cut as unknown as Record<string, unknown>, "id");
+      }
+    }
+  }
+  for (const tomb of list.tombstones) {
+    if (tomb && typeof tomb === "object") {
+      canonField(tomb as unknown as Record<string, unknown>, "community_id");
+    }
+  }
+  return list;
+}
+
 /**
  * Parse a decrypted list document, tolerating anything.
  *
  * The document is written by other clients and other versions, so the two
  * arrays are the only things this file may assume; everything else rides
- * through as unknown fields.
+ * through as unknown fields — with the named 32-byte values normalized to hex
+ * ({@link canonical32}), which is a re-SPELLING and never a re-shaping.
  */
 export function parseCommunityList(json: string): CommunityList {
   const parsed = JSON.parse(json) as Partial<CommunityList>;
-  return {
+  return canonicalizeList({
     ...parsed,
     entries: Array.isArray(parsed.entries) ? parsed.entries : [],
     tombstones: Array.isArray(parsed.tombstones) ? parsed.tombstones : [],
-  } as CommunityList;
+  } as CommunityList);
+}
+
+// ── Fragments (§8): the read-side union ─────────────────────────────────────
+
+/** Stable key order, so two snapshots holding the same state compare equal. */
+function canonicalBytes(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalBytes).join(",")}]`;
+  if (value && typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    return `{${Object.keys(obj)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonicalBytes(obj[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/** A snapshot's epoch, or undefined when the document does not say. */
+function epochOf(jm: JoinMaterial | undefined): number | undefined {
+  const epoch = jm?.root_epoch;
+  return typeof epoch === "number" && Number.isFinite(epoch)
+    ? epoch
+    : undefined;
+}
+
+/**
+ * Pick between two snapshots of one membership.
+ *
+ * `current` keeps the HIGHER epoch and `seed` the LOWER — the two anchors of
+ * §8, solving opposite problems (instant reconstruction vs full-history
+ * backfill). An epoch tie breaks on the lexicographically lowest canonical
+ * bytes, a total order, so two devices never disagree about which won.
+ */
+function pickSnapshot(
+  a: JoinMaterial | undefined,
+  b: JoinMaterial | undefined,
+  keep: "higher" | "lower",
+): JoinMaterial | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  const ea = epochOf(a);
+  const eb = epochOf(b);
+  if (ea !== undefined && eb !== undefined && ea !== eb) {
+    const higher = ea > eb ? a : b;
+    const lower = ea > eb ? b : a;
+    return keep === "higher" ? higher : lower;
+  }
+  return canonicalBytes(a) <= canonicalBytes(b) ? a : b;
+}
+
+/**
+ * Merge two entries for one community; neither input is mutated.
+ *
+ * `rank` breaks an epoch tie BEFORE the canonical-bytes rule does (lower wins),
+ * and exists for one case §8 never contemplated: unioning the retired
+ * single-event List beside the fragmented one. Two fragments of one List at one
+ * epoch hold the same state, so bytes are a fine coin-flip between them; a
+ * stale legacy document at the same epoch does not, and letting bytes decide
+ * could settle on it permanently.
+ */
+function mergeEntries(
+  a: CommunityListEntry,
+  b: CommunityListEntry,
+  rankA = 0,
+  rankB = 0,
+): CommunityListEntry {
+  // The entry carrying the newer `current` is the base, so its extensions
+  // (`excluded_at_epoch`, `channel_cuts`, unknown fields) travel with the
+  // snapshot they describe rather than being spliced across generations.
+  const epochA = epochOf(a.current);
+  const epochB = epochOf(b.current);
+  const tied =
+    epochA === undefined || epochB === undefined || epochA === epochB;
+  const newer =
+    tied && rankA !== rankB
+      ? rankA < rankB
+        ? a.current
+        : b.current
+      : pickSnapshot(a.current, b.current, "higher");
+  const base = newer === b.current ? b : a;
+  const other = base === a ? b : a;
+  const current = base.current;
+  // An absent `seed` reads as equal to `current` — which is what it means.
+  const seed = pickSnapshot(
+    a.seed ?? a.current,
+    b.seed ?? b.current,
+    "lower",
+  ) as JoinMaterial;
+  return {
+    ...other,
+    ...base,
+    seed,
+    current,
+    added_at: Math.max(
+      typeof a.added_at === "number" ? a.added_at : 0,
+      typeof b.added_at === "number" ? b.added_at : 0,
+    ),
+  };
+}
+
+/**
+ * Union any number of list documents — fragments of one §8 List, and the
+ * legacy single-event List beside them.
+ *
+ * Every merge here is commutative and idempotent, which is what makes a partial
+ * read safe: a missing fragment is news not yet heard, never a subtraction.
+ * Only a tombstone subtracts, and it survives every union (there is exactly one
+ * per community, at the later `removed_at`).
+ *
+ * Merging ACROSS generations is safe for the same reason — a stale legacy
+ * document cannot resurrect a membership the fragmented one tombstoned, because
+ * liveness is `added_at > removed_at` and the stale entry's `added_at` is older
+ * than the removal that retired it.
+ */
+export function mergeCommunityLists(
+  inputs: Array<
+    | { list: CommunityList | undefined; rank?: number }
+    | CommunityList
+    | undefined
+  >,
+): CommunityList {
+  const entries = new Map<string, CommunityListEntry>();
+  const ranks = new Map<string, number>();
+  const tombstones = new Map<string, CommunityTombstone>();
+  let extras: Record<string, unknown> = {};
+  for (const input of inputs) {
+    const wrapped =
+      input && "list" in input && !("entries" in input)
+        ? (input as { list: CommunityList | undefined; rank?: number })
+        : { list: input as CommunityList | undefined, rank: 0 };
+    const list = wrapped.list;
+    const rank = wrapped.rank ?? 0;
+    if (!list) continue;
+    const { entries: _e, tombstones: _t, ...rest } = list;
+    // Fragment-level unknowns belong to the List, not to their fragment: the
+    // first document carrying a key wins, which for fragments read in index
+    // order is §8's "lowest index wins".
+    extras = { ...rest, ...extras };
+    for (const entry of list.entries) {
+      const id =
+        typeof entry?.community_id === "string" ? entry.community_id : "";
+      if (!id || !entry.current) continue;
+      const prev = entries.get(id);
+      if (!prev) {
+        entries.set(id, entry);
+        ranks.set(id, rank);
+        continue;
+      }
+      const prevRank = ranks.get(id) ?? 0;
+      entries.set(id, mergeEntries(prev, entry, prevRank, rank));
+      // The surviving entry carries the better of the two ranks, so a later
+      // input compares against the generation that actually won.
+      ranks.set(id, Math.min(prevRank, rank));
+    }
+    for (const tomb of list.tombstones) {
+      const id =
+        typeof tomb?.community_id === "string" ? tomb.community_id : "";
+      if (!id) continue;
+      const prev = tombstones.get(id);
+      if (!prev || (tomb.removed_at ?? 0) > (prev.removed_at ?? 0)) {
+        tombstones.set(id, tomb);
+      }
+    }
+  }
+  return {
+    ...extras,
+    entries: [...entries.values()],
+    tombstones: [...tombstones.values()],
+  };
 }
 
 /**

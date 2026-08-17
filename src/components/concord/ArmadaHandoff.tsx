@@ -18,9 +18,9 @@ export { ARMADA_URL };
 /**
  * There is no community list to read, because nothing has published one yet.
  *
- * Says the actual mechanism rather than "nothing found": the list is a kind
- * 13302 encrypted to yourself, Armada is what writes it, and it is the SAME key
- * on both sides that makes it appear here.
+ * Says the actual mechanism rather than "nothing found": the list is an event
+ * encrypted to yourself, Armada is what writes it, and it is the SAME key on
+ * both sides that makes it appear here.
  */
 export function NoCommunitiesEmpty({ onRefresh }: { onRefresh?: () => void }) {
   return (

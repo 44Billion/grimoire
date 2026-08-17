@@ -1,11 +1,20 @@
 /**
  * The Concord membership vault — read side.
  *
- * The viewer's kind-13302 Community List (CORD-02 §8) is the ONLY durable
- * record of Concord membership: it holds each community's `community_root` and
+ * The viewer's Community List (CORD-02 §8) is the ONLY durable record of
+ * Concord membership: it holds each community's `community_root` and
  * private-channel keys, NIP-44-encrypted to self. Armada owns the document;
  * grimoire fetches it, decrypts it, and mirrors the live entries into Dexie so
  * the rest of the client can enumerate communities without a signer round-trip.
+ *
+ * **Two generations are read at once.** §8's List is kind 33302, one addressable
+ * event per fragment; the retired kind 13302 held it in a single replaceable
+ * before it outgrew one event. Armada writes 13302 today, so reading only 33302
+ * would empty every vault — and reading only 13302 would empty every vault the
+ * day armada migrates, silently, with no error anywhere. So each event is a
+ * SLOT (`kind` + `d`), each slot is kept at its own newest copy, and the union
+ * of every slot is the List. §8's merges are commutative and idempotent, which
+ * is exactly what makes unioning across the generations sound.
  *
  * Nothing here publishes. See `src/lib/concord/community-list.ts` for why there
  * is no serializer at all.
@@ -15,9 +24,13 @@
  * fallback (see `fetchListEvent`).
  */
 
-import { KIND_COMMUNITY_LIST } from "@/lib/concord/kinds";
+import {
+  KIND_COMMUNITY_LIST,
+  KIND_COMMUNITY_LIST_LEGACY,
+} from "@/lib/concord/kinds";
 import {
   liveEntries,
+  mergeCommunityLists,
   parseCommunityList,
   rehydrateCommunity,
   type CommunityList,
@@ -77,24 +90,77 @@ export interface ConcordListResult {
 const decryptMemo = new Map<string, Promise<CommunityList | undefined>>();
 
 /**
- * Fetch the newest kind-13302 for `pubkey` from their outbox relays.
+ * How many fragments to ask for. §8 puts no ceiling on the List, but a
+ * membership costs ~550 bytes and a fragment holds roughly eighty, so this is
+ * thousands of memberships — far past anything a person has, and a bound on
+ * what a hostile relay can make this loop over.
+ */
+const MAX_FRAGMENTS = 64;
+
+/** One event of the List: the newest copy of one `(kind, d)` slot. */
+interface ListSlot {
+  kind: number;
+  /** The fragment index in decimal; "" for the legacy single-event List. */
+  d: string;
+  eventId: string;
+  createdAt: number;
+}
+
+const slotKey = (pubkey: string, kind: number, d: string) =>
+  `concordListSlot:${pubkey}:${kind}:${d}`;
+
+/**
+ * The pre-slot floor: which single 13302 the mirror reflected, written by every
+ * version of this client before the List had fragments. Read once, on the first
+ * sync after upgrading, and never written again.
+ */
+const legacyVaultStateKey = (pubkey: string) => `concordListState:${pubkey}`;
+
+/** A mirrored slot: its provenance, and the document it decrypted to. */
+interface StoredSlot extends ListSlot {
+  list: CommunityList;
+}
+
+/** The `d` tag of an addressable list fragment ("" for the legacy kind). */
+function fragmentIndex(event: NostrEvent): string {
+  if (event.kind === KIND_COMMUNITY_LIST_LEGACY) return "";
+  return event.tags.find((t) => t[0] === "d")?.[1] ?? "";
+}
+
+/**
+ * Fetch both generations of the List for `pubkey` from their outbox relays,
+ * newest copy per slot.
  *
  * Armada additionally falls back to a hardcoded set of stock Concord relays,
- * because a user whose own relays refuse kind 13302 has a vault that lives
+ * because a user whose own relays refuse these kinds has a vault that lives
  * ONLY there. Grimoire does not hardcode relays, so a list in that position is
  * invisible here — the community simply does not appear.
  */
-async function fetchListEvent(pubkey: string): Promise<NostrEvent | null> {
-  const filter = {
-    kinds: [KIND_COMMUNITY_LIST],
-    authors: [pubkey],
-    limit: 1,
-  };
-  const { relays } = await selectRelaysForFilter(eventStore, filter);
-  const events = await requestEvents(relays, [filter]);
-  // Replaceables tie-break on the lowest id at equal created_at, but a relay
-  // may serve an older copy alongside a newer one, so pick explicitly.
-  return events.sort((a, b) => b.created_at - a.created_at)[0] ?? null;
+async function fetchListEvents(
+  pubkey: string,
+): Promise<Map<string, NostrEvent>> {
+  const filters = [
+    { kinds: [KIND_COMMUNITY_LIST], authors: [pubkey], limit: MAX_FRAGMENTS },
+    { kinds: [KIND_COMMUNITY_LIST_LEGACY], authors: [pubkey], limit: 1 },
+  ];
+  const { relays } = await selectRelaysForFilter(eventStore, filters[0]);
+  const events = await requestEvents(relays, filters);
+  const newest = new Map<string, NostrEvent>();
+  for (const event of events) {
+    const key = `${event.kind}:${fragmentIndex(event)}`;
+    const prev = newest.get(key);
+    // A relay may serve an older copy of a coordinate alongside a newer one, so
+    // pick explicitly — and tie-break on the lowest id, which is how a relay
+    // resolves an addressable event at equal `created_at` (§8).
+    if (
+      !prev ||
+      event.created_at > prev.created_at ||
+      (event.created_at === prev.created_at && event.id < prev.id)
+    ) {
+      newest.set(key, event);
+    }
+  }
+  return newest;
 }
 
 async function decryptList(
@@ -121,33 +187,93 @@ async function decryptList(
   return work;
 }
 
-/** Which 13302 the mirror currently reflects. Survives an empty vault. */
-interface VaultState {
-  eventId: string;
-  createdAt: number;
-}
-
-const vaultStateKey = (pubkey: string) => `concordListState:${pubkey}`;
-
 /**
- * Whether `event` may replace what the mirror already reflects.
+ * The slots the mirror currently reflects, per slot. Survives an empty vault.
  *
- * Armada gets this for free from its merge — "a transient short relay read
- * can't drop rooms". Grimoire has no merge, so the same protection has to come
- * from monotonicity instead: a relay lagging behind on a replaceable will serve
- * a genuine, decryptable, older 13302, and taking it would delete the rows for
- * every community joined since — keys and all — until a fresh relay answers.
- * That is the wrongful-empty failure by a different route.
+ * Armada gets the protection this buys for free from its merge — "a transient
+ * short relay read can't drop rooms". Grimoire's union is per SLOT, so the same
+ * protection is monotonicity per slot: a relay lagging behind on one coordinate
+ * serves a genuine, decryptable, older copy, and taking it would delete the
+ * rows for every community joined since — keys and all — until a fresh relay
+ * answers. And a fragment nobody answered for at all is simply the copy already
+ * held, which is why the decrypted document is kept beside its provenance
+ * rather than only the id: an unanswered fragment must still contribute its
+ * memberships to the union, or one short read empties part of the vault.
  *
  * The state is kept beside the rows rather than on them, so the floor still
  * exists for a viewer whose list is legitimately empty.
  */
-async function mayReplace(pubkey: string, event: NostrEvent): Promise<boolean> {
-  const row = await db.concordKv.get(vaultStateKey(pubkey));
-  const prev = row?.value as VaultState | undefined;
-  if (!prev) return true;
-  if (prev.eventId === event.id) return false; // already mirrored
-  return event.created_at >= prev.createdAt;
+async function readSlots(pubkey: string): Promise<Map<string, StoredSlot>> {
+  const rows = await db.concordKv
+    .where("key")
+    .startsWith(`concordListSlot:${pubkey}:`)
+    .toArray();
+  const out = new Map<string, StoredSlot>();
+  for (const row of rows) {
+    const slot = row.value as StoredSlot | undefined;
+    if (!slot?.list || typeof slot.kind !== "number") continue;
+    out.set(`${slot.kind}:${slot.d}`, slot);
+  }
+  return out;
+}
+
+/**
+ * The slots that contribute to the union, in the order §8 reads them.
+ *
+ * `frags` bounds the fragment range, and an index at or past it is out of range
+ * — dormant rather than inert: a stale fragment beyond the count holds
+ * memberships from before a repack shrank the List, and unioning it would
+ * resurrect them. Where fragments disagree about `frags`, the newest one
+ * governs and equal ages break to the LARGER value, which is the tie-break with
+ * a safety argument: too large costs a fetch that comes back empty, too small
+ * silently puts live memberships out of range.
+ *
+ * Ascending index, legacy last — so "lowest index wins" holds for the
+ * fragment-level unknowns {@link mergeCommunityLists} carries through.
+ */
+function inRangeSlots(slots: Map<string, StoredSlot>): StoredSlot[] {
+  const fragments: Array<{ index: number; slot: StoredSlot }> = [];
+  const legacy: StoredSlot[] = [];
+  for (const slot of slots.values()) {
+    if (slot.kind === KIND_COMMUNITY_LIST_LEGACY) {
+      legacy.push(slot);
+      continue;
+    }
+    // `d` is the index in decimal. An absent one is the empty identifier every
+    // relay treats as a coordinate of its own, so it reads as fragment 0 rather
+    // than being dropped — a writer that never fragmented still has a List.
+    if (slot.d !== "" && !/^\d+$/.test(slot.d)) continue;
+    fragments.push({ index: slot.d === "" ? 0 : Number(slot.d), slot });
+  }
+
+  let frags: number | undefined;
+  let declaredAt = -1;
+  for (const { slot } of fragments) {
+    const declared = slot.list.frags;
+    if (typeof declared !== "number" || !Number.isInteger(declared)) continue;
+    if (
+      slot.createdAt > declaredAt ||
+      (slot.createdAt === declaredAt && declared > (frags ?? 0))
+    ) {
+      frags = declared;
+      declaredAt = slot.createdAt;
+    }
+  }
+
+  return [
+    ...fragments
+      .filter(({ index }) => frags === undefined || index < frags)
+      .sort((a, b) => a.index - b.index)
+      .map(({ slot }) => slot),
+    ...legacy,
+  ];
+}
+
+async function writeSlot(pubkey: string, slot: StoredSlot): Promise<void> {
+  await db.concordKv.put({
+    key: slotKey(pubkey, slot.kind, slot.d),
+    value: slot,
+  });
 }
 
 /**
@@ -161,7 +287,7 @@ async function mayReplace(pubkey: string, event: NostrEvent): Promise<boolean> {
 async function replaceVault(
   pubkey: string,
   entries: CommunityListEntry[],
-  event: NostrEvent,
+  newest: ListSlot,
 ): Promise<void> {
   const now = Date.now();
   const rows: ConcordCommunityRow[] = entries.map((entry) => ({
@@ -169,17 +295,16 @@ async function replaceVault(
     idHex: entry.community_id.toLowerCase(),
     entry,
     name: typeof entry.current?.name === "string" ? entry.current.name : "",
-    listEventId: event.id,
-    listCreatedAt: event.created_at,
+    // Provenance of the whole union, named by its newest contributing event —
+    // the fragments are individually monotonic in `concordKv`, so this is a
+    // label rather than the floor it used to be.
+    listEventId: newest.eventId,
+    listCreatedAt: newest.createdAt,
     updatedAt: now,
   }));
-  await db.transaction("rw", db.concordCommunities, db.concordKv, async () => {
+  await db.transaction("rw", db.concordCommunities, async () => {
     await db.concordCommunities.where("pubkey").equals(pubkey).delete();
     if (rows.length > 0) await db.concordCommunities.bulkPut(rows);
-    await db.concordKv.put({
-      key: vaultStateKey(pubkey),
-      value: { eventId: event.id, createdAt: event.created_at } as VaultState,
-    });
   });
 }
 
@@ -275,23 +400,89 @@ export async function syncCommunities(
   registerControlAddresses(stored);
   if (!signer?.nip44) return { status: "no-decryptor", communities: stored };
 
-  const event = await fetchListEvent(pubkey);
-  if (!event) {
-    // No list on any relay we asked. That is not proof there is none (the
-    // relays may simply not carry it), so the vault stands.
-    return { status: "ok", communities: stored };
+  const [fetched, slots] = await Promise.all([
+    fetchListEvents(pubkey),
+    readSlots(pubkey),
+  ]);
+
+  // The floor an account carries over from before slots existed. Without it,
+  // the first sync after upgrading has NO floor at all, and a lagging relay
+  // serving a genuine older list is accepted and mirrored — deleting the rows
+  // for every community joined since it, keys included. Exactly the
+  // wrongful-empty the previous global floor existed to prevent.
+  const legacyFloor = slots.has(`${KIND_COMMUNITY_LIST_LEGACY}:`)
+    ? undefined
+    : ((await db.concordKv.get(legacyVaultStateKey(pubkey)))?.value as
+        { eventId: string; createdAt: number } | undefined);
+
+  let unreadable = 0;
+  for (const [key, event] of fetched) {
+    const held = slots.get(key);
+    // Checked before the decrypt so a lagging relay costs no signer round-trip.
+    if (held) {
+      if (held.eventId === event.id) continue;
+      if (event.created_at < held.createdAt) continue;
+    } else if (
+      legacyFloor &&
+      event.kind === KIND_COMMUNITY_LIST_LEGACY &&
+      (event.id === legacyFloor.eventId ||
+        event.created_at < legacyFloor.createdAt)
+    ) {
+      continue;
+    }
+    const list = await decryptList(event, signer, pubkey);
+    if (!list) {
+      // A slot with a copy already held keeps it and the union stands. One
+      // with NO held copy is a hole in the union, and mirroring a union with a
+      // hole in it deletes the memberships that slot carries — so the whole
+      // write is withheld below instead.
+      if (!held) unreadable++;
+      continue;
+    }
+    const slot: StoredSlot = {
+      kind: event.kind,
+      d: fragmentIndex(event),
+      eventId: event.id,
+      createdAt: event.created_at,
+      list,
+    };
+    slots.set(key, slot);
+    await writeSlot(pubkey, slot);
   }
 
-  // Checked before the decrypt so a lagging relay costs no signer round-trip.
-  if (!(await mayReplace(pubkey, event))) {
-    return { status: "ok", communities: stored };
+  const contributing = inRangeSlots(slots);
+  if (contributing.length === 0) {
+    // Nothing on any relay we asked and nothing held. That is not proof there
+    // is no list (the relays may simply not carry it), so the vault stands.
+    return {
+      status: unreadable > 0 ? "decrypt-failed" : "ok",
+      communities: stored,
+    };
+  }
+  if (unreadable > 0) {
+    // A partial union is not a smaller list, it is a WRONG one: the mirror is
+    // replaced wholesale, so writing it would delete the memberships living in
+    // the slot that would not open. One flaky signer round-trip — routine with
+    // a bunker, and there is one call per fragment — must not cost keys.
+    return { status: "decrypt-failed", communities: stored };
   }
 
-  const list = await decryptList(event, signer, pubkey);
-  if (!list) return { status: "decrypt-failed", communities: stored };
-
-  const live = liveEntries(list);
-  await replaceVault(pubkey, live, event);
+  const live = liveEntries(
+    // Fragments outrank the retired generation at equal epoch: the legacy event
+    // is never rewritten once a writer migrates, so a same-epoch change — a
+    // rename, a relay swap, a newly granted channel key — would otherwise be
+    // decided by canonical bytes and could settle on the stale copy forever.
+    mergeCommunityLists(
+      contributing.map((slot) => ({
+        list: slot.list,
+        rank: slot.kind === KIND_COMMUNITY_LIST_LEGACY ? 1 : 0,
+      })),
+    ),
+  );
+  const newest = contributing.reduce((a, b) =>
+    b.createdAt > a.createdAt ? b : a,
+  );
+  await replaceVault(pubkey, live, newest);
   const communities = await loadStoredCommunities(pubkey);
   registerControlAddresses(communities);
   return { status: "ok", communities };

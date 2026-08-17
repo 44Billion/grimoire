@@ -12,7 +12,10 @@ import {
   hex32,
   random32,
 } from "@/lib/concord/derive";
-import { KIND_COMMUNITY_LIST } from "@/lib/concord/kinds";
+import {
+  KIND_COMMUNITY_LIST,
+  KIND_COMMUNITY_LIST_LEGACY,
+} from "@/lib/concord/kinds";
 import type {
   CommunityList,
   CommunityListEntry,
@@ -86,17 +89,64 @@ function entry(jm: JoinMaterial, addedAt = 1000): CommunityListEntry {
   };
 }
 
-/** A genuine kind-13302: the list JSON, NIP-44 self-encrypted, signed. */
-function listEvent(list: CommunityList, createdAt = 1_700_000_000): NostrEvent {
+/** A genuine list event: the list JSON, NIP-44 self-encrypted, signed. */
+function listEvent(
+  list: CommunityList,
+  createdAt = 1_700_000_000,
+  opts: { kind?: number; d?: string } = {},
+): NostrEvent {
   return finalizeEvent(
     {
-      kind: KIND_COMMUNITY_LIST,
+      kind: opts.kind ?? KIND_COMMUNITY_LIST,
       content: nip44.encrypt(JSON.stringify(list), selfKey),
-      tags: [],
+      tags: opts.d === undefined ? [] : [["d", opts.d]],
       created_at: createdAt,
     },
     sk,
   ) as NostrEvent;
+}
+
+/** One fragment of a §8 List: kind 33302 at `d` = the index in decimal. */
+const fragment = (
+  index: number,
+  list: CommunityList,
+  createdAt = 1_700_000_000,
+) => listEvent(list, createdAt, { d: String(index) });
+
+/** The retired single-event List armada still writes today. */
+const legacyListEvent = (list: CommunityList, createdAt = 1_700_000_000) =>
+  listEvent(list, createdAt, { kind: KIND_COMMUNITY_LIST_LEGACY });
+
+/** Re-spell every named 32-byte value as unpadded base64url, as §8 fixes it. */
+function asBase64url(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(asBase64url);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const named = NAMED_32.has(k) && typeof v === "string";
+      out[k] = named ? hexToB64url(v as string) : asBase64url(v);
+    }
+    return out;
+  }
+  return value;
+}
+
+const NAMED_32 = new Set([
+  "community_id",
+  "owner",
+  "owner_salt",
+  "community_root",
+  "control_pk",
+  "id",
+  "key",
+]);
+
+function hexToB64url(hex: string): string {
+  let bin = "";
+  for (let i = 0; i < hex.length; i += 2) {
+    bin += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
+  }
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 beforeEach(async () => {
@@ -230,8 +280,169 @@ describe("syncCommunities", () => {
       },
     ]);
     const result = await syncCommunities(pubkey, signer);
-    expect(result.status).toBe("decrypt-failed");
+    // The slot that would not decrypt keeps the copy already held, so the union
+    // still names Alpha — and the status stays "ok" precisely because there IS
+    // a readable list: reporting the failure would blank a working view.
+    expect(result.status).toBe("ok");
     expect(result.communities.map((c) => c.name)).toEqual(["Alpha"]);
+  });
+
+  it("unions the fragments of a §8 List", async () => {
+    const alpha = joinMaterial("Alpha");
+    const beta = joinMaterial("Beta");
+    requestEvents.mockResolvedValue([
+      fragment(0, { frags: 2, entries: [entry(alpha)], tombstones: [] }),
+      fragment(1, { frags: 2, entries: [entry(beta)], tombstones: [] }),
+    ]);
+    const { communities } = await syncCommunities(pubkey, signer);
+    expect(communities.map((c) => c.name)).toEqual(["Alpha", "Beta"]);
+  });
+
+  it("keeps a fragment no relay answered for this time", async () => {
+    // The whole reason each fragment is mirrored with its document: a short
+    // read is news not yet heard, never a subtraction.
+    const alpha = joinMaterial("Alpha");
+    const beta = joinMaterial("Beta");
+    requestEvents.mockResolvedValue([
+      fragment(0, { frags: 2, entries: [entry(alpha)], tombstones: [] }),
+      fragment(1, { frags: 2, entries: [entry(beta)], tombstones: [] }),
+    ]);
+    await syncCommunities(pubkey, signer);
+
+    requestEvents.mockResolvedValue([
+      fragment(
+        0,
+        { frags: 2, entries: [entry(alpha)], tombstones: [] },
+        1_700_000_500,
+      ),
+    ]);
+    const { communities } = await syncCommunities(pubkey, signer);
+    expect(communities.map((c) => c.name)).toEqual(["Alpha", "Beta"]);
+  });
+
+  it("ignores a fragment past the declared count", async () => {
+    // A repack that lowered `frags` leaves its dropped fragments dormant, not
+    // inert: unioning one would resurrect the memberships it moved away.
+    const alpha = joinMaterial("Alpha");
+    const dormant = joinMaterial("Dormant");
+    requestEvents.mockResolvedValue([
+      fragment(
+        0,
+        { frags: 1, entries: [entry(alpha)], tombstones: [] },
+        1_700_000_900,
+      ),
+      fragment(1, { frags: 2, entries: [entry(dormant)], tombstones: [] }),
+    ]);
+    const { communities } = await syncCommunities(pubkey, signer);
+    expect(communities.map((c) => c.name)).toEqual(["Alpha"]);
+  });
+
+  it("reads the retired single-event List beside the fragmented one", async () => {
+    // Armada writes 13302 today; the day it migrates, a client reading only one
+    // generation empties every vault with no error anywhere.
+    const legacy = joinMaterial("Legacy");
+    const current = joinMaterial("Current");
+    requestEvents.mockResolvedValue([
+      legacyListEvent({ entries: [entry(legacy)], tombstones: [] }),
+      fragment(0, { frags: 1, entries: [entry(current)], tombstones: [] }),
+    ]);
+    const { communities } = await syncCommunities(pubkey, signer);
+    expect(communities.map((c) => c.name)).toEqual(["Current", "Legacy"]);
+  });
+
+  it("cannot resurrect a membership the other generation tombstoned", async () => {
+    const left = joinMaterial("Left");
+    requestEvents.mockResolvedValue([
+      legacyListEvent({ entries: [entry(left, 1000)], tombstones: [] }),
+      fragment(0, {
+        frags: 1,
+        entries: [],
+        tombstones: [{ community_id: left.community_id, removed_at: 9000 }],
+      }),
+    ]);
+    const { communities } = await syncCommunities(pubkey, signer);
+    expect(communities).toEqual([]);
+  });
+
+  it("reads a List spelled in unpadded base64url", async () => {
+    // CORD-02 §8 fixes every named 32-byte value as 43 characters of unpadded
+    // base64url; earlier revisions (and armada today) write hex. The lengths
+    // differ, so both spellings are readable without ambiguity.
+    const alpha = joinMaterial("Alpha");
+    const list = asBase64url({
+      frags: 1,
+      entries: [entry(alpha)],
+      tombstones: [],
+    }) as CommunityList;
+    requestEvents.mockResolvedValue([fragment(0, list)]);
+    const { communities } = await syncCommunities(pubkey, signer);
+    expect(communities.map((c) => c.name)).toEqual(["Alpha"]);
+    // …and the vault holds it in grimoire's own canonical spelling, so every
+    // derivation and Dexie key downstream is untouched by the change.
+    expect(communities[0].idHex).toBe(alpha.community_id);
+  });
+
+  it("withholds the whole write when one fragment will not decrypt", async () => {
+    // The mirror is replaced wholesale, so a union with a hole in it DELETES
+    // the memberships that slot carries. One flaky signer round-trip — routine
+    // with a bunker, and there is one call per fragment — must not cost keys.
+    const alpha = joinMaterial("Alpha");
+    const beta = joinMaterial("Beta");
+    requestEvents.mockResolvedValue([
+      fragment(0, { frags: 2, entries: [entry(alpha)], tombstones: [] }),
+      {
+        ...fragment(1, { frags: 2, entries: [entry(beta)], tombstones: [] }),
+        content: "garbage",
+      },
+    ]);
+    const result = await syncCommunities(pubkey, signer);
+    expect(result.status).toBe("decrypt-failed");
+    expect(result.communities).toEqual([]);
+    expect(await db.concordCommunities.count()).toBe(0);
+  });
+
+  it("honours the pre-slot floor on the first sync after upgrading", async () => {
+    // An account upgraded from the single-event List has rows and an old floor
+    // but no slots. Without reading that floor, a lagging relay's genuine older
+    // list is accepted and mirrored, deleting every membership joined since.
+    const alpha = joinMaterial("Alpha");
+    const beta = joinMaterial("Beta");
+    const current = legacyListEvent(
+      { entries: [entry(alpha), entry(beta)], tombstones: [] },
+      1_700_000_900,
+    );
+    requestEvents.mockResolvedValue([current]);
+    await syncCommunities(pubkey, signer);
+
+    // Re-stage the account as one that upgraded: rows mirrored, the OLD floor
+    // recorded, and no slot rows at all.
+    await db.concordKv.clear();
+    await db.concordKv.put({
+      key: `concordListState:${pubkey}`,
+      value: { eventId: current.id, createdAt: current.created_at },
+    });
+    _resetDecryptMemoForTests();
+
+    requestEvents.mockResolvedValue([
+      legacyListEvent(
+        { entries: [entry(alpha)], tombstones: [] },
+        1_700_000_100,
+      ),
+    ]);
+    const { communities } = await syncCommunities(pubkey, signer);
+    expect(communities.map((c) => c.name)).toEqual(["Alpha", "Beta"]);
+  });
+
+  it("reports decrypt-failed only when nothing readable is left", async () => {
+    requestEvents.mockResolvedValue([
+      {
+        ...listEvent({ entries: [], tombstones: [] }),
+        content: "garbage",
+      },
+    ]);
+    const result = await syncCommunities(pubkey, signer);
+    expect(result.status).toBe("decrypt-failed");
+    expect(result.communities).toEqual([]);
   });
 
   it("retries a transient decrypt failure rather than memoizing it", async () => {

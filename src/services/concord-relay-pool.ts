@@ -21,9 +21,8 @@
  *
  * - **Plane traffic only** — kind-1059 wraps at derived stream addresses. Every
  *   plane read goes through here; nothing else may.
- * - **The kind-13302 Community List stays on the shared pool.** It is authored by
- *   the user, on the user's own relays, and has nothing to do with the plane
- *   gate.
+ * - **The Community List stays on the shared pool.** It is authored by the
+ *   user, on the user's own relays, and has nothing to do with the plane gate.
  * - **`concord-stream-auth.ts` must watch THIS pool.** It is what answers NIP-42
  *   challenges with stream keys, and pointing it at the wrong pool fails
  *   silently: AUTHs go to sockets nothing reads from and every plane REQ is

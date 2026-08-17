@@ -124,8 +124,24 @@ export const KIND_REKEY = 3303;
 
 /** Public invite bundle: addressable, signed by the per-link keypair, empty `d`. */
 export const KIND_INVITE_BUNDLE = 33301;
-/** A member's self-encrypted Community List (replaceable, one per user). */
-export const KIND_COMMUNITY_LIST = 13302;
+/**
+ * A member's self-encrypted Community List (CORD-02 §8): addressable, ONE EVENT
+ * PER FRAGMENT, its `d` tag the fragment index in decimal ("0", "1", …).
+ *
+ * A reader unions the fragments it holds; grimoire never writes one, so none of
+ * §8's write discipline (the read-modify-write, the repack, the 65,536-byte
+ * ceiling) applies here — only the union does.
+ */
+export const KIND_COMMUNITY_LIST = 33302;
+/**
+ * The RETIRED single-event Community List — a replaceable kind cannot fragment,
+ * which is what retired it (CORD-02 Appendix B).
+ *
+ * Still read, never written. Armada ships it today, so dropping it would empty
+ * every grimoire user's vault; a client that reads both is indifferent to when
+ * the writer migrates, which is the whole point of keeping the number here.
+ */
+export const KIND_COMMUNITY_LIST_LEGACY = 13302;
 /** A creator's self-encrypted Invite List (replaceable, one per user). */
 export const KIND_INVITE_LIST = 13303;
 

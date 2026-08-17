@@ -192,8 +192,8 @@ export interface Community {
    *
    * Grimoire NEVER uses this — it publishes nothing to the Control Plane — and
    * carries it for one reason: so a Community List write-back preserves it.
-   * Kind 13302 is replaceable, one per user, so a client that rehydrates an
-   * entry without this field and writes the entry back deletes a staff
+   * The List holds a member's only copy of their own keys, so a client that
+   * rehydrates an entry without this field and writes the entry back deletes a staff
    * member's write key in EVERY client they use, recoverable only by a
    * re-grant from another staffer. Same round-trip discipline as
    * `MemberGrant.controlWrap`, and the same reason.

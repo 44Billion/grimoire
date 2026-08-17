@@ -1,7 +1,7 @@
 /**
  * Locally-adopted rotation keys, and how they layer over the Community List.
  *
- * Armada writes an adoption straight into the member's own kind-13302 list.
+ * Armada writes an adoption straight into the member’s own Community List.
  * Grimoire never publishes that document (see the port's key-custody rule), so
  * an adoption lands in Dexie instead and this module is the seam that makes the
  * two agree.

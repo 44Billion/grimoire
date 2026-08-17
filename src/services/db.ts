@@ -135,7 +135,7 @@ export interface CachedEmojiSet {
 }
 
 /**
- * One Concord membership, as decrypted out of the viewer's kind-13302 list.
+ * One Concord membership, as decrypted out of the viewer's Community List.
  *
  * Keyed by `[pubkey+idHex]`, never by community id alone: the row holds a
  * decrypted `community_root` and private-channel keys, so one account must
@@ -150,7 +150,7 @@ export interface ConcordCommunityRow {
   idHex: string; // community_id, lowercase hex
   entry: unknown; // CommunityListEntry, verbatim
   name: string; // Join-time preview name, for lookup without rehydrating
-  listEventId: string; // The kind 13302 this was decrypted from
+  listEventId: string; // The newest list event this union drew on
   listCreatedAt: number;
   updatedAt: number;
 }
@@ -218,7 +218,7 @@ export interface ConcordPendingWrapRow {
 /**
  * Key material this device adopted from a CORD-06 rotation, keyed by account.
  *
- * Grimoire never publishes kind 13302, so an adoption cannot go where armada
+ * Grimoire never publishes the Community List, so an adoption cannot go where armada
  * puts it — into the member's own Community List. It lands here instead, and
  * the reader layers it over the rehydrated list entry. The list stays the
  * source of truth; this is a cache allowed to run AHEAD of it, and both

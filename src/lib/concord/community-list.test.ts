@@ -13,6 +13,8 @@ import {
   isExcluded,
   isLive,
   liveEntries,
+  canonical32,
+  mergeCommunityLists,
   parseCommunityList,
   rehydrateCommunity,
   type CommunityList,
@@ -342,5 +344,138 @@ describe("rehydrateCommunity", () => {
       expect(held.controlPk).toBe("ab".repeat(32));
       expect(held.refounder).toBe("cd".repeat(32));
     });
+  });
+});
+
+describe("canonical32", () => {
+  it("reads both spellings CORD-02 §8 can present, and only those", () => {
+    const hex = "ab".repeat(32);
+    const b64url = "q6urq6urq6urq6urq6urq6urq6urq6urq6urq6urq6s"; // the same 32 bytes
+    expect(canonical32(hex)).toBe(hex);
+    expect(canonical32(hex.toUpperCase())).toBe(hex);
+    expect(canonical32(b64url)).toBe(hex);
+    // Neither length, so neither spelling — left alone rather than guessed at.
+    expect(canonical32("nope")).toBeUndefined();
+    expect(canonical32(42)).toBeUndefined();
+  });
+
+  it("normalizes the named fields and leaves unknown ones verbatim", () => {
+    const jm = makeJoinMaterial();
+    const b64 = (hex: string) =>
+      btoa(String.fromCharCode(...hex32(hex)))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+    const list = parseCommunityList(
+      JSON.stringify({
+        entries: [
+          {
+            community_id: b64(jm.community_id),
+            current: { ...jm, community_root: b64(jm.community_root) },
+            added_at: 1,
+            // A key this version has never heard of, holding 32 bytes it must
+            // NOT decode — §8's round-trip rule outranks the encoding rule.
+            future_key: b64(jm.community_root),
+          },
+        ],
+        tombstones: [],
+      }),
+    );
+    expect(list.entries[0].community_id).toBe(jm.community_id);
+    expect(list.entries[0].current.community_root).toBe(jm.community_root);
+    expect(list.entries[0].future_key).toBe(b64(jm.community_root));
+  });
+});
+
+describe("mergeCommunityLists", () => {
+  it("keeps the higher epoch as current and the lower as seed", () => {
+    const jm = makeJoinMaterial();
+    const older = { ...jm, root_epoch: 1 };
+    const newer = { ...jm, root_epoch: 4 };
+    const merged = mergeCommunityLists([
+      { entries: [entryOf(older)], tombstones: [] },
+      {
+        entries: [entryOf(newer, { seed: older, added_at: 2000 })],
+        tombstones: [],
+      },
+    ]);
+    expect(merged.entries).toHaveLength(1);
+    expect(merged.entries[0].current.root_epoch).toBe(4);
+    expect(merged.entries[0].seed.root_epoch).toBe(1);
+    expect(merged.entries[0].added_at).toBe(2000);
+  });
+
+  it("is commutative and idempotent — a re-read cannot change the answer", () => {
+    const a: CommunityList = {
+      entries: [entryOf(makeJoinMaterial({ name: "A" }))],
+      tombstones: [],
+    };
+    const b: CommunityList = {
+      entries: [entryOf(makeJoinMaterial({ name: "B" }))],
+      tombstones: [],
+    };
+    const names = (list: CommunityList) =>
+      list.entries
+        .map((e) => e.current.name)
+        .sort()
+        .join(",");
+    expect(names(mergeCommunityLists([a, b]))).toBe("A,B");
+    expect(names(mergeCommunityLists([b, a]))).toBe("A,B");
+    expect(names(mergeCommunityLists([a, b, a, b]))).toBe("A,B");
+  });
+
+  it("keeps the later removal, so a stale fragment cannot revive a leave", () => {
+    const jm = makeJoinMaterial();
+    const merged = mergeCommunityLists([
+      {
+        entries: [entryOf(jm, { added_at: 1000 })],
+        tombstones: [{ community_id: jm.community_id, removed_at: 500 }],
+      },
+      {
+        entries: [],
+        tombstones: [{ community_id: jm.community_id, removed_at: 9000 }],
+      },
+    ]);
+    expect(liveEntries(merged)).toEqual([]);
+  });
+});
+
+describe("mergeCommunityLists across generations", () => {
+  it("lets a fragment beat the retired List at an equal epoch", () => {
+    // The legacy event is never rewritten once a writer migrates, so a
+    // same-epoch change — a rename, a newly granted channel key — must not be
+    // decided by canonical bytes and settle on the stale copy forever.
+    const jm = makeJoinMaterial({ name: "Stale", root_epoch: 3 });
+    const fresh = {
+      ...jm,
+      name: "Fresh",
+      channels: [chan("aa".repeat(32), 3)],
+    };
+    const legacy = { entries: [entryOf(jm)], tombstones: [] };
+    const fragment = { entries: [entryOf(fresh)], tombstones: [] };
+    for (const order of [
+      [
+        { list: fragment, rank: 0 },
+        { list: legacy, rank: 1 },
+      ],
+      [
+        { list: legacy, rank: 1 },
+        { list: fragment, rank: 0 },
+      ],
+    ]) {
+      const merged = mergeCommunityLists(order);
+      expect(merged.entries[0].current.name).toBe("Fresh");
+      expect(merged.entries[0].current.channels).toHaveLength(1);
+    }
+  });
+
+  it("still lets a higher epoch win whatever generation carries it", () => {
+    const jm = makeJoinMaterial({ root_epoch: 1 });
+    const rotated = { ...jm, root_epoch: 5, name: "Rotated" };
+    const merged = mergeCommunityLists([
+      { list: { entries: [entryOf(jm)], tombstones: [] }, rank: 0 },
+      { list: { entries: [entryOf(rotated)], tombstones: [] }, rank: 1 },
+    ]);
+    expect(merged.entries[0].current.root_epoch).toBe(5);
   });
 });

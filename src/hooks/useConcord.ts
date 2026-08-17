@@ -45,7 +45,7 @@ export interface ConcordCommunitiesResult {
   refresh: () => void;
 }
 
-/** The viewer's Concord memberships, decrypted from their kind-13302 list. */
+/** The viewer's Concord memberships, decrypted from their Community List. */
 export function useConcordCommunities(): ConcordCommunitiesResult {
   const account = use$(accountManager.active$);
   const pubkey = account?.pubkey;
