@@ -23,7 +23,7 @@
 import { AuthRequiredError } from "applesauce-relay";
 import type { NostrEvent } from "nostr-tools";
 import dmPublishPool from "@/services/dm-publish-pool";
-import { normalizeRelayURL } from "@/lib/relay-url";
+import { normalizeRelayURL, isValidRelayURL } from "@/lib/relay-url";
 
 /** A relay that demands auth is answered fast, not waited out. */
 const PUBLISH_TIMEOUT_MS = 10_000;
@@ -67,7 +67,14 @@ export async function publishGiftWrap(
   wrap: NostrEvent,
   relays: string[],
 ): Promise<GiftWrapDelivery[]> {
-  const targets = Array.from(new Set(relays.map(normalizeRelayURL)));
+  // `normalizeRelayURL` THROWS on a malformed URL, and one bad entry must not
+  // take the other deliveries down with it — this function's contract is that
+  // a relay-level problem is reported, not raised.
+  const targets = Array.from(
+    new Set(
+      relays.filter(isValidRelayURL).map((url) => normalizeRelayURL(url)),
+    ),
+  );
 
   return Promise.all(
     targets.map(async (relay): Promise<GiftWrapDelivery> => {

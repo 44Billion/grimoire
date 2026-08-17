@@ -173,3 +173,61 @@ describe("version 26: notification levels become protocol-qualified", () => {
     }
   });
 });
+
+describe("version 27: the direct-message tables", () => {
+  it("appear on a database that predates them, with everything else intact", async () => {
+    const name = scratchName();
+    await seedV24(name);
+
+    const db = new GrimoireDb(name);
+    await db.open();
+    try {
+      expect(db.tables.map((t) => t.name)).toEqual(
+        expect.arrayContaining([
+          "dmRumors",
+          "dmConversations",
+          "dmSeenWraps",
+          "dmKv",
+        ]),
+      );
+      expect(await db.dmRumors.count()).toBe(0);
+      // The v24 seed's rows are still there — this version adds tables and
+      // rewrites nothing.
+      expect(await db.chatReads.count()).toBeGreaterThan(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("keeps one account's mail out of another's", async () => {
+    const name = scratchName();
+    const db = new GrimoireDb(name);
+    await db.open();
+    try {
+      const other = "f".repeat(64);
+      for (const viewer of [ME, other]) {
+        await db.dmRumors.put({
+          id: `${viewer}-rumor`,
+          viewer,
+          conversationId: "c",
+          kind: 14,
+          created_at: 1,
+          pubkey: viewer,
+          content: "hi",
+          tags: [],
+        });
+      }
+
+      // The compound key is what makes this a range read rather than a filter
+      // someone can forget to write.
+      const mine = await db.dmRumors
+        .where("[viewer+conversationId+created_at]")
+        .between([ME, "c", -Infinity], [ME, "c", Infinity])
+        .toArray();
+
+      expect(mine.map((r) => r.viewer)).toEqual([ME]);
+    } finally {
+      db.close();
+    }
+  });
+});

@@ -51,6 +51,7 @@ import {
 } from "@/lib/grimoire-members";
 import { MONTHLY_GOAL_SATS } from "@/services/supporters";
 import { clearCommunities } from "@/services/concord-communities";
+import { clearDirectMessages } from "@/services/dm-store";
 
 function UserAvatar({ pubkey }: { pubkey: string }) {
   const profile = useProfile(pubkey);
@@ -157,6 +158,12 @@ export default function UserMenu() {
     // channel keys — removing the account has to take them too.
     await clearCommunities(account.pubkey).catch((error) => {
       console.warn("[concord] could not clear the vault on logout:", error);
+    });
+    // Private mail, in plaintext, keyed to an account that is about to stop
+    // existing here. Separate from the Concord wipe on purpose — that function
+    // is Concord's by its own docstring.
+    await clearDirectMessages(account.pubkey).catch((error) => {
+      console.warn("[dm] could not clear direct messages on logout:", error);
     });
     accounts.removeAccount(account);
   }

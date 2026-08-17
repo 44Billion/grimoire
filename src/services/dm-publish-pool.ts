@@ -28,9 +28,16 @@
  *
  * Never REQ on this pool. It publishes; that is all it is for.
  *
- * Honest limit: a second socket to the same host, from the same address, at the
- * same moment is still correlatable by a relay that cares to try. This removes
- * the cryptographic link, not the network-level one.
+ * Honest limits, both outside what this pool can fix:
+ *
+ * - A second socket to the same host, from the same address, at the same moment
+ *   is still correlatable by a relay that cares to try. This removes the
+ *   cryptographic link, not the network-level one.
+ * - Resolving the recipient's kind-10050 runs through the ordinary store loader
+ *   on the SINGLETON pool, which fans out to the aggregator relays. So an
+ *   authenticated socket asks a handful of well-known relays who a wrap is
+ *   about to go to, moments before it goes. The wrap itself stays anonymous;
+ *   the interest does not.
  */
 
 import { RelayPool } from "applesauce-relay";

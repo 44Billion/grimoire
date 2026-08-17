@@ -371,6 +371,86 @@ export interface ChatDraftRow {
   updatedAt: number;
 }
 
+/**
+ * A decrypted NIP-17 rumor. Rumors only, never wraps.
+ *
+ * Same contract as {@link ConcordRumorRow} and for the same reason: a gift wrap
+ * is opened once, at ingest, and what persists is the rumor the author signed,
+ * so reading a conversation is an indexed query with no crypto and no signer
+ * prompt in it. Nothing here is ever re-decrypted; that is the whole point.
+ *
+ * `viewer` is the account that opened the wrap and MUST be in every query.
+ * grimoire is multi-account and these rows are private mail — a query that
+ * forgets it shows one account another's correspondence. It is also what the
+ * logout wipe deletes by.
+ *
+ * `conversationId` is applesauce's canonical form (participant pubkeys sorted
+ * and joined), not the peer's pubkey, so a group DM is addressable by the same
+ * key as a 1:1 one.
+ *
+ * Plaintext at rest. Ciphertext is never persisted: an unopened wrap is dropped
+ * rather than parked, because unlike Concord — where a key can legitimately
+ * arrive later — a NIP-17 wrap this account cannot open is one that was never
+ * addressed to it.
+ */
+export interface DmRumorRow {
+  /** The rumor id. Recomputed at ingest, never taken on trust. */
+  id: string;
+  /** The account that decrypted it. In every index, in every query. */
+  viewer: string;
+  conversationId: string;
+  kind: number;
+  created_at: number;
+  pubkey: string;
+  content: string;
+  tags: string[][];
+  /** NIP-40 deadline in seconds, when the rumor carries one. Swept, not shown. */
+  expiration?: number;
+}
+
+/**
+ * One conversation's summary, so the sidebar is one indexed read.
+ *
+ * Derivable from {@link DmRumorRow} by scanning and folding, which is exactly
+ * why it exists: a list of conversations sorted by recency should not cost a
+ * walk over every message the account has ever received.
+ */
+export interface DmConversationRow {
+  viewer: string;
+  conversationId: string;
+  /** Every participant including the viewer, sorted. */
+  participants: string[];
+  /** Newest message time in seconds — what the list sorts by. */
+  lastAt: number;
+}
+
+/**
+ * A gift wrap this viewer has already dealt with.
+ *
+ * The memo that makes "decrypt once, ever" true across sessions. Wraps are
+ * refetched from relays on every load — the EventStore is in memory — so
+ * without this a cold start re-opens the whole inbox and, on a bunker or an
+ * extension, asks the signer to approve every one of them again.
+ *
+ * A wrap that FAILED to open is recorded here too. It will fail identically
+ * next time, and retrying it forever is a permission prompt per session for a
+ * message that does not exist.
+ */
+export interface DmSeenWrapRow {
+  viewer: string;
+  wrapId: string;
+  /** The wrap's own created_at, in seconds. Backdated by up to two days. */
+  wrapAt: number;
+  /** False when the wrap would not open. */
+  opened: boolean;
+}
+
+/** Small opaque DM blobs: the backfill cursor, the decrypt consent flag. */
+export interface DmKvRow {
+  key: string;
+  value: unknown;
+}
+
 /** A failure nothing will retry on its own — only the reader's own Retry. */
 export const OUTBOX_NEVER = Number.MAX_SAFE_INTEGER;
 
@@ -400,6 +480,10 @@ export class GrimoireDb extends Dexie {
   chatReads!: Table<ChatReadRow>;
   concordOutbox!: Table<ConcordOutboxRow>;
   chatDrafts!: Table<ChatDraftRow>;
+  dmRumors!: Table<DmRumorRow>;
+  dmConversations!: Table<DmConversationRow>;
+  dmSeenWraps!: Table<DmSeenWrapRow>;
+  dmKv!: Table<DmKvRow>;
 
   constructor(name: string) {
     super(name);
@@ -933,6 +1017,24 @@ export class GrimoireDb extends Dexie {
           await kv.delete(row.key);
         }
       });
+
+    // NIP-17 direct messages. Four new tables, nothing existing touched, so no
+    // upgrade function — Dexie creates them empty and the first inbox sync
+    // fills them.
+    //
+    // `viewer` leads every index because these are private messages in a
+    // multi-account client: a compound key is the only thing that makes "this
+    // account's mail" a range read rather than a filter someone can forget.
+    // `[viewer+conversationId+created_at]` is what a thread pages backwards on,
+    // `[viewer+created_at]` is the global wrap walk, and
+    // `dmConversations.[viewer+lastAt]` is the sidebar in one read.
+    this.version(27).stores({
+      dmRumors:
+        "&[viewer+id], [viewer+conversationId+created_at], [viewer+created_at]",
+      dmConversations: "&[viewer+conversationId], [viewer+lastAt]",
+      dmSeenWraps: "&[viewer+wrapId], [viewer+wrapAt]",
+      dmKv: "&key",
+    });
   }
 }
 

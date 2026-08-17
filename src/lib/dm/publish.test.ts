@@ -55,8 +55,20 @@ describe("publishGiftWrap", () => {
     const results = await publishGiftWrap(giftWrap(), [r.url]);
 
     expect(results[0]).toMatchObject({ ok: false, authRequired: true });
-    // The whole point: no AUTH frame was ever sent, so the relay never learned
-    // who published. A wrap it refuses is better than a wrap it can attribute.
+    expect(r.accepted()).toEqual([]);
+  });
+
+  it("leaves a relay that challenges on connect no idea who we are", async () => {
+    // `nip42-gated` is the behaviour that can actually catch this: it sends an
+    // AUTH challenge on connect and records every pubkey that answers one. If
+    // this publish is ever rerouted onto the auth-managed singleton pool, or an
+    // auth manager is pointed at this one, the relay ends up holding both the
+    // anonymous wrap and the real pubkey that pushed it — and this fails.
+    const r = await relay({ kind: "nip42-gated" });
+
+    const results = await publishGiftWrap(giftWrap(), [r.url]);
+
+    expect(results[0]).toMatchObject({ ok: false, authRequired: true });
     expect(r.authedPubkeys()).toEqual([]);
     expect(r.accepted()).toEqual([]);
   });

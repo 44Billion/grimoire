@@ -2,6 +2,7 @@ import { ActionRunner } from "applesauce-actions";
 import eventStore from "./event-store";
 import type { EventSigner } from "applesauce-core";
 import type { NostrEvent } from "nostr-tools/core";
+import { kinds } from "nostr-tools";
 import { getSeenRelays } from "applesauce-core/helpers/relays";
 import { getDefaultStore } from "jotai";
 import accountManager from "./accounts";
@@ -30,9 +31,13 @@ function getStateWriteRelays(): string[] {
  * 4. Aggregator relays (fallback)
  *
  * An explicit `relays` list overrides all of that. applesauce's `PublishMethod`
- * is `(event, relays?)`, and an action that passes relays means it — a NIP-17
- * gift wrap goes to the RECIPIENT's inbox, and outbox selection answers "where
- * does this author write", which is the wrong question.
+ * is `(event, relays?)`, and an action that passes relays means it: outbox
+ * selection answers "where does this author write", which is the wrong question
+ * whenever an event is addressed at someone else's inbox.
+ *
+ * **A gift wrap addressed to someone else must not come through here** — see
+ * {@link assertNotSomeoneElsesGiftWrap}. Use `publishGiftWrap`
+ * (`src/lib/dm/publish.ts`) instead.
  *
  * @param event - The signed Nostr event to publish
  * @param relays - Explicit relay URLs; omit to use outbox selection
@@ -52,8 +57,37 @@ export async function publishEvent(
   return publishTo(event, selected);
 }
 
+/**
+ * The singleton pool may publish a gift wrap only to the sender's OWN mailbox.
+ *
+ * `relayAuthManager` is wired to that pool and auto-authenticates any relay the
+ * user marked `always`. A wrap is signed by a throwaway key precisely so the
+ * relay cannot attribute it; pushing one over an authenticated socket hands
+ * over the attribution anyway, and applesauce makes that easy to do by accident
+ * — `Relay.publish` turns an `auth-required` refusal into a retry that WAITS
+ * for authentication, so the auth manager satisfies it and the publish then
+ * "succeeds".
+ *
+ * The self-copy of a NIP-17 message is the one legitimate exception: it is
+ * addressed to us, on our own relays, which already know who we are.
+ *
+ * Thrown rather than rerouted. A caller that ended up here with someone else's
+ * wrap has a routing bug, and quietly fixing it would hide the next one.
+ */
+function assertNotSomeoneElsesGiftWrap(event: NostrEvent): void {
+  if (event.kind !== kinds.GiftWrap) return;
+  const self = accountManager.active?.pubkey;
+  const recipients = event.tags.filter((t) => t[0] === "p").map((t) => t[1]);
+  if (self && recipients.every((p) => p === self)) return;
+  throw new Error(
+    "Refusing to publish a gift wrap addressed to someone else on the authenticated pool. Use publishGiftWrap() from src/lib/dm/publish.ts.",
+  );
+}
+
 /** The one place an event actually reaches PublishService. */
 async function publishTo(event: NostrEvent, relays: string[]): Promise<void> {
+  assertNotSomeoneElsesGiftWrap(event);
+
   const result = await publishService.publish(event, relays);
 
   if (!result.ok) {
