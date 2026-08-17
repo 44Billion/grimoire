@@ -347,7 +347,7 @@ export function ConcordViewer({
     return (
       <div className="flex h-full items-center justify-center gap-1.5 text-xs text-muted-foreground">
         <Loader2 className="size-3 animate-spin" />
-        <span>loading communities…</span>
+        <span>Loading communities…</span>
       </div>
     );
   }
@@ -409,17 +409,10 @@ export function ConcordViewer({
             dissolved
           </span>
         )}
-        {openness && (
-          <span
-            className="mr-auto ml-2 shrink-0 rounded border border-dotted px-1 text-[10px] text-muted-foreground"
-            title={
-              openness === "public"
-                ? `Anyone holding a live invite link can join: ${opennessDetail}. Retiring the last one turns the community private again.`
-                : "No live invite link exists, so nobody can join without a member handing them the keys directly."
-            }
-          >
-            {openness}
-          </span>
+        {/* One community means the picker renders no rows, so there is no name
+            in the sidebar for the openness badge to sit beside. */}
+        {openness && communities.length <= 1 && (
+          <OpennessBadge openness={openness} detail={opennessDetail} />
         )}
         <Button
           variant="ghost"
@@ -445,6 +438,8 @@ export function ConcordViewer({
           ...(totals.get(c.idHex) ? { unread: totals.get(c.idHex) } : {}),
         }))}
         selected={community?.idHex}
+        openness={openness}
+        opennessDetail={opennessDetail}
         onSelect={(idHex) => {
           setSelectedId(idHex);
           // Come back to where you left this community, not to its first
@@ -580,9 +575,38 @@ function Empty({ children }: { children: React.ReactNode }) {
 }
 
 /** One community's row: its icon (encrypted, CORD-02 §6) and its name. */
+/**
+ * Whether anyone holding a link can join (CORD-05 §5).
+ *
+ * The aggregate of every creator's invite Registry is the protocol's own
+ * answer, so this reports a folded fact rather than a setting.
+ */
+function OpennessBadge({
+  openness,
+  detail,
+}: {
+  openness: "public" | "private";
+  detail: string;
+}) {
+  return (
+    <span
+      className="ml-auto shrink-0 rounded border border-dotted px-1 text-[10px] font-normal text-muted-foreground"
+      title={
+        openness === "public"
+          ? `Anyone holding a live invite link can join: ${detail}. Retiring the last one turns the community private again.`
+          : "No live invite link exists, so nobody can join without a member handing them the keys directly."
+      }
+    >
+      {openness}
+    </span>
+  );
+}
+
 function CommunityRow({
   community,
   selected,
+  openness,
+  opennessDetail,
   onSelect,
 }: {
   community: {
@@ -592,6 +616,8 @@ function CommunityRow({
     unread?: CommunityUnread;
   };
   selected: boolean;
+  openness?: "public" | "private";
+  opennessDetail?: string;
   onSelect: (idHex: string) => void;
 }) {
   const icon = useConcordImage(community.icon);
@@ -625,6 +651,9 @@ function CommunityRow({
           </span>
         )}
         <span className="truncate">{label}</span>
+        {openness && (
+          <OpennessBadge openness={openness} detail={opennessDetail ?? ""} />
+        )}
         {community.unread && <UnreadBadge unread={community.unread} />}
       </button>
     </NotifLevelMenu>
@@ -642,6 +671,8 @@ function CommunityRow({
 function CommunityPicker({
   communities,
   selected,
+  openness,
+  opennessDetail,
   onSelect,
   children,
 }: {
@@ -652,6 +683,9 @@ function CommunityPicker({
     unread?: CommunityUnread;
   }>;
   selected: string | undefined;
+  /** Known for the SELECTED community only — it is the one whose fold is read. */
+  openness?: "public" | "private";
+  opennessDetail: string;
   onSelect: (idHex: string) => void;
   children: ReactNode;
 }) {
@@ -673,6 +707,9 @@ function CommunityPicker({
           <CommunityRow
             community={c}
             selected={c.idHex === selected}
+            {...(c.idHex === selected && openness
+              ? { openness, opennessDetail }
+              : {})}
             onSelect={onSelect}
           />
           {c.idHex === selected && <div className="pl-2">{children}</div>}
