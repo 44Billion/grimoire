@@ -74,6 +74,17 @@ class RnnoiseTrackProcessor implements AudioTrackProcessor {
   name = PROCESSOR_NAME;
   processedTrack?: MediaStreamTrack;
 
+  /**
+   * The context `init` was given.
+   *
+   * LiveKit passes an `audioContext` on `init` but NOT on the restart it issues
+   * from `setMediaStreamTrack` — which is what a device switch, an unmute after
+   * one, and a mobile foreground all go through. Reading only `opts` there
+   * throws, and the throw escapes before `sender.replaceTrack`, leaving the
+   * sender bound to a destination whose graph was just torn down: a live,
+   * encrypted, permanently silent microphone, with the error swallowed.
+   */
+  private audioContext?: AudioContext;
   private source?: MediaStreamAudioSourceNode;
   private rnnoise?: RnnoiseWorkletNode;
   private destination?: MediaStreamAudioDestinationNode;
@@ -87,10 +98,21 @@ class RnnoiseTrackProcessor implements AudioTrackProcessor {
     await this.setup(opts);
   }
 
-  /** Re-wire for a replacement track. Torn down first, or graphs stack up. */
+  /**
+   * Re-wire for a replacement track.
+   *
+   * The new graph is built BEFORE the old one is dropped, so a setup that
+   * throws leaves the previous — working — track in place rather than a
+   * disconnected one nobody can hear.
+   */
   async restart(opts: AudioProcessorOptions): Promise<void> {
-    await this.teardown();
+    const previous = {
+      source: this.source,
+      rnnoise: this.rnnoise,
+      destination: this.destination,
+    };
     await this.setup(opts);
+    disconnect(previous);
   }
 
   async destroy(): Promise<void> {
@@ -98,8 +120,9 @@ class RnnoiseTrackProcessor implements AudioTrackProcessor {
   }
 
   private async setup(opts: AudioProcessorOptions): Promise<void> {
-    const audioContext = opts.audioContext;
+    const audioContext = opts.audioContext ?? this.audioContext;
     if (!audioContext) throw new Error("rnnoise: no AudioContext");
+    this.audioContext = audioContext;
 
     let modulePromise = RnnoiseTrackProcessor.moduleByContext.get(audioContext);
     if (!modulePromise) {
@@ -137,18 +160,32 @@ class RnnoiseTrackProcessor implements AudioTrackProcessor {
   }
 
   private async teardown(): Promise<void> {
-    try {
-      this.source?.disconnect();
-      this.rnnoise?.disconnect();
-      this.destination?.disconnect();
-      this.rnnoise?.destroy();
-    } catch {
-      // Best-effort: a half-built graph must not block a call from ending.
-    }
+    disconnect({
+      source: this.source,
+      rnnoise: this.rnnoise,
+      destination: this.destination,
+    });
     this.source = undefined;
     this.rnnoise = undefined;
     this.destination = undefined;
     this.processedTrack = undefined;
+    this.audioContext = undefined;
+  }
+}
+
+/** Drop one graph's nodes. Best-effort: a half-built one must not block a call. */
+function disconnect(graph: {
+  source?: MediaStreamAudioSourceNode;
+  rnnoise?: RnnoiseWorkletNode;
+  destination?: MediaStreamAudioDestinationNode;
+}): void {
+  try {
+    graph.source?.disconnect();
+    graph.rnnoise?.disconnect();
+    graph.destination?.disconnect();
+    graph.rnnoise?.destroy();
+  } catch {
+    // Already gone.
   }
 }
 

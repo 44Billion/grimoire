@@ -14,6 +14,7 @@
 import { useAtomValue } from "jotai";
 import { lazy, Suspense } from "react";
 
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { callStateAtom } from "@/services/concord-call-state";
 
 const CallAudio = lazy(() => import("@/components/call/CallAudio"));
@@ -22,8 +23,15 @@ export function CallAudioHost() {
   const status = useAtomValue(callStateAtom).status;
   if (status !== "connected") return null;
   return (
-    <Suspense fallback={null}>
-      <CallAudio />
-    </Suspense>
+    // Bounded, because this now mounts from the SHELL: `Suspense` does not
+    // catch a failed chunk load, so a 404 on the media chunk — a deploy
+    // rollover, an offline blip — would otherwise replace the whole UI with the
+    // app error screen at the moment a call connects. Under a window this was
+    // one window's problem.
+    <ErrorBoundary level="window" fallback={null}>
+      <Suspense fallback={null}>
+        <CallAudio />
+      </Suspense>
+    </ErrorBoundary>
   );
 }
