@@ -15,8 +15,8 @@ import {
   Bug,
   Wifi,
   MessageSquare,
-  Headphones,
   MessagesSquare,
+  Phone,
   Hash,
   Zap,
   type LucideIcon,
@@ -88,7 +88,7 @@ export const COMMAND_ICONS: Record<string, CommandIcon> = {
     description: "Browse your end-to-end encrypted Concord communities",
   },
   call: {
-    icon: Headphones,
+    icon: Phone,
     description: "The end-to-end encrypted call in a Concord channel",
   },
   zap: {

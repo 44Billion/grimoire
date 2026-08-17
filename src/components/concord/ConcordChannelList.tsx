@@ -14,9 +14,9 @@ import {
   ChevronDown,
   ChevronRight,
   Hash,
-  Headphones,
   Loader2,
   Lock,
+  Phone,
   Pin,
   PinOff,
 } from "lucide-react";
@@ -303,14 +303,14 @@ function ChannelRow({
           {pinned && <Pin className="size-3 shrink-0 text-muted-foreground" />}
           {inCall > 0 && (
             <span
-              className="flex items-center gap-0.5 text-[10px] leading-none tabular-nums text-muted-foreground"
+              className="flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] leading-none tabular-nums text-muted-foreground"
               title={
                 inCall === 1
                   ? "1 member is in a call here"
                   : `${inCall} members are in a call here`
               }
             >
-              <Headphones className="size-3 shrink-0" />
+              <Phone className="size-2.5 shrink-0" />
               {inCall}
             </span>
           )}
