@@ -50,11 +50,11 @@ export function PinsHeaderButton({
       onClick={onToggle}
       title={count === 1 ? "1 pinned message" : `${count} pinned messages`}
       className={cn(
-        "flex items-center gap-0.5 rounded px-1 py-0.5 hover:bg-muted",
+        "flex items-center gap-1 rounded px-1 py-0.5 text-xs tabular-nums leading-none hover:bg-muted",
         open && "bg-muted",
       )}
     >
-      <Pin className="size-3.5" />
+      <Pin className="size-3.5 shrink-0" />
       {count}
     </button>
   );

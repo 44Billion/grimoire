@@ -37,11 +37,11 @@ export function VoiceHeaderButton({
         count === 1 ? "1 member is in a call" : `${count} members are in a call`
       }
       className={cn(
-        "flex items-center gap-0.5 rounded px-1 py-0.5 hover:bg-muted",
+        "flex items-center gap-1 rounded px-1 py-0.5 text-xs tabular-nums leading-none hover:bg-muted",
         open && "bg-muted",
       )}
     >
-      <Headphones className="size-3.5" />
+      <Headphones className="size-3.5 shrink-0" />
       {count}
     </button>
   );

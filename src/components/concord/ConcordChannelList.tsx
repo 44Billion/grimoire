@@ -303,7 +303,7 @@ function ChannelRow({
           {pinned && <Pin className="size-3 shrink-0 text-muted-foreground" />}
           {inCall > 0 && (
             <span
-              className="flex items-center gap-0.5 text-[10px] text-muted-foreground"
+              className="flex items-center gap-0.5 text-[10px] leading-none tabular-nums text-muted-foreground"
               title={
                 inCall === 1
                   ? "1 member is in a call here"
