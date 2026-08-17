@@ -27,6 +27,7 @@ import { getSemanticAuthor } from "@/lib/semantic-author";
 import { Nip29Adapter } from "@/lib/chat/adapters/nip-29-adapter";
 import { useConcordUnreadTotal } from "@/hooks/useConcordUnread";
 import { loadStoredCommunities } from "@/services/concord-communities";
+import { resolveChannel } from "@/services/concord-channel-directory";
 import type { ChatProtocol, ProtocolIdentifier } from "@/types/chat";
 import { useState, useEffect } from "react";
 
@@ -785,31 +786,52 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
       });
   }, [appId, props]);
 
-  // Concord windows carry an unread count on the tile, and name their community
-  // in the title. The badge totals EVERY community, not just this window's, so
-  // it shows even for a bare `concord` window — whose props are both optional
-  // (WindowRenderer), which is also why the title falls back to plain
-  // "Concord": with no communityId there is nothing to name at title time.
+  // Concord windows carry an unread count on the tile, and name where the
+  // window IS: the open channel, and the community around it. The badge totals
+  // EVERY community, not just this window's, so it shows even for a bare
+  // `concord` window — whose props are all optional (WindowRenderer), which is
+  // also why the title falls back to plain "Concord": with no community there
+  // is nothing to name at title time.
+  //
+  // Both ids come from the window's own props, which navigation rewrites
+  // (`buildConcordWindowUpdate`), so the title follows the reader rather than
+  // the device-wide "last channel" every window shares.
   const isConcord = appId === "concord";
   const concordBadge = useConcordUnreadTotal(isConcord);
   const concordCommunityId = isConcord ? props.communityId : undefined;
+  const concordChannelId = isConcord ? props.channelId : undefined;
   const [concordTitle, setConcordTitle] = useState<string>();
   useEffect(() => {
     if (!concordCommunityId || !accountPubkey) return;
     let cancelled = false;
-    void loadStoredCommunities(accountPubkey)
-      .then((communities) => {
-        const wanted = String(concordCommunityId).toLowerCase();
-        const hit =
-          communities.find((c) => c.idHex === wanted) ??
-          communities.find((c) => c.idHex.startsWith(wanted));
-        if (!cancelled && hit?.name) setConcordTitle(`Concord — ${hit.name}`);
-      })
-      .catch(() => undefined);
+    const channelId =
+      typeof concordChannelId === "string" ? concordChannelId : undefined;
+    void (async () => {
+      // The channel names the window; the community is the context beside it.
+      // A channel whose fold has not landed here yet simply has no name, and
+      // the community-only title stands until it does.
+      const channel = channelId
+        ? await resolveChannel(accountPubkey, channelId).catch(() => undefined)
+        : undefined;
+      if (cancelled) return;
+      if (channel) {
+        setConcordTitle(`${channel.channelName}@${channel.communityName}`);
+        return;
+      }
+      const communities = await loadStoredCommunities(accountPubkey).catch(
+        () => [],
+      );
+      if (cancelled) return;
+      const wanted = String(concordCommunityId).toLowerCase();
+      const hit =
+        communities.find((c) => c.idHex === wanted) ??
+        communities.find((c) => c.idHex.startsWith(wanted));
+      if (hit?.name) setConcordTitle(hit.name);
+    })();
     return () => {
       cancelled = true;
     };
-  }, [concordCommunityId, accountPubkey]);
+  }, [concordCommunityId, concordChannelId, accountPubkey]);
 
   // Generate final title data with icon and tooltip
   return useMemo(() => {
