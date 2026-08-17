@@ -30,6 +30,7 @@ import {
   unlockGiftWrap,
   lockGiftWrap,
   getGiftWrapSeal,
+  getSealRumor,
   internalGiftWrapEvents,
 } from "applesauce-common/helpers/gift-wrap";
 import type { Rumor } from "applesauce-common/helpers/gift-wrap";
@@ -202,25 +203,35 @@ async function openAndStore(
  * what to lock, which re-runs `JSON.parse` on plaintext that already failed to
  * parse — so on a malformed wrap it throws on the way out.
  *
- * Both halves are handled here: evict explicitly, and never let this throw.
+ * The rumor is the entry that holds the message body, and it is added by
+ * `getSealRumor` rather than by anything that takes a wrap — so evicting the
+ * wrap is a no-op and evicting the seal does not reach it. All three are
+ * handled here, and none of it is allowed to throw.
  */
 function discardPlaintext(wrap: NostrEvent): void {
   try {
     const seal = getGiftWrapSeal(wrap);
-    if (seal) internalGiftWrapEvents.remove(seal);
+    if (!seal) return;
+    // The RUMOR is the entry that matters: `getSealRumor` adds it to the
+    // memory, and it is the one holding the message body in cleartext. Evict
+    // it first, because evicting the seal does not reach it.
+    try {
+      // By id: a rumor is unsigned, and `remove` takes an id or a full event.
+      const rumor = getSealRumor(seal);
+      if (rumor?.id) internalGiftWrapEvents.remove(rumor.id);
+    } catch {
+      // A seal that will not parse produced no rumor.
+    }
+    internalGiftWrapEvents.remove(seal);
   } catch {
     // A wrap that will not parse has no seal to evict.
-  }
-  try {
-    internalGiftWrapEvents.remove(wrap);
-  } catch {
-    // Not present; nothing to do.
-  }
-  try {
-    lockGiftWrap(wrap);
-  } catch {
-    // See above: this re-derives, and re-derivation is exactly what fails on
-    // the wraps that need locking most.
+  } finally {
+    try {
+      lockGiftWrap(wrap);
+    } catch {
+      // `lockGiftWrap` re-derives to find what to clear, and re-derivation is
+      // exactly what fails on the wraps that need clearing most.
+    }
   }
 }
 
@@ -241,6 +252,17 @@ export interface SyncOptions {
   /** Walk backwards from here instead of fetching the newest page. */
   until?: number;
   limit?: number;
+  /**
+   * How many pages to walk backwards before stopping.
+   *
+   * One page is the newest {@link BACKFILL_PAGE} wraps a relay will serve, and
+   * a wrap says nothing about which conversation it belongs to until it is
+   * open — so a single page of an active inbox can be one correspondent
+   * repeated two hundred times while the rest of the list stays invisible.
+   * Walking a few pages on the first load is what makes the sidebar look like
+   * the reader's actual mail.
+   */
+  pages?: number;
 }
 
 /**
@@ -259,19 +281,44 @@ export async function syncDmInbox(
   const relays = options.relays ?? (await ownDmReadRelays(viewer));
   if (relays.length === 0) return { written: 0, failed: 0, fetched: 0 };
 
-  const filter = {
-    ...inboxFilter(viewer),
-    limit: options.limit ?? BACKFILL_PAGE,
-    ...(options.until !== undefined ? { until: options.until } : {}),
-  };
+  const limit = options.limit ?? BACKFILL_PAGE;
+  const pages = Math.max(1, options.pages ?? 1);
 
-  const wraps = await requestEvents(relays, [filter], { eventStore: null });
-  const outcome = await unlockWraps(viewer, signer, wraps);
+  let written = 0;
+  let failed = 0;
+  let fetched = 0;
+  let oldest: number | undefined;
+  let until = options.until;
 
-  const oldest = wraps.reduce<number | undefined>(
-    (min, w) => (min === undefined || w.created_at < min ? w.created_at : min),
-    undefined,
-  );
+  for (let page = 0; page < pages; page += 1) {
+    const filter = {
+      ...inboxFilter(viewer),
+      limit,
+      ...(until !== undefined ? { until } : {}),
+    };
+
+    const wraps = await requestEvents(relays, [filter], { eventStore: null });
+    if (wraps.length === 0) break;
+
+    const outcome = await unlockWraps(viewer, signer, wraps);
+    written += outcome.written;
+    failed += outcome.failed;
+    fetched += wraps.length;
+
+    const pageOldest = wraps.reduce<number | undefined>(
+      (min, w) =>
+        min === undefined || w.created_at < min ? w.created_at : min,
+      undefined,
+    );
+    if (pageOldest === undefined) break;
+    if (oldest === undefined || pageOldest < oldest) oldest = pageOldest;
+
+    // Strictly older next time, or a relay that returns the same page forever
+    // makes this loop `pages` round trips for one page of history.
+    if (until !== undefined && pageOldest >= until) break;
+    until = pageOldest;
+  }
+
   if (oldest !== undefined) {
     const previous = await readCursor(viewer);
     // The cursor only ever recedes: it records how far back we have walked.
@@ -280,8 +327,9 @@ export async function syncDmInbox(
   }
 
   return {
-    ...outcome,
-    fetched: wraps.length,
+    written,
+    failed,
+    fetched,
     ...(oldest !== undefined ? { oldest } : {}),
   };
 }

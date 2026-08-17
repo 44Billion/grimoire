@@ -432,9 +432,13 @@ export interface DmConversationRow {
  * without this a cold start re-opens the whole inbox and, on a bunker or an
  * extension, asks the signer to approve every one of them again.
  *
- * A wrap that FAILED to open is recorded here too. It will fail identically
- * next time, and retrying it forever is a permission prompt per session for a
- * message that does not exist.
+ * A wrap that FAILED to open is recorded too, but NOT permanently. The two
+ * reasons a wrap fails are not alike: a malformed one fails identically
+ * forever and retrying it is a prompt per session for a message that does not
+ * exist, while a signer that timed out, was dismissed, or rate-limited a burst
+ * fails everything it was handed — and writing those off permanently silently
+ * deletes real mail. So a failure is retried up to {@link DM_WRAP_MAX_ATTEMPTS}
+ * times across sessions, and only then given up on.
  */
 export interface DmSeenWrapRow {
   viewer: string;
@@ -443,6 +447,8 @@ export interface DmSeenWrapRow {
   wrapAt: number;
   /** False when the wrap would not open. */
   opened: boolean;
+  /** How many times opening has been tried. Absent means once. */
+  attempts?: number;
 }
 
 /** Small opaque DM blobs: the backfill cursor, the decrypt consent flag. */

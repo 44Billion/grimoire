@@ -1,7 +1,7 @@
 /**
  * The private conversations, above or below the communities in the sidebar.
  *
- * Rows are deliberately thin: a name, a last-message preview, a time and a dot.
+ * Rows are deliberately thin: a name, a time and a dot.
  * Everything that would need a relay to render — an avatar, a NIP-05 badge —
  * is left to `UserName`, which resolves reactively and caches, so a list of
  * thirty correspondents does not fan out thirty profile fetches from here.
@@ -11,9 +11,11 @@
  * people use it as a notepad rather than as correspondence.
  */
 
+import { useState } from "react";
 import { Bookmark, MessageSquare, Plus } from "lucide-react";
 import { UserName } from "@/components/nostr/UserName";
 import { formatTimestamp, useLocale } from "@/hooks/useLocale";
+import { resolveRecipient } from "@/lib/dm/recipient";
 import { cn } from "@/lib/utils";
 import type { DmConversationSummary } from "@/hooks/useDirectMessages";
 
@@ -21,30 +23,17 @@ export function DirectMessageList({
   conversations,
   selected,
   onSelect,
-  onCompose,
 }: {
   conversations: DmConversationSummary[];
   /** The open conversation's peer pubkey, if a DM is what is on screen. */
   selected?: string;
   onSelect: (peer: string) => void;
-  onCompose: () => void;
 }) {
   return (
     <div className="flex flex-col">
-      <div className="flex items-center gap-1 px-2 py-1">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Direct messages
-        </span>
-        <button
-          type="button"
-          onClick={onCompose}
-          title="New message"
-          className="ml-auto rounded p-0.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-        >
-          <Plus className="size-3" />
-          <span className="sr-only">New message</span>
-        </button>
-      </div>
+      {/* No heading: the row this list hangs under already says what it is,
+          exactly as a community's channels need no "Channels" label. */}
+      <NewConversationInput onResolved={onSelect} />
 
       {conversations.length === 0 ? (
         <p className="px-2 pb-1 text-xs text-muted-foreground">
@@ -60,6 +49,67 @@ export function DirectMessageList({
           />
         ))
       )}
+    </div>
+  );
+}
+
+/**
+ * Paste someone in.
+ *
+ * Inline rather than behind a dialog: starting a conversation is one field and
+ * one key, and a modal for that is more ceremony than the act. It sits above
+ * the list because that is where the thing you are adding to the list goes.
+ *
+ * npub and nprofile only, the same rule the `chat` command follows — bare hex
+ * is as plausibly an event id, and opening a private conversation with a
+ * stranger because someone pasted the wrong thing is the wrong failure.
+ */
+function NewConversationInput({
+  onResolved,
+}: {
+  onResolved: (peer: string) => void;
+}) {
+  const [value, setValue] = useState("");
+  const [rejected, setRejected] = useState(false);
+
+  const submit = () => {
+    const peer = resolveRecipient(value);
+    if (!peer) {
+      setRejected(value.trim().length > 0);
+      return;
+    }
+    setValue("");
+    setRejected(false);
+    onResolved(peer);
+  };
+
+  return (
+    <div className="px-2 py-1">
+      <div
+        className={cn(
+          "flex items-center gap-1 rounded border px-1.5 py-0.5",
+          rejected && "border-destructive",
+        )}
+      >
+        <Plus className="size-3 shrink-0 text-muted-foreground" />
+        <input
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setRejected(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+            if (e.key === "Escape") {
+              setValue("");
+              setRejected(false);
+            }
+          }}
+          placeholder="npub1… or nprofile1…"
+          title="Paste an npub or nprofile to start a conversation"
+          className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+        />
+      </div>
     </div>
   );
 }

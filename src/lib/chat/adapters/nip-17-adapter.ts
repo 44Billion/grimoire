@@ -155,10 +155,11 @@ export class Nip17Adapter extends ChatProtocolAdapter {
   /**
    * `npub` and `nprofile` only.
    *
-   * Bare 64-hex is deliberately NOT claimed at the parser level even though the
-   * adapter accepts it for programmatic callers: a hex string is as plausibly an
-   * event id, and silently opening a private conversation with a stranger
-   * because someone pasted the wrong thing is the wrong failure.
+   * Bare 64-hex is NOT claimed. `chat-parser` is the only caller, and it hands
+   * over whatever the reader typed — so claiming hex would mean `chat
+   * 3bf0c63f…` opens a private conversation with a stranger when what was
+   * pasted was an event id. Internal callers build a `DMIdentifier` directly
+   * and never come through here.
    */
   parseIdentifier(input: string): DMIdentifier | null {
     const value = input.trim();
@@ -188,10 +189,6 @@ export class Nip17Adapter extends ChatProtocolAdapter {
         return null;
       }
     }
-
-    // Internal callers (the Concord sidebar) hand over resolved hex.
-    if (/^[0-9a-f]{64}$/i.test(value))
-      return { type: "chat-partner", value: value.toLowerCase() };
 
     return null;
   }
@@ -466,9 +463,13 @@ export class Nip17Adapter extends ChatProtocolAdapter {
       supportsModeration: false,
       supportsRoles: false,
       supportsGroupManagement: false,
-      // A DM is opened by naming someone, not by creating anything.
-      canCreateConversations: true,
+      // A conversation starts by naming someone — there is nothing to create
+      // and nothing to join, so the composer offers no such affordance.
+      canCreateConversations: false,
       requiresRelay: false,
+      // A rumor id exists on no relay: opening it, or copying an `nevent` for
+      // it, is a query that announces the conversation happened.
+      messageIdsArePrivate: true,
       supportsDeletion: false,
     };
   }

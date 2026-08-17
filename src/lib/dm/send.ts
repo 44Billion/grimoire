@@ -150,7 +150,40 @@ export async function sendDirectMessage({
     .as(signer)
     .stamp();
 
-  return deliverRumor(viewer, signer, peer, stamped, peerRelays);
+  return deliverRumor(
+    viewer,
+    signer,
+    peer,
+    withRecipients(stamped, [peer]),
+    peerRelays,
+  );
+}
+
+/**
+ * Force a rumor's `p` tags to exactly the conversation's participants.
+ *
+ * `WrappedMessageFactory` runs the ordinary short-text content pipeline, which
+ * turns a bare `npub1…` in the body into a `nostr:` mention AND adds a `p` tag
+ * for it. In a public note that is correct. In a NIP-17 message the `p` tags
+ * ARE the recipient list and the conversation's identity, so mentioning someone
+ * silently rewrote which conversation the message belonged to: the local echo
+ * vanished from the thread, the peer's copy filed the same way on their side,
+ * and a phantom three-way conversation appeared in the sidebar.
+ *
+ * The mention survives in the body as a `nostr:` reference, which is what a
+ * mention should have been in the first place.
+ */
+function withRecipients<T extends { tags: string[][] }>(
+  rumor: T,
+  recipients: string[],
+): T {
+  return {
+    ...rumor,
+    tags: [
+      ...recipients.map((pubkey) => ["p", pubkey]),
+      ...rumor.tags.filter((tag) => tag[0] !== "p"),
+    ],
+  };
 }
 
 export interface SendDmReactionParams {

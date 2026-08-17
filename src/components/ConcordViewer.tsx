@@ -4,6 +4,7 @@ import {
   Globe,
   Loader2,
   Lock,
+  Mail,
   PanelLeft,
   RefreshCw,
   Search,
@@ -125,7 +126,14 @@ export function ConcordViewer({
    * sidebar highlighting a channel while the pane showed a conversation.
    */
   const [selectedDm, setSelectedDm] = useState<string | undefined>(dmPeer);
-  const [composing, setComposing] = useState(false);
+  /**
+   * Whether the Direct messages row is the one expanded.
+   *
+   * Not derived from `selectedDm`: opening the row to look at the list is a
+   * different act from having a conversation open, and a reader who clicks
+   * back into a channel should find the list where they left it.
+   */
+  const [dmSectionOpen, setDmSectionOpen] = useState(dmPeer !== undefined);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   /** Desktop only: the channel column is collapsible, the sheet is not. */
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
@@ -501,6 +509,7 @@ export function ConcordViewer({
   const handleChannelSelect = useCallback(
     (idHex: string) => {
       setSelectedDm(undefined);
+      setDmSectionOpen(false);
       setSelectedChannel(idHex);
       rememberNavigation(communityIdHex, idHex);
       setShowGuestbook(false);
@@ -518,6 +527,13 @@ export function ConcordViewer({
   );
 
   const dms = useDirectMessages();
+
+  /** One number for the row, the way a community row totals its channels. */
+  const dmUnreadCount = dms.conversations.filter((c) => c.unread).length;
+
+  const openDirectMessages = useCallback(() => {
+    setDmSectionOpen((open) => !open);
+  }, []);
 
   const handleDmSelect = useCallback(
     (peer: string) => {
@@ -891,11 +907,6 @@ export function ConcordViewer({
 
   return (
     <div className="flex h-full">
-      <NewDirectMessage
-        open={composing}
-        onOpenChange={setComposing}
-        onResolved={handleDmSelect}
-      />
       {isMobile ? (
         <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
           {/* `pt-10` clears the sheet's own close button, which otherwise sits
@@ -1140,14 +1151,15 @@ function CommunityPicker({
   onSelect: (idHex: string) => void;
   children: ReactNode;
 }) {
-  // With one community there is nothing to pick between, so the row would be
-  // chrome; the channels stand alone under the header that already names it.
-  // One community needs no picker, but it still needs the scroller the picker
-  // would have been — the channel list itself is content-sized.
-  if (communities.length <= 1)
-    return <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>;
+  // Every community gets a row, including the only one. It used to be hidden as
+  // chrome — with nothing to pick between, the channels stood alone under a
+  // header that already named them — but Direct messages is a sibling row now,
+  // and a reader who steps into their mail needs a row to step back out to.
+  //
+  // The scroller belongs to the sidebar, not here: this list and the DM row
+  // scroll together as one column.
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+    <div className="flex flex-col">
       {communities.map((c) => (
         // `shrink-0`, NOT `min-h-0`: inside a SCROLLING column, `min-h-0` lets
         // a row shrink below its own content, so the selected community's

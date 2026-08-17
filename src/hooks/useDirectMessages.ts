@@ -133,7 +133,11 @@ export function useDirectMessages(
       // Paint what is already on disk before touching a relay.
       await read("ready");
       try {
-        await syncDmInbox(pubkey, signer);
+        // Several pages on the list's own sync: one page is the newest 200
+        // wraps, and a wrap says nothing about whose conversation it is until
+        // it is open — so one page of an active inbox can be a single
+        // correspondent while everyone else stays missing from the sidebar.
+        await syncDmInbox(pubkey, signer, { pages: 5 });
       } catch (error) {
         console.warn("[dm] could not sync the inbox:", error);
       }

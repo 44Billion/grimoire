@@ -627,7 +627,12 @@ const MessageItem = memo(function MessageItem({
 
   // Whether this message names the reader. Protocol-generic: NIP-29's factory
   // emits the same `p` tag Concord now sends.
+  //
+  // Except in a direct message, where the predicate is vacuously true: NIP-17
+  // p-tags every recipient on every message, so the highlight would mark the
+  // entire conversation. A room where everything is a mention has no mentions.
   const mentionsMe =
+    conversation?.protocol !== "nip-17" &&
     !!activePubkey &&
     message.author !== activePubkey &&
     !!message.event &&

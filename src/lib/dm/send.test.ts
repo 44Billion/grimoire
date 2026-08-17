@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { PrivateKeySigner } from "applesauce-signers";
 import type { NostrEvent } from "nostr-tools";
+import { nip19 } from "nostr-tools";
 import db from "@/services/db";
 import { listDmConversations, queryConversation } from "@/services/dm-store";
 
@@ -140,6 +141,33 @@ describe("sendDirectMessage", () => {
     expect(await db.dmSeenWraps.get([ALICE, selfWrap.id])).toMatchObject({
       opened: true,
     });
+  });
+
+  it("does not let a mentioned npub become a third recipient", async () => {
+    // The content pipeline turns a bare npub into a `nostr:` mention AND adds a
+    // p tag for it. In a public note that is right; here the p tags ARE the
+    // recipient list and the conversation's identity, so mentioning someone
+    // moved the message into a three-way conversation that does not exist —
+    // the echo vanished from the thread and the peer filed it the same way.
+    const stranger = nip19.npubEncode("c".repeat(64));
+    const { sendDirectMessage } = await import("./send");
+    await sendDirectMessage({
+      viewer: ALICE,
+      signer: alice,
+      peer: BOB,
+      content: `look at ${stranger}`,
+    });
+
+    const rows = await db.dmRumors.toArray();
+    const recipients = rows[0].tags
+      .filter((t) => t[0] === "p")
+      .map((t) => t[1]);
+    expect(recipients).toEqual([BOB]);
+
+    const conversations = await listDmConversations(ALICE);
+    expect(conversations).toHaveLength(1);
+    // And the mention itself survives, as a reference rather than a recipient.
+    expect(rows[0].content).toContain("nostr:");
   });
 
   it("does not build a self-copy of a note to oneself", async () => {

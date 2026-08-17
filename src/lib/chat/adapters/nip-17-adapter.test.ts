@@ -6,7 +6,6 @@ import {
   WrappedMessageFactory,
 } from "applesauce-common/factories";
 import db from "@/services/db";
-import { unlockWraps } from "@/services/dm-inbox";
 import { sendDirectReaction } from "@/lib/dm/send";
 import { Nip17Adapter } from "./nip-17-adapter";
 import type { Conversation } from "@/types/chat";
@@ -116,6 +115,13 @@ describe("parseIdentifier", () => {
     expect(adapter.parseIdentifier("relay.example.com'group")).toBeNull();
     expect(adapter.parseIdentifier("note1abc")).toBeNull();
     expect(adapter.parseIdentifier("#bitcoin")).toBeNull();
+  });
+
+  it("refuses bare hex, which is as plausibly an event id", () => {
+    // `chat-parser` is the only caller and hands over whatever was typed, so
+    // claiming hex means pasting an event id opens a private conversation with
+    // a stranger.
+    expect(adapter.parseIdentifier("3".repeat(64))).toBeNull();
   });
 });
 
@@ -294,10 +300,14 @@ describe("loadReplyMessage", () => {
   });
 });
 
-describe("unlockWraps is still the ingest door", () => {
-  it("is not bypassed by the adapter", () => {
-    // The adapter reads Dexie and nothing else; if it ever grew its own
-    // decrypt path this import would stop being the only one.
-    expect(typeof unlockWraps).toBe("function");
+describe("what the UI is allowed to do with a message id", () => {
+  it("declares message ids private, so nothing offers to publish one", () => {
+    // A rumor id exists on no relay. "Open Event" would REQ `{ids:[…]}` and
+    // "Copy ID" would hand out an `nevent` any client resolves — either one
+    // tells a relay the conversation happened, which is what the gift wrap
+    // around it was for. `ChatMessageContextMenu` reads this flag.
+    expect(new Nip17Adapter().getCapabilities().messageIdsArePrivate).toBe(
+      true,
+    );
   });
 });

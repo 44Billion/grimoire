@@ -387,11 +387,14 @@ export interface ChatCapabilities {
    */
   supportsDeliveryStatus?: boolean;
   /**
-   * The viewer can react to a message.
+   * Message ids in this protocol exist on no relay.
    *
-   * Absent means yes — every protocol here reacted before this flag existed,
-   * and `sendReaction` is a required method. Only an adapter that would throw
-   * sets `false`, and the UI then offers no reaction affordance at all.
+   * A NIP-17 message is an unsigned rumor inside a gift wrap: its id is
+   * meaningful only to the people in the conversation. Any affordance that
+   * hands that id outward — opening the event, copying an `nevent`, fetching
+   * reactions — turns it into a query that announces the conversation happened
+   * to whichever relay hears it. Absent means the ordinary case: a public,
+   * addressable event.
    */
-  supportsReactions?: boolean;
+  messageIdsArePrivate?: boolean;
 }

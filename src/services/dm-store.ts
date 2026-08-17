@@ -351,7 +351,18 @@ export function dmReactionsByTarget(
   return byTarget;
 }
 
-/** Wrap ids this viewer has already tried, opened or not. */
+/**
+ * How many times a wrap that will not open is tried before it is given up on.
+ *
+ * The number exists because the two ways a wrap fails look identical from
+ * here. A malformed one fails the same way forever; a signer that timed out or
+ * was dismissed fails everything in the batch and would take real mail with
+ * it. Three attempts across sessions costs a genuinely bad wrap three prompts,
+ * ever, and lets a bad afternoon with a bunker recover on its own.
+ */
+export const DM_WRAP_MAX_ATTEMPTS = 3;
+
+/** Wrap ids this viewer is done with — opened, or given up on. */
 export async function seenWrapIds(
   viewer: string,
   wrapIds: string[],
@@ -359,23 +370,60 @@ export async function seenWrapIds(
   if (wrapIds.length === 0) return new Set();
   const keys = wrapIds.map((wrapId) => [viewer, wrapId]);
   const rows = await db.dmSeenWraps.bulkGet(keys);
-  return new Set(rows.filter((r) => !!r).map((r) => r!.wrapId));
+  return new Set(
+    rows
+      .filter((r) => !!r)
+      .filter((r) => r!.opened || (r!.attempts ?? 1) >= DM_WRAP_MAX_ATTEMPTS)
+      .map((r) => r!.wrapId),
+  );
 }
 
-/** Record that a wrap was dealt with. `opened: false` means it never will be. */
+/**
+ * Record that a wrap was dealt with.
+ *
+ * A success is final. A failure increments its attempt count, and is only
+ * final once the count runs out — see {@link DM_WRAP_MAX_ATTEMPTS}.
+ */
 export async function markWrapsSeen(
   viewer: string,
   wraps: Array<{ id: string; created_at: number; opened: boolean }>,
 ): Promise<void> {
   if (wraps.length === 0) return;
+
+  const existing = await db.dmSeenWraps.bulkGet(
+    wraps.map((w) => [viewer, w.id]),
+  );
+  const attemptsById = new Map(
+    existing.filter((r) => !!r).map((r) => [r!.wrapId, r!.attempts ?? 1]),
+  );
+
   await db.dmSeenWraps.bulkPut(
     wraps.map((w) => ({
       viewer,
       wrapId: w.id,
       wrapAt: w.created_at,
       opened: w.opened,
+      attempts: (attemptsById.get(w.id) ?? 0) + 1,
     })),
   );
+}
+
+/**
+ * Forget every failure, so the next sync tries them again.
+ *
+ * The escape hatch for the case the attempt count cannot see: a signer that
+ * was broken for longer than three syncs. Successes are untouched, so this
+ * costs nothing for mail that already arrived.
+ */
+export async function forgetFailedWraps(viewer: string): Promise<number> {
+  const failed = await db.dmSeenWraps
+    .where("[viewer+wrapAt]")
+    .between([viewer, Dexie.minKey], [viewer, Dexie.maxKey])
+    .filter((r) => !r.opened)
+    .toArray();
+  if (failed.length === 0) return 0;
+  await db.dmSeenWraps.bulkDelete(failed.map((r) => [r.viewer, r.wrapId]));
+  return failed.length;
 }
 
 /**

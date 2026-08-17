@@ -18,6 +18,7 @@ import {
   WRAP_BACKDATE_SECS,
 } from "./dm-inbox";
 import { startMockRelay, type MockRelay } from "@/test/mock-relay";
+import { DM_WRAP_MAX_ATTEMPTS } from "./dm-store";
 
 /**
  * Ingest is where the cost of NIP-17 lives: two `nip44.decrypt` calls per
@@ -148,10 +149,13 @@ describe("unlockWraps", () => {
     decrypt.mockRestore();
   });
 
-  it("remembers a wrap that would not open, so it is tried once only", async () => {
-    // A p tag is public, so anyone can address a wrap to us that our key cannot
-    // open. Each attempt is a signer round trip for a message that does not
-    // exist, and there will be another one next session unless it is recorded.
+  it("gives up on a wrap that will not open, but not on the first try", async () => {
+    // Two very different things fail the same way here. A malformed wrap — and
+    // a p tag is public, so anyone can address one to us — fails identically
+    // forever, and retrying it is a signer prompt per session for a message
+    // that does not exist. But a signer that timed out, was dismissed, or rate
+    // limited a burst also fails, and writing those off permanently deletes
+    // real mail. So: retried, then given up on.
     const garbage = finalizeEvent(
       {
         kind: kinds.GiftWrap,
@@ -162,13 +166,38 @@ describe("unlockWraps", () => {
       generateSecretKey(),
     );
 
-    const first = await unlockWraps(ALICE, alice, [garbage]);
-    expect(first).toMatchObject({ written: 0, failed: 1 });
+    for (let attempt = 1; attempt <= DM_WRAP_MAX_ATTEMPTS; attempt += 1) {
+      const outcome = await unlockWraps(ALICE, alice, [garbage]);
+      expect(outcome).toMatchObject({ written: 0, failed: 1 });
+    }
 
     const decrypt = vi.spyOn(alice.nip44, "decrypt");
-    await unlockWraps(ALICE, alice, [garbage]);
+    const afterwards = await unlockWraps(ALICE, alice, [garbage]);
     expect(decrypt).not.toHaveBeenCalled();
+    expect(afterwards).toMatchObject({ written: 0, failed: 0 });
     decrypt.mockRestore();
+  });
+
+  it("tries again after a signer that failed everything comes back", async () => {
+    // The symptom this exists to stop: a bunker times out mid-backlog and the
+    // conversations it was carrying are gone for good.
+    const wraps = await Promise.all([
+      wrapMessage(bob, ALICE, "one"),
+      wrapMessage(bob, ALICE, "two"),
+    ]).then((w) => w.map(overTheWire));
+
+    const broken = vi
+      .spyOn(alice.nip44, "decrypt")
+      .mockRejectedValue(new Error("signer timed out"));
+    expect(await unlockWraps(ALICE, alice, wraps)).toMatchObject({
+      written: 0,
+      failed: 2,
+    });
+    broken.mockRestore();
+
+    expect(await unlockWraps(ALICE, alice, wraps)).toMatchObject({
+      written: 2,
+    });
   });
 
   it("keeps a rumor about other people out of our store", async () => {

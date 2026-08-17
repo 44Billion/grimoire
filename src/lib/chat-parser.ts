@@ -85,7 +85,9 @@ export async function parseChatCommand(
     new Nip10Adapter(), // NIP-10 - Thread chat (nevent kind=1 or note1)
     // NIP-17 claims npub/nprofile ONLY. A bare 64-hex string is as plausibly
     // an event id, and silently opening a private conversation with a stranger
-    // because someone pasted the wrong thing is the wrong failure.
+    // because someone pasted the wrong thing is the wrong failure. The adapter
+    // refuses hex for the same reason — this is not a rule the parser imposes
+    // on a looser adapter.
     new Nip17Adapter(), // NIP-17 - Private direct messages
     // new Nip28Adapter(),  // Phase 3
     new Nip29Adapter(), // NIP-29 - Relay groups

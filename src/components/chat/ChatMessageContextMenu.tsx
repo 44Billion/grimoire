@@ -88,10 +88,16 @@ export function ChatMessageContextMenu({
     event.pubkey === activePubkey,
   );
 
-  // Absent means yes: every protocol here reacted before the flag existed. Only
-  // one that would throw on `sendReaction` opts out, and then the affordance is
-  // not offered at all rather than offered and refused.
-  const canReact = adapter?.getCapabilities().supportsReactions !== false;
+  /**
+   * Whether this message's id can be handed outward at all.
+   *
+   * A private message's id is a rumor id: it exists on no relay, so "Open
+   * Event" fetches `{ids:[…]}` from the aggregators and "Copy ID" produces an
+   * `nevent` that any client will try to resolve. Either one announces to a
+   * relay that the conversation happened — which is precisely what the gift
+   * wrap around it was for.
+   */
+  const idIsPublic = !adapter?.getCapabilities().messageIdsArePrivate;
 
   const deleteMessage = async () => {
     if (!adapter?.deleteMessage || !conversation) return;
@@ -221,12 +227,10 @@ export function ChatMessageContextMenu({
           )}
           {conversation && adapter && (
             <>
-              {canReact && (
-                <ContextMenuItem onClick={openReactionPicker}>
-                  <Smile className="size-4 mr-2" />
-                  React
-                </ContextMenuItem>
-              )}
+              <ContextMenuItem onClick={openReactionPicker}>
+                <Smile className="size-4 mr-2" />
+                React
+              </ContextMenuItem>
               {zapConfig?.supported && (
                 <ContextMenuItem onClick={openZapWindow}>
                   <Zap className="size-4 mr-2" />
@@ -253,18 +257,25 @@ export function ChatMessageContextMenu({
             Copy Text
           </ContextMenuItem>
           <ContextMenuSeparator />
-          <ContextMenuItem onClick={openEventDetail}>
-            <ExternalLink className="size-4 mr-2" />
-            Open Event
-          </ContextMenuItem>
-          <ContextMenuItem onClick={copyEventId}>
-            {copied ? (
-              <CopyCheck className="size-4 mr-2 text-success" />
-            ) : (
-              <Copy className="size-4 mr-2" />
-            )}
-            {copied ? "Copied!" : "Copy ID"}
-          </ContextMenuItem>
+          {/* Both of these hand the id outward. Absent for a protocol whose
+              ids are private — see `idIsPublic`. "View JSON" stays: it opens
+              what is already on this device and reaches no relay. */}
+          {idIsPublic && (
+            <>
+              <ContextMenuItem onClick={openEventDetail}>
+                <ExternalLink className="size-4 mr-2" />
+                Open Event
+              </ContextMenuItem>
+              <ContextMenuItem onClick={copyEventId}>
+                {copied ? (
+                  <CopyCheck className="size-4 mr-2 text-success" />
+                ) : (
+                  <Copy className="size-4 mr-2" />
+                )}
+                {copied ? "Copied!" : "Copy ID"}
+              </ContextMenuItem>
+            </>
+          )}
           <ContextMenuItem onClick={viewEventJson}>
             <FileJson className="size-4 mr-2" />
             View JSON
