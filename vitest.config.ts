@@ -18,6 +18,13 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "./src"),
+      // Mirrors `vite.config.ts`. The workspace package has no build output,
+      // so without this any test that reaches it — directly or through a lazy
+      // import — fails to resolve at runtime rather than at type-check time.
+      "relay-auth-manager": path.resolve(
+        import.meta.dirname,
+        "./packages/relay-auth-manager/src/index.ts",
+      ),
     },
   },
 });

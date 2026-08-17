@@ -1,11 +1,13 @@
 /**
  * Getting this account's gift wraps off the relays and into the store.
  *
- * Reads run on the SINGLETON pool, authenticated. That is the opposite of the
- * publish path (`dm-publish-pool.ts`) and deliberately so: this REQ asks the
- * user's own inbox relays for the user's own mail, most of which require NIP-42
+ * Reads run on the SINGLETON pool, and they ANSWER NIP-42 — see
+ * `dm-read-auth.ts`. That is the opposite of the publish path
+ * (`dm-publish-pool.ts`) and deliberately so: this REQ asks the user's own
+ * inbox relays for the user's own mail, most of which require authentication
  * before they will serve it, and identifying yourself to your own mailbox
- * discloses nothing it does not already hold.
+ * discloses nothing it does not already hold. A read that does not answer the
+ * challenge is indistinguishable from an empty inbox.
  *
  * Three things shape everything here:
  *
@@ -37,6 +39,7 @@ import type { Rumor } from "applesauce-common/helpers/gift-wrap";
 import type { EncryptedContentSigner } from "applesauce-core/helpers/encrypted-content";
 import { requestEvents } from "@/lib/relay-subscription";
 import { ownDmReadRelays } from "@/lib/dm/relays";
+import { authenticateDmRelays } from "./dm-read-auth";
 import pool from "./relay-pool";
 import {
   markWrapsSeen,
@@ -115,6 +118,60 @@ export interface UnlockOutcome {
   written: number;
   /** Wraps that would not open, and never will. */
   failed: number;
+}
+
+/**
+ * How long ONE relay gets to answer a DM read.
+ *
+ * Generous on purpose. An auth-gated relay has to send a challenge, wait for a
+ * signature — possibly from a bunker, possibly behind a human clicking a
+ * prompt — and only then serve the re-issued REQ. The default one-shot bound
+ * is ten seconds, which cuts that handshake off in the middle and looks
+ * exactly like an empty inbox.
+ */
+const RELAY_READ_TIMEOUT_MS = 25_000;
+
+/**
+ * Read one page from each relay SEPARATELY, and say what each one gave.
+ *
+ * Not a pooled group read, for the reason armada documents: a group applies
+ * one deadline to the whole fan-out, so the first relay to answer starts a
+ * clock the auth-gated ones cannot beat — and a relay that is mid-NIP-42
+ * handshake contributes nothing while looking indistinguishable from a relay
+ * with no mail on it.
+ *
+ * The per-relay counts are the only thing that answers "why is my
+ * conversation list short". A total cannot: eleven wraps from four relays
+ * reads as an empty inbox, when what actually happened is that three of them
+ * refused and one served everything it had.
+ */
+async function readWrapsPerRelay(
+  relays: string[],
+  filter: Record<string, unknown>,
+  label: string,
+): Promise<NostrEvent[]> {
+  const perRelay = await Promise.all(
+    relays.map(async (relay) => {
+      try {
+        const events = await requestEvents([relay], [filter as never], {
+          eventStore: null,
+          timeout: RELAY_READ_TIMEOUT_MS,
+        });
+        return { relay, events };
+      } catch (error) {
+        console.warn(`[dm] ${relay} failed:`, error);
+        return { relay, events: [] as NostrEvent[] };
+      }
+    }),
+  );
+
+  for (const { relay, events } of perRelay)
+    console.info(`[dm] ${label}: ${relay} → ${events.length} wraps`);
+
+  const merged = new Map<string, NostrEvent>();
+  for (const { events } of perRelay)
+    for (const event of events) merged.set(event.id, event);
+  return [...merged.values()];
 }
 
 /**
@@ -302,6 +359,11 @@ export async function syncDmInbox(
   const limit = options.limit ?? BACKFILL_PAGE;
   const pages = Math.max(1, options.pages ?? 1);
 
+  // Held for the whole walk, not per page. The challenge usually arrives AFTER
+  // the first REQ — the REQ is what opens the socket — and applesauce retries
+  // the refused REQ once the relay reports itself authenticated.
+  const auth = authenticateDmRelays(relays);
+
   let written = 0;
   let failed = 0;
   let fetched = 0;
@@ -315,7 +377,7 @@ export async function syncDmInbox(
       ...(until !== undefined ? { until } : {}),
     };
 
-    const wraps = await requestEvents(relays, [filter], { eventStore: null });
+    const wraps = await readWrapsPerRelay(relays, filter, `page ${page + 1}`);
     if (wraps.length === 0) {
       console.info(
         `[dm] page ${page + 1}: no wraps from ${relays.length} relay(s)`,
@@ -359,6 +421,8 @@ export async function syncDmInbox(
       await writeDmKv(cursorKey(viewer), oldest);
   }
 
+  auth.unsubscribe();
+
   console.info(
     `[dm] sync done: ${fetched} wraps seen, ${written} stored, ${failed} unopenable — relays: ${relays.join(", ")}`,
   );
@@ -370,9 +434,6 @@ export async function syncDmInbox(
     ...(oldest !== undefined ? { oldest } : {}),
   };
 }
-
-/** How long a single backfill page waits before the walk gives up on it. */
-const BACKFILL_PAGE_TIMEOUT_MS = 15_000;
 
 export interface BackfillProgress {
   /** Pages walked so far. */
@@ -428,6 +489,10 @@ export async function backfillDmHistory(
   };
   if (relays.length === 0) return progress;
 
+  // Same as the page sync: the auth has to outlive each individual read,
+  // because the challenge arrives on the socket the read opened.
+  const auth = authenticateDmRelays(relays);
+
   let until = await readCursor(viewer);
   // Ids this walk has already been handed. A relay that ignores `until` — or
   // one whose page cap is filled by the boundary wrap alone — would otherwise
@@ -449,16 +514,14 @@ export async function backfillDmHistory(
     if (options.maxPages !== undefined && progress.pages >= options.maxPages)
       break;
 
-    const wraps = await requestEvents(
+    const wraps = await readWrapsPerRelay(
       relays,
-      [
-        {
-          ...inboxFilter(viewer),
-          limit: BACKFILL_PAGE,
-          ...(until !== undefined ? { until } : {}),
-        },
-      ],
-      { eventStore: null, timeout: BACKFILL_PAGE_TIMEOUT_MS },
+      {
+        ...inboxFilter(viewer),
+        limit: BACKFILL_PAGE,
+        ...(until !== undefined ? { until } : {}),
+      },
+      `backfill page ${progress.pages + 1}`,
     );
 
     progress.pages += 1;
@@ -517,6 +580,8 @@ export async function backfillDmHistory(
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
+  auth.unsubscribe();
+
   if (progress.exhausted) await writeDmKv(exhaustedKey(viewer), true);
   options.onProgress?.({ ...progress });
   console.info(
@@ -538,6 +603,7 @@ export function watchDmInbox(
   signer: DmSigner,
   relays: string[],
 ): () => void {
+  const auth = authenticateDmRelays(relays);
   const subscription = pool
     .subscription(relays, [inboxFilter(viewer)], { eventStore: null })
     .subscribe({
@@ -547,5 +613,8 @@ export function watchDmInbox(
       error: () => {},
     });
 
-  return () => subscription.unsubscribe();
+  return () => {
+    subscription.unsubscribe();
+    auth.unsubscribe();
+  };
 }
