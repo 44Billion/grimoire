@@ -39,6 +39,11 @@ export function useRoomSpeakers(roomEpoch: number): RoomVoiceState {
     const read = () => {
       const speaking = new Set<string>();
       const muted = new Set<string>();
+      // `room.activeSpeakers` is the authority: the SFU computes it and pushes
+      // it, where a remote participant's own `isSpeaking` flag is set from the
+      // per-participant event this listener never subscribed to — which is why
+      // a peer could be plainly audible with no ring around their tile.
+      for (const p of room.activeSpeakers) speaking.add(p.identity);
       const all = [room.localParticipant, ...room.remoteParticipants.values()];
       for (const p of all) {
         if (p.isSpeaking) speaking.add(p.identity);

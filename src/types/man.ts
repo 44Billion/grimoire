@@ -577,17 +577,30 @@ export const manPages: Record<string, ManPageEntry> = {
   call: {
     name: "call",
     section: "1",
-    synopsis: "call",
+    synopsis: "call [community [channel]]",
     description:
       "The voice and video call of the Concord channel you are reading (CORD-07). Every channel is callable — there is no separate voice channel — and the call's coordinates derive from the same channel key that addresses its chat, so a rekey moves the call and removal from the channel is removal from its calls. There is no host and no roster: a token comes from a BLIND broker, which authorizes possession of the channel's key rather than membership, and which therefore cannot tell what community a room belongs to or who is joining. Media is end-to-end encrypted under per-sender keys every member derives and nobody exchanges, so the broker and the SFU forward ciphertext and nothing else. Who is in a call is announced over the channel itself, encrypted, so no relay learns it either — which is also why a participant the channel's own presence cannot vouch for is never decoded: identities are visible to members, so a copied one proves nothing, and both claimants stay silent until the stale claim ages out. The call outlives the window you started it from — switching workspaces does not end it — and closing that window does. Nothing survives a reload. Opened by the headset in a channel's header; typed on its own it shows the call you are in.",
-    options: [],
+    options: [
+      {
+        flag: "[community]",
+        description:
+          "Optional. Community name (case-insensitive, prefix-matched) or a community_id prefix.",
+      },
+      {
+        flag: "[channel]",
+        description:
+          "Optional. Channel name or a channel_id prefix, within that community.",
+      },
+    ],
     examples: [
       "call                                      Show the call you are in",
+      "call bitcoin general                      The call in #general",
+      "call 3fa2c1 9d4e                          By community and channel id prefix",
     ],
     seeAlso: ["concord"],
     appId: "call",
     category: "Nostr",
-    argParser: (args: string[]) => parseCallCommand(args),
+    argParser: async (args: string[]) => parseCallCommand(args),
   },
   concord: {
     name: "concord",
