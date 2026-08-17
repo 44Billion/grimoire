@@ -506,20 +506,35 @@ export function rendezvousCandidates(
  * presence shows as occupied (§5 split healing). Two subsets of one call on two
  * brokers — simultaneous joins into an empty room — heal by the same tie-break:
  * whoever is on the losing origin moves.
+ *
+ * `exclude` is the caller's memory of origins that did NOT work for this call —
+ * every origin already tried and abandoned, including the ones a mint fell
+ * through. Without it this is a rejoin loop rather than a heal: a broker can
+ * probe healthy, appear in a fellow member's hint, and still refuse to mint for
+ * us, so we fall back to where we were, see the same winner on the next fold,
+ * and drop the call again. It is also the bound on a ground hint — an origin
+ * mined to win the tie-break steers an already-connected client exactly once,
+ * and never again for this call.
  */
 export function migrationTarget(
   roomHex: string,
   fold: VoicePresenceFold,
   connected: string,
+  exclude: Iterable<string> = [],
 ): string | undefined {
   const ours = canonicalOrigin(connected);
   if (!ours) return undefined;
+  const barred = new Set(
+    [...exclude, connected]
+      .map(canonicalOrigin)
+      .filter((o): o is string => Boolean(o)),
+  );
   const occupied = orderBrokers(
     roomHex,
     fold.present.map((p) => p.broker).filter((b): b is string => Boolean(b)),
   );
   const winner = occupied[0];
-  if (!winner || winner === ours) return undefined;
+  if (!winner || barred.has(winner)) return undefined;
   return brokerRank(roomHex, winner) < brokerRank(roomHex, ours)
     ? winner
     : undefined;

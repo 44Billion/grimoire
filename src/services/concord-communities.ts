@@ -38,6 +38,7 @@ import {
 } from "@/lib/concord/community-list";
 import { heldControlPlanes } from "@/lib/concord/control-address";
 import { clearGroupKeyMemo } from "@/lib/concord/derive";
+import { clearVoicePresence } from "@/services/concord-presence";
 import { resetAnnouncedMemory } from "@/lib/concord/notify";
 import { resetPlaneSweepMemory } from "@/lib/concord/plane-sync";
 import {
@@ -663,6 +664,9 @@ export async function clearCommunities(pubkey: string): Promise<void> {
   // stream secrets, and the sweep memos hold wrap ids from the account that
   // just left.
   clearGroupKeyMemo();
+  // Voice presence is never stored, but the in-memory fold names who was in
+  // which private channel's call — it has to leave with the account.
+  clearVoicePresence();
   resetPlaneSweepMemory();
   resetDissolutionMemory();
   clearDecryptMemo();

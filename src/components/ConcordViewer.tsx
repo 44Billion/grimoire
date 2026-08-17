@@ -18,6 +18,10 @@ import {
 import { NoCommunitiesEmpty, StrandedBanner } from "./concord/ArmadaHandoff";
 import { ConcordPinsList, PinsHeaderButton } from "@/components/ConcordPinsBar";
 import {
+  VoiceHeaderButton,
+  VoiceRoster,
+} from "@/components/concord/ConcordVoiceBar";
+import {
   ConcordInvitesPanel,
   InvitesRow,
 } from "@/components/ConcordInvitesPanel";
@@ -53,6 +57,10 @@ import { resolveOpenChannel } from "@/lib/concord/channels";
 import { buildConcordWindowUpdate } from "@/lib/concord/window-props";
 import { useConcordInvites } from "@/hooks/useConcordInvites";
 import { useConcordPins } from "@/hooks/useConcordPins";
+import {
+  useChannelVoice,
+  useCommunityVoiceCounts,
+} from "@/hooks/useConcordVoice";
 import { useConcordPrefs } from "@/hooks/useConcordPrefs";
 import { useAccount } from "@/hooks/useAccount";
 import { inviteStanding } from "@/lib/concord/invite";
@@ -63,6 +71,9 @@ import type { PendingInvite } from "@/services/concord-invites";
 import { useGrimoire } from "@/core/state";
 import { cn } from "@/lib/utils";
 import type { ConcordIdentifier, ProtocolIdentifier } from "@/types/chat";
+
+/** A stable empty list, so a community-less render keeps constant hook inputs. */
+const EMPTY_RELAYS: string[] = [];
 
 interface ConcordViewerProps {
   /** community_id (lowercase hex), or a prefix of one. */
@@ -227,6 +238,14 @@ export function ConcordViewer({
     openChannel,
   );
   const [showPins, setShowPins] = useState(false);
+
+  // Who is in a call, per channel and for the open one (CORD-07 §4). Watching
+  // every channel rather than just the open one costs one REQ per relay in
+  // total — and a call nobody can see is a call nobody joins.
+  const voiceRelays = community?.relays ?? EMPTY_RELAYS;
+  const inCall = useCommunityVoiceCounts(voiceRelays, channels);
+  const openCall = useChannelVoice(voiceRelays, openChannel);
+  const [showCall, setShowCall] = useState(false);
 
   /**
    * Clicking a pin lands on the message itself — the same walk a search hit
@@ -631,6 +650,7 @@ export function ConcordViewer({
             loading={loading}
             error={error}
             unread={unread}
+            inCall={inCall}
             onSelect={handleChannelSelect}
           />
           {/* The guestbook entry is hidden for now: it sat between the channels
@@ -729,16 +749,31 @@ export function ConcordViewer({
                   identifier={identifier as ProtocolIdentifier}
                   headerPrefix={headerPrefix}
                   headerExtra={
-                    <PinsHeaderButton
-                      count={pins.length}
-                      unavailable={pinsUnavailable}
-                      open={showPins}
-                      onToggle={() => setShowPins((v) => !v)}
-                    />
+                    <>
+                      <VoiceHeaderButton
+                        count={openCall.present.length}
+                        open={showCall}
+                        onToggle={() => {
+                          setShowCall((v) => !v);
+                          setShowPins(false);
+                        }}
+                      />
+                      <PinsHeaderButton
+                        count={pins.length}
+                        unavailable={pinsUnavailable}
+                        open={showPins}
+                        onToggle={() => {
+                          setShowPins((v) => !v);
+                          setShowCall(false);
+                        }}
+                      />
+                    </>
                   }
                   belowHeader={
                     showPins ? (
                       <ConcordPinsList pins={pins} onOpen={handleOpenPin} />
+                    ) : showCall ? (
+                      <VoiceRoster fold={openCall} />
                     ) : undefined
                   }
                   onJumpHandled={handleJumpHandled}

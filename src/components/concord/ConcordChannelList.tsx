@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronRight,
   Hash,
+  Headphones,
   Loader2,
   Lock,
   Pin,
@@ -142,6 +143,7 @@ export function ChannelList({
   loading,
   error,
   unread,
+  inCall,
   onSelect,
 }: {
   channels: Channel[];
@@ -150,6 +152,8 @@ export function ChannelList({
   loading: boolean;
   error: string | undefined;
   unread: Map<string, ChannelUnread>;
+  /** Channel id → how many members are in its call right now (CORD-07 §4). */
+  inCall: Map<string, number>;
   onSelect: (idHex: string) => void;
 }) {
   const { isCollapsed, toggleCollapsed, isPinned } = useConcordPrefs();
@@ -196,6 +200,7 @@ export function ChannelList({
           communityId={communityId}
           selected={ch.idHex === selected}
           unread={unread.get(ch.idHex.toLowerCase())}
+          inCall={inCall.get(ch.idHex) ?? 0}
           onSelect={onSelect}
         />
       ))}
@@ -206,6 +211,7 @@ export function ChannelList({
           communityId={communityId}
           selected={ch.idHex === selected}
           unread={unread.get(ch.idHex.toLowerCase())}
+          inCall={inCall.get(ch.idHex) ?? 0}
           onSelect={onSelect}
         />
       ))}
@@ -215,7 +221,8 @@ export function ChannelList({
           ? group.channels.filter(
               (ch) =>
                 ch.idHex === selected ||
-                (unread.get(ch.idHex.toLowerCase())?.count ?? 0) > 0,
+                (unread.get(ch.idHex.toLowerCase())?.count ?? 0) > 0 ||
+                (inCall.get(ch.idHex) ?? 0) > 0,
             )
           : group.channels;
         const Chevron = collapsed ? ChevronRight : ChevronDown;
@@ -238,6 +245,7 @@ export function ChannelList({
                 communityId={communityId}
                 selected={ch.idHex === selected}
                 unread={unread.get(ch.idHex.toLowerCase())}
+                inCall={inCall.get(ch.idHex) ?? 0}
                 onSelect={onSelect}
               />
             ))}
@@ -253,12 +261,14 @@ function ChannelRow({
   communityId,
   selected,
   unread,
+  inCall,
   onSelect,
 }: {
   channel: Channel;
   communityId: string | undefined;
   selected: boolean;
   unread: ChannelUnread | undefined;
+  inCall: number;
   onSelect: (idHex: string) => void;
 }) {
   const Icon = channel.isPrivate ? Lock : Hash;
@@ -291,6 +301,19 @@ function ChannelRow({
             height, which is the whole reason the heading went. */}
         <span className="ml-auto flex shrink-0 items-center gap-1">
           {pinned && <Pin className="size-3 shrink-0 text-muted-foreground" />}
+          {inCall > 0 && (
+            <span
+              className="flex items-center gap-0.5 text-[10px] text-muted-foreground"
+              title={
+                inCall === 1
+                  ? "1 member is in a call here"
+                  : `${inCall} members are in a call here`
+              }
+            >
+              <Headphones className="size-3 shrink-0" />
+              {inCall}
+            </span>
+          )}
           {unread && <UnreadBadge unread={unread} />}
         </span>
       </button>

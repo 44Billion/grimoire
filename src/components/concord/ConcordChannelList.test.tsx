@@ -36,6 +36,7 @@ const renderList = (
   overrides: {
     selected?: string;
     unread?: Map<string, ChannelUnread>;
+    inCall?: Map<string, number>;
   } = {},
 ) =>
   render(
@@ -46,6 +47,7 @@ const renderList = (
       loading={false}
       error={undefined}
       unread={overrides.unread ?? new Map()}
+      inCall={overrides.inCall ?? new Map()}
       onSelect={vi.fn()}
     />,
   );

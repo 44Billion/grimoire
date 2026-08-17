@@ -425,6 +425,24 @@ describe("rendezvous (§5)", () => {
     const behind = foldVoicePresence([entry({ ms: now, broker: loser })], now);
     expect(migrationTarget(ROOM.pk, behind, winner)).toBeUndefined();
   });
+
+  it("never migrates back to an origin this call already abandoned", () => {
+    // A broker can probe healthy, ride a fellow member's hint, and still refuse
+    // to mint for us — so the join falls through to the next candidate. Without
+    // the exclusion the same winner is nominated on every fold and the call
+    // drops on a loop.
+    const ranked = orderBrokers(ROOM.pk, [
+      "https://a.example",
+      "https://b.example",
+    ]);
+    const [winner, loser] = ranked;
+    const fold = foldVoicePresence([entry({ ms: now, broker: winner })], now);
+    expect(migrationTarget(ROOM.pk, fold, loser, [winner])).toBeUndefined();
+    // Spelled differently, it is still the same origin.
+    expect(
+      migrationTarget(ROOM.pk, fold, loser, [`${winner}:443/`]),
+    ).toBeUndefined();
+  });
 });
 
 describe("the heartbeat clock (§4)", () => {
