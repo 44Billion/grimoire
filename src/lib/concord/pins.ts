@@ -35,6 +35,45 @@ import type { NostrRumor } from "@/lib/concord/rumor";
 import { verifyEventOnce } from "@/lib/concord/verify-cache";
 import type { NostrEvent } from "nostr-tools/pure";
 
+/**
+ * NIP-44 v2 unpadding, spelled out rather than borrowed.
+ *
+ * `nip44.v2.utils.unpad` exists in the nostr-tools grimoire resolves today and
+ * not in the range applesauce actually pins, so reaching for it type-checks
+ * here and fails the build on a clean install. The format is fixed by the NIP:
+ * a u16 big-endian length (or a `0x0000` marker plus a u32 for the extended
+ * form), the plaintext, then zeros to the padded length.
+ */
+function unpadPlaintext(padded: Uint8Array): string {
+  const view = new DataView(
+    padded.buffer,
+    padded.byteOffset,
+    padded.byteLength,
+  );
+  const firstTwo = view.getUint16(0);
+  const extended = firstTwo === 0;
+  const length = extended ? view.getUint32(2) : firstTwo;
+  const prefix = extended ? 6 : 2;
+  const plaintext = padded.subarray(prefix, prefix + length);
+  if (
+    length < 1 ||
+    plaintext.length !== length ||
+    (extended && length < 65_536) ||
+    padded.length !== prefix + paddedLength(length)
+  ) {
+    throw new Error("invalid padding");
+  }
+  return new TextDecoder().decode(plaintext);
+}
+
+/** The padded length NIP-44 v2 fixes for a plaintext of `len` bytes. */
+function paddedLength(len: number): number {
+  if (len <= 32) return 32;
+  const nextPower = 2 ** (Math.floor(Math.log2(len - 1)) + 1);
+  const chunk = nextPower <= 256 ? 32 : nextPower / 8;
+  return chunk * (Math.floor((len - 1) / chunk) + 1);
+}
+
 /** §7's two caps. A list breaching either reads as EMPTY, never as refused. */
 export const PIN_MAX_ENTRIES = 25;
 export const PIN_MAX_CONTENT_BYTES = 32_768;
@@ -113,7 +152,7 @@ export function openWithDisclosedKeys(
     combined.set(nonce);
     combined.set(ciphertext, nonce.length);
     if (!equalBytes(hmac(sha256, hmacKey, combined), mac)) return undefined;
-    return nip44.v2.utils.unpad(chacha20(chachaKey, chachaNonce, ciphertext));
+    return unpadPlaintext(chacha20(chachaKey, chachaNonce, ciphertext));
   } catch {
     return undefined;
   }
