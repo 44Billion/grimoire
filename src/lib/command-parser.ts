@@ -44,6 +44,26 @@ export function parseCommandInput(input: string): ParsedCommand {
       typeof token.comment === "string"
     ) {
       str = `#${token.comment}`;
+    } else if (
+      token &&
+      typeof token === "object" &&
+      "op" in token &&
+      token.op === "glob" &&
+      "pattern" in token &&
+      typeof token.pattern === "string"
+    ) {
+      // shell-quote turns `?` and `*` into { op: "glob", pattern }. Grimoire
+      // has no globbing, and String() on it yields "[object Object]" — which
+      // silently ate the `?` from any question typed at a command.
+      str = token.pattern;
+    } else if (
+      token &&
+      typeof token === "object" &&
+      "op" in token &&
+      typeof token.op === "string"
+    ) {
+      // Operators (`&&`, `|`, `>`) are literal text here for the same reason.
+      str = token.op;
     } else {
       str = String(token);
     }

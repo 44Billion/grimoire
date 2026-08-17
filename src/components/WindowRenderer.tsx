@@ -321,7 +321,12 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
         break;
       case "ai":
         content = (
-          <AiViewer prompt={window.props.prompt} system={window.props.system} />
+          <AiViewer
+            prompt={window.props.prompt}
+            system={window.props.system}
+            target={window.props.target}
+            windowId={window.id}
+          />
         );
         break;
       default:

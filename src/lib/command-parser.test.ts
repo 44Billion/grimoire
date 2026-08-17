@@ -255,6 +255,24 @@ describe("parseCommandInput - regression tests", () => {
   });
 });
 
+describe("parseCommandInput - shell-quote token shapes", () => {
+  it("keeps a question mark instead of stringifying a glob object", () => {
+    const parsed = parseCommandInput("ai what is a relay?");
+    expect(parsed.args.join(" ")).toBe("what is a relay?");
+    expect(parsed.args.join(" ")).not.toContain("[object Object]");
+  });
+
+  it("keeps an asterisk", () => {
+    const parsed = parseCommandInput("ai explain kind 1* please");
+    expect(parsed.args.join(" ")).toBe("explain kind 1* please");
+  });
+
+  it("keeps a pipe as literal text", () => {
+    const parsed = parseCommandInput("ai a | b");
+    expect(parsed.args.join(" ")).toBe("a | b");
+  });
+});
+
 describe("executeCommandParser - alias resolution", () => {
   it("should resolve $me in profile command when activeAccountPubkey is provided", async () => {
     const input = "profile $me";

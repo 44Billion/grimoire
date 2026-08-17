@@ -476,6 +476,22 @@ export interface DmKvRow {
 export const OUTBOX_NEVER = Number.MAX_SAFE_INTEGER;
 
 /** Exported for the migration tests, which open a throwaway database name. */
+/**
+ * One AI conversation, keyed by the window that holds it. Windows are restored
+ * from localStorage on load; this is what makes their turns come back with them.
+ */
+export interface AiConversation {
+  windowId: string; // Primary key
+  turns: Array<{
+    role: "user" | "assistant";
+    content: string;
+    reasoning?: string;
+    model?: string;
+    usage?: { inputTokens?: number; outputTokens?: number };
+  }>;
+  updatedAt: number;
+}
+
 export class GrimoireDb extends Dexie {
   profiles!: Table<Profile>;
   nip05!: Table<Nip05>;
@@ -505,6 +521,7 @@ export class GrimoireDb extends Dexie {
   dmConversations!: Table<DmConversationRow>;
   dmSeenWraps!: Table<DmSeenWrapRow>;
   dmKv!: Table<DmKvRow>;
+  aiConversations!: Table<AiConversation>;
 
   constructor(name: string) {
     super(name);
@@ -1055,6 +1072,11 @@ export class GrimoireDb extends Dexie {
       dmConversations: "&[viewer+conversationId], [viewer+lastAt]",
       dmSeenWraps: "&[viewer+wrapId], [viewer+wrapAt]",
       dmKv: "&key",
+    });
+
+    // Version 28: AI conversations, one row per window
+    this.version(28).stores({
+      aiConversations: "&windowId, updatedAt",
     });
   }
 }

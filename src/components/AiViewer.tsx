@@ -35,20 +35,36 @@ import {
 } from "@/services/inference";
 import type { InferenceMessage, Usage } from "@/types/inference";
 import { useLocale } from "@/hooks/useLocale";
+import { useLiveQuery } from "dexie-react-hooks";
+import {
+  loadConversation,
+  saveConversation,
+} from "@/services/ai-conversations";
+import { buildAiContext, type AiTarget } from "@/lib/ai-context";
 import { ProviderLogo, providerFromModel } from "./ai/ProviderLogo";
 import { useAddWindow } from "@/core/state";
-import { splitNostrRefs, type NostrRefTarget } from "@/lib/open-nostr-ref";
+import {
+  hasEventEmbed,
+  splitNostrRefs,
+  type NostrRefTarget,
+} from "@/lib/open-nostr-ref";
+import { UserName } from "./nostr/UserName";
+import { EmbeddedEvent } from "./nostr/EmbeddedEvent";
 
 interface AiViewerProps {
   /** Prompt from the command line. Prefilled, not sent. */
   prompt?: string;
   system?: string;
+  /** Key for persisted turns. Without it the conversation is ephemeral. */
+  windowId?: string;
+  /** Object the question is about. Its own data becomes the system prompt. */
+  target?: AiTarget;
 }
 
 /**
- * Render markdown text, turning any bech32 nostr entity into a button that
- * opens the window for it. A model that names an npub or nevent should be as
- * clickable as a note that does.
+ * Render markdown text, showing every bech32 entity as the thing it names: a
+ * person as `UserName`, an event through the feed renderer, anything else as a
+ * link. A model that mentions an npub should read like a note that does.
  */
 function LinkedText({
   children,
@@ -64,21 +80,50 @@ function LinkedText({
 
   return (
     <>
-      {segments.map((segment, index) =>
-        segment.target ? (
+      {segments.map((segment, index) => {
+        const key = `${index}-${segment.text}`;
+        const target = segment.target;
+
+        if (!target) return <span key={`${index}-plain`}>{segment.text}</span>;
+
+        // A person renders as a person: display name, member badge, flame.
+        // UserName opens the profile itself.
+        if (target.pubkey) {
+          return (
+            <UserName
+              isMention
+              key={key}
+              pubkey={target.pubkey}
+              relayHints={target.relays}
+            />
+          );
+        }
+
+        // An event renders through the same registry the feed uses, so a
+        // mentioned note looks like a note and a mentioned NIP like a NIP.
+        if (target.eventPointer || target.addressPointer) {
+          return (
+            <EmbeddedEvent
+              addressPointer={target.addressPointer}
+              eventPointer={target.eventPointer}
+              key={key}
+              onOpen={() => onOpen(target, segment.text)}
+            />
+          );
+        }
+
+        return (
           <button
             className="break-all text-primary underline underline-offset-2 hover:text-primary/80"
-            key={`${index}-${segment.text}`}
-            onClick={() => onOpen(segment.target!, segment.text)}
+            key={key}
+            onClick={() => onOpen(target, segment.text)}
             title={segment.text}
             type="button"
           >
             {segment.text.slice(0, 12)}…
           </button>
-        ) : (
-          <span key={`${index}-plain`}>{segment.text}</span>
-        ),
-      )}
+        );
+      })}
     </>
   );
 }
@@ -92,6 +137,13 @@ interface Turn {
   /** From the `done` chunk. The model is the extension's choice, not ours. */
   model?: string;
   usage?: Usage;
+}
+
+/** True when any string leaf holds a reference that renders as a block embed. */
+function containsEventEmbed(children: ReactNode): boolean {
+  if (typeof children === "string") return hasEventEmbed(children);
+  if (Array.isArray(children)) return children.some(containsEventEmbed);
+  return false;
 }
 
 /** Apply LinkedText to the string leaves of a markdown element's children. */
@@ -158,10 +210,38 @@ function TurnUsage({
   );
 }
 
-export default function AiViewer({ prompt, system }: AiViewerProps) {
+export default function AiViewer({
+  prompt,
+  system,
+  target,
+  windowId,
+}: AiViewerProps) {
   const { locale } = useLocale();
   const addWindow = useAddWindow();
-  const [turns, setTurns] = useState<Turn[]>([]);
+
+  // The target's own data — event JSON, kind registry entry, cached NIP text —
+  // becomes the system prompt. Resolved through a live query so it picks up an
+  // event or NIP that arrives after the window opens.
+  const context = useLiveQuery(
+    () => (target ? buildAiContext(target) : Promise.resolve(undefined)),
+    [target?.type, target?.value],
+  );
+
+  // Turns live in Dexie so a reload restores them with the window. `stored`
+  // seeds the first render; after that local state owns them, so a streaming
+  // reply is never fighting a query result.
+  const stored = useLiveQuery(
+    () => (windowId ? loadConversation(windowId) : Promise.resolve([])),
+    [windowId],
+  );
+  const [local, setLocal] = useState<Turn[] | null>(null);
+  const turns: Turn[] = local ?? stored ?? [];
+  const setTurns = useCallback(
+    (update: (previous: Turn[]) => Turn[]) => {
+      setLocal((previous) => update(previous ?? stored ?? []));
+    },
+    [stored],
+  );
   // The command-line prompt is prefilled, not sent. Windows are restored from
   // localStorage on load, and auto-sending would re-spend on every reload.
   const [input, setInput] = useState(prompt ?? "");
@@ -180,9 +260,14 @@ export default function AiViewer({ prompt, system }: AiViewerProps) {
     const onOpen = (target: NostrRefTarget, label: string) =>
       addWindow(target.appId, target.props, `open ${label}`);
     return {
-      p: ({ children }: { children?: ReactNode }) => (
-        <p>{withLinks(children, onOpen)}</p>
-      ),
+      // An event embed is a block, and a <div> inside a <p> is invalid HTML
+      // that browsers repair by splitting the paragraph. Swap the tag instead.
+      p: ({ children }: { children?: ReactNode }) =>
+        containsEventEmbed(children) ? (
+          <div className="mb-4">{withLinks(children, onOpen)}</div>
+        ) : (
+          <p>{withLinks(children, onOpen)}</p>
+        ),
       li: ({ children }: { children?: ReactNode }) => (
         <li>{withLinks(children, onOpen)}</li>
       ),
@@ -191,8 +276,13 @@ export default function AiViewer({ prompt, system }: AiViewerProps) {
 
   const send = useCallback(
     async (text: string) => {
+      // An explicit --system wins over the target's context; otherwise the
+      // target grounds the conversation.
+      const systemPrompt = system ?? context?.system;
       const history: InferenceMessage[] = [
-        ...(system ? [{ role: "system" as const, content: system }] : []),
+        ...(systemPrompt
+          ? [{ role: "system" as const, content: systemPrompt }]
+          : []),
         ...turns
           .filter((turn) => !turn.pending)
           .map((turn) =>
@@ -281,19 +371,23 @@ export default function AiViewer({ prompt, system }: AiViewerProps) {
               break;
           }
         }
-        setTurns((previous) =>
-          previous.map((turn, index) =>
-            index === previous.length - 1 && turn.pending
-              ? {
-                  role: "assistant",
-                  content,
-                  ...(reasoning ? { reasoning } : {}),
-                  ...(model ? { model } : {}),
-                  ...(usage ? { usage } : {}),
-                }
-              : turn,
-          ),
-        );
+        // Rebuild from the turns we started with so earlier model and usage
+        // survive; the placeholder is replaced, not patched.
+        const settled: Turn[] = [
+          ...turns.filter((turn) => !turn.pending),
+          { role: "user", content: text },
+          {
+            role: "assistant",
+            content,
+            ...(reasoning ? { reasoning } : {}),
+            ...(model ? { model } : {}),
+            ...(usage ? { usage } : {}),
+          },
+        ];
+        setLocal(settled);
+        // Save once the turn is settled, never mid-stream — a partial reply is
+        // not worth a write per frame.
+        if (windowId) void saveConversation(windowId, settled);
       } catch (caught) {
         setError(describeInferenceError(caught));
         // Drop the empty pending turn; the error is shown instead.
@@ -308,7 +402,7 @@ export default function AiViewer({ prompt, system }: AiViewerProps) {
         setStreaming(false);
       }
     },
-    [system, turns],
+    [context?.system, system, turns, setTurns, windowId],
   );
 
   // Closing the window must cancel in-flight provider work.
@@ -351,8 +445,12 @@ export default function AiViewer({ prompt, system }: AiViewerProps) {
           {turns.length === 0 ? (
             <ConversationEmptyState
               icon={<Sparkles className="size-8" />}
-              title="Ask anything"
-              description="Your extension picks the provider and model."
+              title={context ? `Ask about ${context.label}` : "Ask anything"}
+              description={
+                context
+                  ? "Grounded in the local copy — no data leaves except the prompt."
+                  : "Your extension picks the provider and model."
+              }
             />
           ) : (
             turns.map((turn, index) => (

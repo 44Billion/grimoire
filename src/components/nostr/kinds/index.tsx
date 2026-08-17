@@ -161,6 +161,7 @@ import { memo } from "react";
 import { NostrEvent } from "@/types/nostr";
 import { getEventFallbackDisplay } from "@/lib/event-fallback";
 import { BaseEventContainer, type BaseEventProps } from "./BaseEventRenderer";
+import { ExplainKindButton } from "../ExplainKindButton";
 import { P2pOrderRenderer } from "./P2pOrderRenderer";
 import { P2pOrderDetailRenderer } from "./P2pOrderDetailRenderer";
 import { BadgeDefinitionRenderer } from "./BadgeDefinitionRenderer";
@@ -350,6 +351,11 @@ const DefaultKindRenderer = memo(function DefaultKindRenderer({
             {display.type === "content" ? display.text : "(empty content)"}
           </pre>
         )}
+        {/* No renderer for this kind, so offer the one thing that can still
+            say what it is. Click-triggered — see ExplainKindButton. */}
+        <div className="mt-1 flex justify-end">
+          <ExplainKindButton event={event} />
+        </div>
       </div>
     </BaseEventContainer>
   );

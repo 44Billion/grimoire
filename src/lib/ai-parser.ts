@@ -1,13 +1,18 @@
+import { parseAiTarget, type AiTarget } from "./ai-context";
+
 export interface AiCommandProps {
   prompt?: string;
   system?: string;
+  /** Object the question is about; its own data becomes the system prompt. */
+  target?: AiTarget;
 }
 
 /**
- * `ai [--system <text>] [prompt...]`
+ * `ai [--system <text>] [target] [prompt...]`
  *
- * Global flags (`--title`) are stripped before this runs. Everything left over
- * that is not consumed by `--system` becomes the prompt.
+ * A leading bech32 entity, kind number, or `nip-XX` is taken as the target —
+ * the thing being asked about — and the rest is the question. Global flags
+ * (`--title`) are stripped before this runs.
  */
 export function parseAiCommand(args: string[]): AiCommandProps {
   const rest: string[] = [];
@@ -27,9 +32,15 @@ export function parseAiCommand(args: string[]): AiCommandProps {
     rest.push(arg);
   }
 
-  const prompt = rest.join(" ").trim();
+  // Only the first word can be a target, so a question that merely mentions an
+  // npub stays a question.
+  const target = rest.length > 0 ? parseAiTarget(rest[0]) : undefined;
+  const words = target ? rest.slice(1) : rest;
+  const prompt = words.join(" ").trim();
+
   return {
     ...(prompt ? { prompt } : {}),
     ...(system ? { system } : {}),
+    ...(target ? { target } : {}),
   };
 }
