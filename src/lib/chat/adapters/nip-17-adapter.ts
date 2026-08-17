@@ -46,7 +46,9 @@ import eventStore from "@/services/event-store";
 import { getDisplayName } from "@/lib/nostr-utils";
 import { getProfileContent } from "applesauce-core/helpers";
 import {
+  DM_MAX_FUTURE_SECS,
   dmReactionsByTarget,
+  dmUnreadSummary,
   foldDmMessages,
   queryConversation,
 } from "@/services/dm-store";
@@ -503,11 +505,37 @@ export class Nip17Adapter extends ChatProtocolAdapter {
     return readDmLastRead(this.self(), conversation.id);
   }
 
+  /**
+   * Stamp the conversation read, high enough that the badge can clear.
+   *
+   * `timestampSecs` is the newest message the TIMELINE showed. That is not
+   * always the newest row the COUNT counted: the count is a raw scan and the
+   * timeline is a fold, so a message its author deleted can be newer than
+   * anything on screen. Stamping what was shown would leave a badge no visit
+   * can clear. Concord solves it the same way and for the same reason — see
+   * `docs/chat-system.md`.
+   */
   async markRead(
     conversation: Conversation,
     timestampSecs: number,
   ): Promise<void> {
-    await markDmRead(this.self(), conversation.id, timestampSecs);
+    const self = this.self();
+    // Nothing loaded is not "everything read": without this, `latest` below
+    // would stamp a conversation the reader has not seen a message of.
+    if (!Number.isFinite(timestampSecs) || timestampSecs <= 0) return;
+
+    const at = Math.floor(Date.now() / 1000);
+    const requested = Math.min(timestampSecs, at + DM_MAX_FUTURE_SECS);
+    const summary = await dmUnreadSummary(self, conversation.id, {
+      after: requested,
+      nowSecs: at,
+    });
+
+    await markDmRead(
+      self,
+      conversation.id,
+      Math.max(requested, summary.latest),
+    );
   }
 
   getCapabilities(): ChatCapabilities {

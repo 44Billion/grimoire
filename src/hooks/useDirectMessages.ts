@@ -24,7 +24,7 @@ import {
   syncDmInbox,
   type BackfillProgress,
 } from "@/services/dm-inbox";
-import { countUnreadDms, listDmConversations } from "@/services/dm-store";
+import { dmUnreadSummary, listDmConversations } from "@/services/dm-store";
 import { readDmLastRead } from "@/services/dm-reads";
 import { ownDmReadRelays } from "@/lib/dm/relays";
 import type { DmConversationRow } from "@/services/db";
@@ -140,7 +140,11 @@ export function useDirectMessages(
           const isSelf = peer === pubkey;
           const unreadCount = isSelf
             ? 0
-            : await countUnreadDms(pubkey, row.conversationId, lastRead);
+            : (
+                await dmUnreadSummary(pubkey, row.conversationId, {
+                  after: lastRead,
+                })
+              ).count;
           return {
             ...row,
             peer,

@@ -524,47 +524,110 @@ export async function clearDirectMessages(viewer: string): Promise<void> {
   );
 }
 
-/**
- * How many messages have arrived in a conversation since `after`.
- *
- * Counted, not inferred from `lastAt`: a badge saying "3" and a badge saying
- * "something" are different promises, and the sidebar has room for the number.
- *
- * The viewer's own messages never count — sending is reading — and neither do
- * side rows: a reaction to something you already read is not a message
- * waiting. Capped, because a conversation nobody has opened in a year should
- * cost a bounded read rather than a proportional one.
- */
+/** How many unread rows one summary will walk before answering "and more". */
 export const DM_UNREAD_CAP = 99;
 
+/** What one conversation has waiting for a reader who last read at `after`. */
+export interface DmUnread {
+  /** Qualifying rows in `(after, now + skew]`, capped at {@link DM_UNREAD_CAP}. */
+  count: number;
+  /** The newest `created_at` among exactly the rows counted. 0 when none. */
+  latest: number;
+  /** Whether the walk stopped at the cap, i.e. `count` is a floor. */
+  capped: boolean;
+}
+
+/**
+ * What is unread in one conversation — the badge, and the stamp that clears it.
+ *
+ * Deliberately the same shape as Concord's `channelUnreadSummary`, because it
+ * is the same problem and the same three rules apply (`docs/chat-system.md`):
+ *
+ * **The stamp must be able to cover everything the count counts.** This is a
+ * raw index scan, not a fold — a count needs no delete tally — so it counts
+ * rows the timeline will not show. A message its author deleted is the case
+ * that bites: it can be the NEWEST row in a conversation, so a reader who
+ * stamps the newest message the TIMELINE showed them stamps below it and can
+ * never clear the badge by any action. Hence `latest`, the newest `created_at`
+ * among exactly the rows counted, whatever the fold does with them.
+ * `markRead` stamps `max(what was shown, latest)`.
+ *
+ * **The walk is DESCENDING.** Ascending, a capped scan would report the newest
+ * of the OLDEST hundred rows as `latest`, the stamp could never reach past the
+ * cap, and the stuck badge would return for exactly the >99-unread case.
+ *
+ * **Both bounds are clamped by the same allowance.** `created_at` is
+ * author-chosen, so a year-3000 message would pin the badge forever. Bounded
+ * here and at the stamp with {@link DM_MAX_FUTURE_SECS}.
+ *
+ * The lower bound is EXCLUSIVE: a message dated exactly `after` is the one the
+ * reader last read.
+ *
+ * What does not count, and why each: the viewer's own messages, because
+ * sending is reading; reactions and deletes, because a reaction to something
+ * already read is not a message waiting; and anything past its NIP-40
+ * deadline, because it is already gone from the timeline. Expiry is cheap to
+ * judge from a row alone — deletion is not, which is what `latest` is for.
+ *
+ * There is no `mention` flag, unlike Concord's. NIP-17 p-tags every recipient
+ * on every message, so the predicate is vacuously true: a conversation where
+ * everything is a mention has no mentions.
+ */
+export async function dmUnreadSummary(
+  viewer: string,
+  conversationId: string,
+  opts: { after: number; nowSecs?: number; cap?: number } = { after: 0 },
+): Promise<DmUnread> {
+  const empty: DmUnread = { count: 0, latest: 0, capped: false };
+  if (!viewer || !conversationId) return empty;
+
+  const at = opts.nowSecs ?? nowSecs();
+  const cap = opts.cap ?? DM_UNREAD_CAP;
+  const upper = at + DM_MAX_FUTURE_SECS;
+  const after = Math.max(0, opts.after);
+  if (upper <= after) return empty;
+
+  let count = 0;
+  let latest = 0;
+  let capped = false;
+
+  try {
+    await db.dmRumors
+      .where("[viewer+conversationId+created_at]")
+      .between(
+        [viewer, conversationId, after],
+        [viewer, conversationId, upper],
+        false,
+        true,
+      )
+      .reverse()
+      .until(() => capped, false)
+      .each((row) => {
+        if (!DM_ROW_KINDS.includes(row.kind)) return;
+        if (row.pubkey === viewer) return;
+        if (isExpired(row, at)) return;
+        // BEFORE the count and before anything the fold might hide: a deleted
+        // message must not badge, but it must still be stampable, or the badge
+        // it left behind could never clear.
+        if (row.created_at > latest) latest = row.created_at;
+        count += 1;
+        if (count >= cap) capped = true;
+      });
+  } catch (error) {
+    console.warn("[dm] unread scan failed:", error);
+    return empty;
+  }
+
+  return { count, latest, capped };
+}
+
+/** Just the number, for callers with no stamp to write. */
 export async function countUnreadDms(
   viewer: string,
   conversationId: string,
   after: number,
   at = nowSecs(),
 ): Promise<number> {
-  if (!viewer || !conversationId) return 0;
-
-  // The same clock allowance the stamp uses. Bounding one side and not the
-  // other either pins the badge forever or clears it for years.
-  const ceiling = at + DM_MAX_FUTURE_SECS;
-
-  let count = 0;
-  await db.dmRumors
-    .where("[viewer+conversationId+created_at]")
-    .between(
-      [viewer, conversationId, after],
-      [viewer, conversationId, ceiling],
-      false,
-      true,
-    )
-    .until(() => count >= DM_UNREAD_CAP)
-    .each((row) => {
-      if (!DM_ROW_KINDS.includes(row.kind)) return;
-      if (row.pubkey === viewer) return;
-      if (isExpired(row, at)) return;
-      count += 1;
-    });
-
-  return count;
+  return (await dmUnreadSummary(viewer, conversationId, { after, nowSecs: at }))
+    .count;
 }

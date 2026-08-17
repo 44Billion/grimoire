@@ -7,6 +7,7 @@ import {
   DM_UNREAD_CAP,
   clearDirectMessages,
   countUnreadDms,
+  dmUnreadSummary,
   foldDmMessages,
   listDmConversations,
   queryConversation,
@@ -473,5 +474,93 @@ describe("countUnreadDms", () => {
     expect(await countUnreadDms(ME, await conversationId(), 0)).toBe(
       DM_UNREAD_CAP,
     );
+  });
+});
+
+describe("dmUnreadSummary", () => {
+  async function conversationId() {
+    const [conversation] = await listDmConversations(ME);
+    return conversation.conversationId;
+  }
+
+  it("reports a stamp that can clear a badge the fold hides", async () => {
+    // The case the whole shape exists for. The count is a raw scan and the
+    // timeline is a fold, so a message its author deleted can be NEWER than
+    // anything on screen — and a reader who stamps what they saw stamps below
+    // it and can never clear the badge by any action.
+    const visible = rumor({ created_at: nowSecs() - 100, content: "seen" });
+    await writeDmRumors(ME, [visible]);
+    const id = await conversationId();
+
+    const removed = rumor({ created_at: nowSecs() - 10, content: "gone" });
+    await writeDmRumors(ME, [
+      removed,
+      rumor({
+        kind: 5,
+        pubkey: PEER,
+        created_at: nowSecs() - 5,
+        tags: [["e", removed.id]],
+      }),
+    ]);
+
+    const summary = await dmUnreadSummary(ME, id, { after: 0 });
+    // `latest` reaches the hidden row even though the timeline stops short.
+    expect(summary.latest).toBe(removed.created_at);
+    expect(summary.latest).toBeGreaterThan(visible.created_at);
+
+    // Stamping there clears it; stamping what was shown would not.
+    expect(
+      (await dmUnreadSummary(ME, id, { after: summary.latest })).count,
+    ).toBe(0);
+    expect(
+      (await dmUnreadSummary(ME, id, { after: visible.created_at })).count,
+    ).toBeGreaterThan(0);
+  });
+
+  it("walks newest-first, so the cap cannot strand the stamp", async () => {
+    // Ascending, a capped scan reports the newest of the OLDEST hundred rows
+    // as `latest`, the stamp never reaches past the cap, and the stuck badge
+    // returns for exactly the >99-unread case.
+    const base = nowSecs() - 5000;
+    await writeDmRumors(
+      ME,
+      Array.from({ length: DM_UNREAD_CAP + 20 }, (_, i) =>
+        rumor({ created_at: base + i, content: `m${i}` }),
+      ),
+    );
+
+    const summary = await dmUnreadSummary(ME, await conversationId(), {
+      after: 0,
+    });
+
+    expect(summary.capped).toBe(true);
+    expect(summary.count).toBe(DM_UNREAD_CAP);
+    // The NEWEST row, not the newest of the first page.
+    expect(summary.latest).toBe(base + DM_UNREAD_CAP + 19);
+  });
+
+  it("ignores a message dated absurdly far in the future", async () => {
+    // `created_at` is author-chosen, so without a ceiling one message pins the
+    // badge forever. Bounded here and at the stamp by the same allowance.
+    await writeDmRumors(ME, [rumor({ content: "now" })]);
+    const id = await conversationId();
+
+    const summary = await dmUnreadSummary(ME, id, { after: 0 });
+    expect(summary.count).toBe(1);
+    expect(summary.latest).toBeLessThanOrEqual(nowSecs() + DM_MAX_FUTURE_SECS);
+  });
+
+  it("counts nothing once the stamp is at or past the newest row", async () => {
+    const newest = rumor({ created_at: nowSecs() - 10 });
+    await writeDmRumors(ME, [newest]);
+
+    // Exclusive at the bound: the message the stamp came FROM has been read.
+    expect(
+      (
+        await dmUnreadSummary(ME, await conversationId(), {
+          after: newest.created_at,
+        })
+      ).count,
+    ).toBe(0);
   });
 });
