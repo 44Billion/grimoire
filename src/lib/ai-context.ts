@@ -1,10 +1,16 @@
 import type { NostrEvent } from "nostr-tools";
+import { firstValueFrom, take, timeout } from "rxjs";
 
-import { nostrRefTarget } from "./open-nostr-ref";
+import {
+  nostrRefTarget,
+  splitNostrRefs,
+  type NostrRefTarget,
+} from "./open-nostr-ref";
 
 import { getKindInfo } from "@/constants/kinds";
 import db from "@/services/db";
 import eventStore from "@/services/event-store";
+import { addressLoader, eventLoader } from "@/services/loaders";
 import { getNipText } from "@/services/nip-text";
 
 /**
@@ -89,11 +95,11 @@ async function eventContext(bech32: string): Promise<AiContext | undefined> {
     };
   }
 
-  const event = findEvent(ref.eventPointer?.id);
+  const event = await resolveEvent(ref);
   if (!event) {
     return {
       label: bech32.slice(0, 12),
-      system: `${BASE_SYSTEM}\n\nThe user is asking about ${bech32}, which is not in the local event store yet. Say so rather than guessing its contents.`,
+      system: `${BASE_SYSTEM}\n\nThe user is asking about ${bech32}, which could not be loaded from the event store or its relay hints. Say so rather than guessing its contents.`,
     };
   }
 
@@ -101,15 +107,6 @@ async function eventContext(bech32: string): Promise<AiContext | undefined> {
     label: `kind ${event.kind}`,
     system: `${BASE_SYSTEM}\n\nThe user is asking about this event.\n${describeKind(event.kind)}\n\nRaw event:\n${JSON.stringify(event, null, 2)}`,
   };
-}
-
-function findEvent(id?: string): NostrEvent | undefined {
-  if (!id) return undefined;
-  try {
-    return eventStore.getEvent(id);
-  } catch {
-    return undefined;
-  }
 }
 
 function describeKind(kind: number): string {
@@ -145,6 +142,95 @@ async function nipContext(id: string): Promise<AiContext | undefined> {
       ? `${BASE_SYSTEM}\n\nThe user is asking about NIP-${id}. Its full text:\n${text}`
       : `${BASE_SYSTEM}\n\nThe user is asking about NIP-${id}, whose text could not be loaded. Say plainly that you are answering from memory rather than from the spec.`,
   };
+}
+
+/** Most references resolved for one message. A prompt is not a crawl. */
+const MAX_MENTIONS = 3;
+/** Per-event budget. A long-form article can be tens of thousands of chars. */
+const MENTION_CHARS = 4_000;
+/** A relay that never answers must not hold the send open. */
+const RESOLVE_TIMEOUT = 6_000;
+
+/**
+ * Context for references named inside the question itself.
+ *
+ * Asking "what does <nevent> say?" only works if the event travels with the
+ * question. Resolves from the EventStore first and the network second, so a
+ * mention costs a fetch only when grimoire has not already seen it.
+ */
+export async function buildMentionContext(
+  text: string,
+): Promise<string | undefined> {
+  const seen = new Set<string>();
+  const targets: NostrRefTarget[] = [];
+
+  for (const segment of splitNostrRefs(text)) {
+    const target = segment.target;
+    if (!target || seen.has(segment.text)) continue;
+    seen.add(segment.text);
+    targets.push(target);
+    if (targets.length >= MAX_MENTIONS) break;
+  }
+
+  if (targets.length === 0) return undefined;
+
+  const described = await Promise.all(targets.map(describeTarget));
+  const blocks = described.filter((block): block is string => block != null);
+  return blocks.length > 0
+    ? `The question references these Nostr objects. Use them rather than guessing.\n\n${blocks.join("\n\n")}`
+    : undefined;
+}
+
+async function describeTarget(
+  target: NostrRefTarget,
+): Promise<string | undefined> {
+  if (target.pubkey) {
+    const profile = await db.profiles.get(target.pubkey).catch(() => undefined);
+    return `User ${target.pubkey}:\n${
+      profile
+        ? truncate(JSON.stringify(profile, null, 2))
+        : "(no cached profile metadata)"
+    }`;
+  }
+
+  const event = await resolveEvent(target);
+  if (!event) {
+    return `A referenced event could not be loaded. Say so rather than inventing its contents.`;
+  }
+  return `${describeKind(event.kind)}\n${truncate(JSON.stringify(event, null, 2))}`;
+}
+
+/** EventStore first, relays second. Undefined rather than throwing on failure. */
+async function resolveEvent(
+  target: NostrRefTarget,
+): Promise<NostrEvent | undefined> {
+  const pointer = target.eventPointer ?? target.addressPointer;
+  if (!pointer) return undefined;
+
+  const cached = (() => {
+    try {
+      return eventStore.getEvent(pointer);
+    } catch {
+      return undefined;
+    }
+  })();
+  if (cached) return cached;
+
+  const loader = target.eventPointer
+    ? eventLoader(target.eventPointer)
+    : addressLoader(target.addressPointer!);
+
+  try {
+    return await firstValueFrom(loader.pipe(timeout(RESOLVE_TIMEOUT), take(1)));
+  } catch {
+    return undefined;
+  }
+}
+
+function truncate(text: string): string {
+  return text.length > MENTION_CHARS
+    ? `${text.slice(0, MENTION_CHARS)}\n[truncated]`
+    : text;
 }
 
 /** NIP body, truncated: a whole NIP can outweigh a small context window. */

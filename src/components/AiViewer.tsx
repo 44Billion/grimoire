@@ -40,7 +40,11 @@ import {
   loadConversation,
   saveConversation,
 } from "@/services/ai-conversations";
-import { buildAiContext, type AiTarget } from "@/lib/ai-context";
+import {
+  buildAiContext,
+  buildMentionContext,
+  type AiTarget,
+} from "@/lib/ai-context";
 import { ProviderLogo, providerFromModel } from "./ai/ProviderLogo";
 import { useAddWindow } from "@/core/state";
 import {
@@ -276,26 +280,17 @@ export default function AiViewer({
 
   const send = useCallback(
     async (text: string) => {
-      // An explicit --system wins over the target's context; otherwise the
-      // target grounds the conversation.
-      const systemPrompt = system ?? context?.system;
-      const history: InferenceMessage[] = [
-        ...(systemPrompt
-          ? [{ role: "system" as const, content: systemPrompt }]
-          : []),
-        ...turns
-          .filter((turn) => !turn.pending)
-          .map((turn) =>
-            turn.role === "user"
-              ? { role: "user" as const, content: turn.content }
-              : {
-                  role: "assistant" as const,
-                  content: turn.content,
-                  ...(turn.reasoning ? { reasoning: turn.reasoning } : {}),
-                },
-          ),
-        { role: "user", content: text },
-      ];
+      const priorMessages: InferenceMessage[] = turns
+        .filter((turn) => !turn.pending)
+        .map((turn) =>
+          turn.role === "user"
+            ? { role: "user" as const, content: turn.content }
+            : {
+                role: "assistant" as const,
+                content: turn.content,
+                ...(turn.reasoning ? { reasoning: turn.reasoning } : {}),
+              },
+        );
 
       setError(null);
       setTurns((previous) => [
@@ -307,6 +302,21 @@ export default function AiViewer({
 
       const controller = new AbortController();
       controllerRef.current = controller;
+
+      // Resolve references named in the question — after the turn is on screen,
+      // because this can wait on a relay. An explicit --system wins over the
+      // target's context; mentions are additive to whichever applies.
+      const mentions = await buildMentionContext(text);
+      const systemPrompt =
+        [system ?? context?.system, mentions].filter(Boolean).join("\n\n") ||
+        undefined;
+      const history: InferenceMessage[] = [
+        ...(systemPrompt
+          ? [{ role: "system" as const, content: systemPrompt }]
+          : []),
+        ...priorMessages,
+        { role: "user", content: text },
+      ];
 
       // Accumulate off-state and flush on a frame so a token-per-render
       // stream does not thrash the tree.
