@@ -71,6 +71,10 @@ export const BACKFILL_PAGE = 200;
 const consentKey = (viewer: string) => `${viewer}:consent`;
 const cursorKey = (viewer: string) => `${viewer}:cursor`;
 const exhaustedKey = (viewer: string) => `${viewer}:exhausted`;
+const walkedRelaysKey = (viewer: string) => `${viewer}:walked-relays`;
+
+/** A relay set, in a form two of them can be compared by. */
+const relaySignature = (relays: string[]) => [...relays].sort().join(" ");
 
 /** Has this account agreed to have its inbox opened? */
 export async function hasDecryptConsent(viewer: string): Promise<boolean> {
@@ -94,20 +98,33 @@ async function readCursor(viewer: string): Promise<number | undefined> {
 }
 
 /**
- * Whether the walk backwards has reached the end of what the relays hold.
+ * Whether the walk backwards has reached the end of what THESE relays hold.
  *
- * Sticky, and per account. Reaching the beginning once is a fact about the
- * history, not about the session — re-walking it on every load would cost a
- * full relay sweep to discover the same nothing.
+ * Sticky per account, but only for the relay set it was walked against.
+ * Reaching the beginning is a fact about a particular set of relays, not about
+ * the history in the abstract — a relay added afterwards holds mail this
+ * account has never seen, and treating the walk as finished would make adding
+ * one do nothing at all. Which is exactly what it did.
+ *
+ * Comparing the set rather than counting it: swapping one relay for another
+ * changes what is reachable without changing how many there are.
  */
-export async function isHistoryExhausted(viewer: string): Promise<boolean> {
-  return (await readDmKv<boolean>(exhaustedKey(viewer))) === true;
+export async function isHistoryExhausted(
+  viewer: string,
+  relays?: string[],
+): Promise<boolean> {
+  if ((await readDmKv<boolean>(exhaustedKey(viewer))) !== true) return false;
+  if (!relays) return true;
+
+  const walked = await readDmKv<string>(walkedRelaysKey(viewer));
+  return walked === relaySignature(relays);
 }
 
-/** Walk the history again from the top — for a new relay, or a bad first run. */
+/** Walk the history again from the top — for a bad first run, or a hunch. */
 export async function resetHistoryWalk(viewer: string): Promise<void> {
   await writeDmKv(exhaustedKey(viewer), false);
   await writeDmKv(cursorKey(viewer), undefined);
+  await writeDmKv(walkedRelaysKey(viewer), undefined);
 }
 
 /** A signer that can open a wrap. Absent `nip44` means it cannot. */
@@ -493,7 +510,14 @@ export async function backfillDmHistory(
   // because the challenge arrives on the socket the read opened.
   const auth = authenticateDmRelays(relays);
 
-  let until = await readCursor(viewer);
+  // From the top when the relay set has changed: the cursor records how far
+  // back the OLD relays were walked, and starting a new relay there skips
+  // everything it holds that is newer than that point.
+  const sameRelays =
+    (await readDmKv<string>(walkedRelaysKey(viewer))) ===
+    relaySignature(relays);
+  let until = sameRelays ? await readCursor(viewer) : undefined;
+  if (!sameRelays) await writeDmKv(cursorKey(viewer), undefined);
   // Ids this walk has already been handed. A relay that ignores `until` — or
   // one whose page cap is filled by the boundary wrap alone — would otherwise
   // serve the same page forever, and the walk would never end.
@@ -582,7 +606,13 @@ export async function backfillDmHistory(
 
   auth.unsubscribe();
 
-  if (progress.exhausted) await writeDmKv(exhaustedKey(viewer), true);
+  if (progress.exhausted) {
+    await writeDmKv(exhaustedKey(viewer), true);
+    // WHICH relays were walked, not just that a walk finished. The next load
+    // compares its own set against this one, so adding a relay re-walks and
+    // removing one does not.
+    await writeDmKv(walkedRelaysKey(viewer), relaySignature(relays));
+  }
   options.onProgress?.({ ...progress });
   console.info(
     `[dm] backfill ${progress.exhausted ? "complete" : "paused"}: ` +

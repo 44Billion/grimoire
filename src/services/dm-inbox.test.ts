@@ -353,7 +353,7 @@ describe("backfillDmHistory", () => {
 
     expect(progress.exhausted).toBe(true);
     expect(progress.written).toBe(2);
-    expect(await isHistoryExhausted(ALICE)).toBe(true);
+    expect(await isHistoryExhausted(ALICE, [r.url])).toBe(true);
   });
 
   it("does not walk again once it has reached the beginning", async () => {
@@ -363,9 +363,63 @@ describe("backfillDmHistory", () => {
     const r = await relay({ kind: "normal", events: [] });
     await backfillDmHistory(ALICE, alice, { relays: [r.url] });
 
-    expect(await isHistoryExhausted(ALICE)).toBe(true);
+    expect(await isHistoryExhausted(ALICE, [r.url])).toBe(true);
     await resetHistoryWalk(ALICE);
-    expect(await isHistoryExhausted(ALICE)).toBe(false);
+    expect(await isHistoryExhausted(ALICE, [r.url])).toBe(false);
+  });
+
+  it("walks again when a relay is added", async () => {
+    // The bug this exists to stop: the walk is finished, so adding a relay
+    // that holds mail this account has never seen does nothing at all.
+    const first = await relay({ kind: "normal", events: [] });
+    await backfillDmHistory(ALICE, alice, { relays: [first.url] });
+    expect(await isHistoryExhausted(ALICE, [first.url])).toBe(true);
+
+    const second = await relay({ kind: "normal", events: [] });
+    expect(await isHistoryExhausted(ALICE, [first.url, second.url])).toBe(
+      false,
+    );
+  });
+
+  it("walks again when a relay is swapped, not just when one is added", async () => {
+    // Comparing the SET, not counting it: one relay for another changes what
+    // is reachable without changing how many there are.
+    const first = await relay({ kind: "normal", events: [] });
+    await backfillDmHistory(ALICE, alice, { relays: [first.url] });
+
+    const other = await relay({ kind: "normal", events: [] });
+    expect(await isHistoryExhausted(ALICE, [other.url])).toBe(false);
+  });
+
+  it("does not re-walk when the same relays arrive in another order", async () => {
+    const a = await relay({ kind: "normal", events: [] });
+    const b = await relay({ kind: "normal", events: [] });
+    await backfillDmHistory(ALICE, alice, { relays: [a.url, b.url] });
+
+    expect(await isHistoryExhausted(ALICE, [b.url, a.url])).toBe(true);
+  });
+
+  it("starts a new relay from the top, not from the old cursor", async () => {
+    // The cursor records how far back the OLD relays were walked. Starting a
+    // new one there skips everything it holds that is newer than that point —
+    // which, for a relay just added, is most of what it has.
+    const old = await relay({
+      kind: "paged",
+      events: [await wrapMessage(bob, ALICE, "ancient")],
+    });
+    await backfillDmHistory(ALICE, alice, { relays: [old.url] });
+
+    const fresh = await relay({
+      kind: "paged",
+      events: [await wrapMessage(bob, ALICE, "recent, on the new relay")],
+    });
+    const progress = await backfillDmHistory(ALICE, alice, {
+      relays: [old.url, fresh.url],
+    });
+
+    expect(progress.written).toBeGreaterThan(0);
+    const contents = (await db.dmRumors.toArray()).map((r) => r.content);
+    expect(contents).toContain("recent, on the new relay");
   });
 
   it("stops against a relay that ignores `until` and repeats itself", async () => {
@@ -400,7 +454,7 @@ describe("backfillDmHistory", () => {
     // Aborted rather than finished, so the end is NOT recorded — the next
     // session has to pick the walk back up.
     expect(progress.exhausted).toBe(false);
-    expect(await isHistoryExhausted(ALICE)).toBe(false);
+    expect(await isHistoryExhausted(ALICE, [r.url])).toBe(false);
   });
 
   it("resumes from where the last walk stopped", async () => {
@@ -417,6 +471,6 @@ describe("backfillDmHistory", () => {
     // The cursor only recedes, so the second walk continued rather than
     // re-fetching the newest page it had already opened.
     expect(await db.dmRumors.count()).toBeGreaterThan(afterFirst);
-    expect(await isHistoryExhausted(ALICE)).toBe(true);
+    expect(await isHistoryExhausted(ALICE, [r.url])).toBe(true);
   });
 });

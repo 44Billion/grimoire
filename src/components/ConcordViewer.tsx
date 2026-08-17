@@ -865,6 +865,7 @@ export function ConcordViewer({
                   onCompose={() => setComposing(true)}
                   {...(selectedDm ? { selected: selectedDm } : {})}
                   {...(dms.backfill ? { backfill: dms.backfill } : {})}
+                  onRescan={() => void dms.rescan()}
                 />
               ) : (
                 <DmConsentGate

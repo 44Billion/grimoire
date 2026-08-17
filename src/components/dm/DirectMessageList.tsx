@@ -12,7 +12,7 @@
  */
 
 import { useState } from "react";
-import { AtSign, Bookmark, Loader2, Plus } from "lucide-react";
+import { AtSign, Bookmark, Loader2, Plus, RefreshCw } from "lucide-react";
 import { UserName } from "@/components/nostr/UserName";
 import { formatTimestamp, useLocale } from "@/hooks/useLocale";
 import { resolveRecipient } from "@/lib/dm/recipient";
@@ -25,6 +25,7 @@ export function DirectMessageList({
   selected,
   onSelect,
   backfill,
+  onRescan,
 }: {
   conversations: DmConversationSummary[];
   /** The open conversation's peer pubkey, if a DM is what is on screen. */
@@ -32,6 +33,8 @@ export function DirectMessageList({
   onSelect: (peer: string) => void;
   /** The walk back through the whole history, while one is running. */
   backfill?: BackfillProgress;
+  /** Walk the whole history again, ignoring the finished mark. */
+  onRescan?: () => void;
 }) {
   return (
     <div className="flex flex-col">
@@ -56,14 +59,30 @@ export function DirectMessageList({
 
       {/* The list grows while this runs — the walk rings the doorbell per page
           — so the line says what is still coming rather than blocking on it.
-          Only ever shown on the first complete pass for an account. */}
-      {backfill && (
+          Only ever shown on the first complete pass for a relay set. */}
+      {backfill ? (
         <div className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] text-muted-foreground">
           <Loader2 className="size-3 shrink-0 animate-spin" />
           <span className="truncate">
             reading older messages — {backfill.written} so far
           </span>
         </div>
+      ) : (
+        onRescan && (
+          // The walk stops once it has reached the beginning of what a given
+          // relay set holds, and adding a relay re-walks on its own. This is
+          // for everything that is not that: a relay that was down during the
+          // first pass, a signer that was refusing, a hunch.
+          <button
+            type="button"
+            onClick={onRescan}
+            title="Read the whole history again from every relay"
+            className="flex w-full cursor-crosshair items-center gap-1.5 px-2 py-0.5 text-left text-[10px] text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+          >
+            <RefreshCw className="size-3 shrink-0" />
+            <span className="truncate">check for older messages</span>
+          </button>
+        )
       )}
     </div>
   );

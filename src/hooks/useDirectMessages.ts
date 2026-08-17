@@ -26,6 +26,7 @@ import {
 } from "@/services/dm-inbox";
 import { listDmConversations } from "@/services/dm-store";
 import { readDmLastRead } from "@/services/dm-reads";
+import { ownDmReadRelays } from "@/lib/dm/relays";
 import type { DmConversationRow } from "@/services/db";
 
 export type DirectMessagesStatus =
@@ -162,12 +163,16 @@ export function useDirectMessages(
         if (cancelled) return;
         await read("ready");
 
-        // Then the whole history, once. A wrap says nothing about whose
-        // conversation it belongs to until it is open, so a complete
-        // conversation list has no cheaper answer than opening everything —
-        // and every wrap is opened once, ever, so this is a first-run cost.
-        if (!(await isHistoryExhausted(pubkey))) {
+        // Then the whole history, once PER RELAY SET. A wrap says nothing
+        // about whose conversation it belongs to until it is open, so a
+        // complete conversation list has no cheaper answer than opening
+        // everything — and every wrap is opened once, ever, so this is a
+        // first-run cost. Passing the relays is what makes adding one re-walk
+        // instead of silently doing nothing.
+        const relays = await ownDmReadRelays(pubkey);
+        if (!(await isHistoryExhausted(pubkey, relays))) {
           await backfillDmHistory(pubkey, signer, {
+            relays,
             signal: abort.signal,
             onProgress: (progress) => {
               if (!cancelled)
