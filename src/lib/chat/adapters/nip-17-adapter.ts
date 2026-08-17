@@ -15,8 +15,14 @@
  *   nowhere public; asking a relay about it announces that the conversation
  *   happened. Reactions come from the local mirror instead — they are kind-7
  *   rumors in gift wraps, as private as the messages they are about.
- * - **`metadata.relays` is empty.** The header must not advertise which relays
- *   hold this correspondence.
+ * - **A private id is never handed outward.** `messageIdsArePrivate` turns off
+ *   every affordance that would put a rumor id into a query or a clipboard —
+ *   see `ChatMessageContextMenu`.
+ *
+ * `metadata.relays` DOES carry both parties' inboxes: that is the reader's own
+ * view of their own conversation, and it is what answers "will this arrive".
+ * The rule is about never naming those relays in a REQ, not about hiding them
+ * from the person whose mail it is.
  */
 
 import { Observable, ReplaySubject } from "rxjs";
@@ -47,7 +53,7 @@ import {
 import type { DmRumorRow } from "@/services/db";
 import { conversationScope, onDmScope } from "@/services/dm-bus";
 import { syncDmInbox } from "@/services/dm-inbox";
-import { warmDmRelays } from "@/lib/dm/relays";
+import { resolveDmRelays, warmDmRelays } from "@/lib/dm/relays";
 import { sendDirectMessage, sendDirectReaction } from "@/lib/dm/send";
 import { timelineSignature } from "@/lib/chat/timeline-signature";
 import { markDmRead, readDmLastRead } from "@/services/dm-reads";
@@ -214,6 +220,18 @@ export class Nip17Adapter extends ChatProtocolAdapter {
     this.warmed.get(id)?.unsubscribe();
     this.warmed.set(id, warmDmRelays([self, peer]));
 
+    // Both inboxes, for the header's relay dropdown: theirs is where your
+    // message goes, yours is where their reply lands, and a reader wondering
+    // whether a message will arrive needs to see both. Resolved with a short
+    // deadline — a conversation must open whether or not a relay list does.
+    const [mine, theirs] = await Promise.all([
+      resolveDmRelays(self, 1500),
+      peer === self
+        ? Promise.resolve({ relays: [] as string[], source: "none" as const })
+        : resolveDmRelays(peer, 1500),
+    ]);
+    const relays = Array.from(new Set([...mine.relays, ...theirs.relays]));
+
     return {
       id,
       type: "dm",
@@ -230,9 +248,15 @@ export class Nip17Adapter extends ChatProtocolAdapter {
       metadata: {
         encrypted: true,
         giftWrapped: true,
-        // Empty on purpose: the header must not advertise which relays hold
-        // this correspondence.
-        relays: [],
+        relays,
+        // Named so the header can say WHY a message might not arrive: a peer
+        // with no DM inbox and no NIP-65 inbox cannot be written to at all.
+        ...(theirs.source === "none" && peer !== self
+          ? {
+              description:
+                "This person has published no inbox for direct messages.",
+            }
+          : {}),
       },
       unreadCount: 0,
     };

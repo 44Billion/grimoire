@@ -298,12 +298,27 @@ export async function syncDmInbox(
     };
 
     const wraps = await requestEvents(relays, [filter], { eventStore: null });
-    if (wraps.length === 0) break;
+    if (wraps.length === 0) {
+      console.info(
+        `[dm] page ${page + 1}: no wraps from ${relays.length} relay(s)`,
+      );
+      break;
+    }
 
     const outcome = await unlockWraps(viewer, signer, wraps);
     written += outcome.written;
     failed += outcome.failed;
     fetched += wraps.length;
+
+    // Loud on purpose, once per page. Every question anyone has asked about a
+    // short conversation list — is it the relays, the decryption, or the store
+    // refusing rows — is answered by these numbers, and none of them is
+    // visible from the UI.
+    console.info(
+      `[dm] page ${page + 1}: ${wraps.length} wraps from ${relays.length} relay(s) → ` +
+        `${outcome.written} stored, ${outcome.failed} would not open, ` +
+        `${wraps.length - outcome.written - outcome.failed} already known`,
+    );
 
     const pageOldest = wraps.reduce<number | undefined>(
       (min, w) =>
@@ -325,6 +340,10 @@ export async function syncDmInbox(
     if (previous === undefined || oldest < previous)
       await writeDmKv(cursorKey(viewer), oldest);
   }
+
+  console.info(
+    `[dm] sync done: ${fetched} wraps seen, ${written} stored, ${failed} unopenable — relays: ${relays.join(", ")}`,
+  );
 
   return {
     written,

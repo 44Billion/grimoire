@@ -51,6 +51,11 @@ vi.mock("@/lib/dm/relays", () => ({
   }),
   ownDmReadRelays: async () => ["wss://mine.example.com/"],
 }));
+
+/**
+ * A DM's message ids are private, so the tests below assert on what the UI is
+ * ALLOWED to do with them as much as on what it shows.
+ */
 vi.mock("@/services/hub", () => ({ publishEventToRelays: async () => {} }));
 vi.mock("@/services/dm-inbox", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/services/dm-inbox")>()),
@@ -139,10 +144,14 @@ describe("resolveConversation", () => {
     expect(fromAlice.id).toBe(fromBob.id);
   });
 
-  it("names no relays in its metadata", async () => {
+  it("carries both inboxes, so the header can say where mail goes", async () => {
+    // Theirs is where your message goes and yours is where their reply lands;
+    // a reader wondering whether a message will arrive needs both. This is the
+    // reader's own view of their own conversation — the privacy rule is about
+    // never naming these relays in a REQ, not about hiding them from the
+    // person whose mail it is.
     const c = await conversation(new Nip17Adapter());
-    // The header must not advertise where this correspondence is held.
-    expect(c.metadata?.relays).toEqual([]);
+    expect(c.metadata?.relays).toContain("wss://peer.example.com/");
     expect(c.metadata).toMatchObject({ encrypted: true, giftWrapped: true });
   });
 });

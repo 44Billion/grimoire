@@ -12,7 +12,7 @@
  */
 
 import { useState } from "react";
-import { Bookmark, MessageSquare, Plus } from "lucide-react";
+import { AtSign, Bookmark, Plus } from "lucide-react";
 import { UserName } from "@/components/nostr/UserName";
 import { formatTimestamp, useLocale } from "@/hooks/useLocale";
 import { resolveRecipient } from "@/lib/dm/recipient";
@@ -58,7 +58,9 @@ export function DirectMessageList({
  *
  * Inline rather than behind a dialog: starting a conversation is one field and
  * one key, and a modal for that is more ceremony than the act. It sits above
- * the list because that is where the thing you are adding to the list goes.
+ * the list because that is where the thing you are adding to the list goes,
+ * and it is shaped like a row rather than like a search box for the same
+ * reason the rows below it are shaped like channels.
  *
  * npub and nprofile only, the same rule the `chat` command follows — bare hex
  * is as plausibly an event id, and opening a private conversation with a
@@ -84,32 +86,30 @@ function NewConversationInput({
   };
 
   return (
-    <div className="px-2 py-1">
-      <div
-        className={cn(
-          "flex items-center gap-1 rounded border px-1.5 py-0.5",
-          rejected && "border-destructive",
-        )}
-      >
-        <Plus className="size-3 shrink-0 text-muted-foreground" />
-        <input
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
+    <div
+      className={cn(
+        "flex w-full items-center gap-1.5 px-2 py-0.5 text-sm",
+        rejected && "text-destructive",
+      )}
+    >
+      <Plus className="size-3 flex-shrink-0 text-muted-foreground" />
+      <input
+        value={value}
+        onChange={(e) => {
+          setValue(e.target.value);
+          setRejected(false);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") submit();
+          if (e.key === "Escape") {
+            setValue("");
             setRejected(false);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") submit();
-            if (e.key === "Escape") {
-              setValue("");
-              setRejected(false);
-            }
-          }}
-          placeholder="npub1… or nprofile1…"
-          title="Paste an npub or nprofile to start a conversation"
-          className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-        />
-      </div>
+          }
+        }}
+        placeholder="npub1… or nprofile1…"
+        title="Paste an npub or nprofile to start a conversation"
+        className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+      />
     </div>
   );
 }
@@ -123,41 +123,55 @@ function DirectMessageRow({
   selected: boolean;
   onSelect: (peer: string) => void;
 }) {
-  const Icon = conversation.isSelf ? Bookmark : MessageSquare;
+  const Icon = conversation.isSelf ? Bookmark : AtSign;
   const { locale } = useLocale();
 
+  // Deliberately the same row as a Concord channel: `py-0.5`, a `size-3` icon,
+  // one `ml-auto` group on the right. They sit in the same column under
+  // sibling headings, and two rows that differ by two pixels of padding read
+  // as a mistake rather than as a distinction.
   return (
     <button
       type="button"
       onClick={() => onSelect(conversation.peer)}
       className={cn(
-        "flex w-full cursor-crosshair items-center gap-1.5 px-2 py-1 text-left text-sm hover:bg-muted/50",
+        "flex w-full cursor-crosshair items-center gap-1.5 px-2 py-0.5 text-left text-sm hover:bg-muted/50",
         selected && "bg-muted/70 font-medium",
         conversation.unread && "font-semibold text-foreground",
       )}
     >
-      <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate">
+      <Icon className="size-3 flex-shrink-0 text-muted-foreground" />
+      <span className="truncate">
         {conversation.isSelf ? (
           "Saved messages"
         ) : (
           // `UserName` and nothing hand-rolled: it is what every other pubkey
-          // in the app renders as, badges and click-through included.
-          <UserName pubkey={conversation.peer} />
+          // in the app renders as, badges and click-through included. Not
+          // clickable here — the row owns the click, and a name that opened a
+          // profile instead of the conversation would be a trap.
+          <UserName
+            pubkey={conversation.peer}
+            className="pointer-events-none"
+          />
         )}
       </span>
-      {conversation.lastAt > 0 && (
-        <span className="shrink-0 text-[10px] text-muted-foreground">
-          {formatTimestamp(conversation.lastAt, "relative", locale)}
-        </span>
-      )}
-      {conversation.unread && (
-        <span
-          aria-label="Unread messages"
-          title="Unread messages"
-          className="size-1.5 shrink-0 rounded-full bg-primary"
-        />
-      )}
+      {/* ONE `ml-auto`, on the group — the same shape the channel row uses,
+          and for the same reason: two auto margins split the free space and
+          park the first item in the middle of the row. */}
+      <span className="ml-auto flex shrink-0 items-center gap-1">
+        {conversation.lastAt > 0 && (
+          <span className="text-[10px] tabular-nums text-muted-foreground">
+            {formatTimestamp(conversation.lastAt, "relative", locale)}
+          </span>
+        )}
+        {conversation.unread && (
+          <span
+            aria-label="Unread messages"
+            title="Unread messages"
+            className="size-1.5 rounded-full bg-primary"
+          />
+        )}
+      </span>
     </button>
   );
 }

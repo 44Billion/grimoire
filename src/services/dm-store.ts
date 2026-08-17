@@ -153,12 +153,24 @@ export async function writeDmRumors(
 ): Promise<WriteResult> {
   const rows: DmRumorRow[] = [];
   const participantsById = new Map<string, string[]>();
+  const refused = new Map<string, number>();
   for (const rumor of rumors) {
     const result = toDmRow(viewer, rumor);
-    if ("rejected" in result) continue;
+    if ("rejected" in result) {
+      refused.set(result.rejected, (refused.get(result.rejected) ?? 0) + 1);
+      continue;
+    }
     rows.push(result);
     participantsById.set(result.conversationId, participantsOf(rumor).sort());
   }
+
+  // A message that decrypted and then vanished is the hardest kind to chase,
+  // because nothing anywhere says it happened. Counted by reason, once.
+  if (refused.size > 0)
+    console.info(
+      "[dm] refused at ingest:",
+      Object.fromEntries(refused.entries()),
+    );
   if (rows.length === 0) return { written: [], touched: [] };
 
   const touched = new Set(rows.map((r) => r.conversationId));

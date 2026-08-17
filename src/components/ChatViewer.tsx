@@ -230,8 +230,15 @@ function getConversationRelays(conversation: Conversation): string[] {
     }
   }
 
-  // NIP-22 comments and NIP-10 threads: Use relays from metadata
+  // NIP-17 DMs, NIP-22 comments and NIP-10 threads: relays from metadata.
+  //
+  // For a DM that is BOTH parties' inboxes — yours is where their reply lands
+  // and theirs is where your message goes, and a reader deciding whether a
+  // message will arrive needs to see both. It discloses nothing: this is the
+  // reader's own view of their own conversation, and the privacy rule that
+  // matters is the one about never NAMING these relays in a query.
   if (
+    conversation.protocol === "nip-17" ||
     conversation.protocol === "nip-22" ||
     conversation.protocol === "nip-10"
   ) {
@@ -1688,6 +1695,8 @@ export function ChatViewer({
       addWindow("nip", { number: 29 });
     } else if (conversation?.protocol === "nip-53") {
       addWindow("nip", { number: 53 });
+    } else if (conversation?.protocol === "nip-17") {
+      addWindow("nip", { number: 17 });
     } else if (conversation?.protocol === "concord") {
       // Concord is not a NIP, so there is no `nip` window to open — the badge
       // goes to the spec itself. Without this branch the button rendered
