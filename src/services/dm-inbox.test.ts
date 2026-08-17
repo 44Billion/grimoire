@@ -474,3 +474,140 @@ describe("backfillDmHistory", () => {
     expect(await isHistoryExhausted(ALICE, [r.url])).toBe(true);
   });
 });
+
+describe("coverage the walk must not lose", () => {
+  it("does not call a dead relay set the end of history", async () => {
+    // The worst silent loss there was. A relay that times out, refuses, or is
+    // mid-NIP-42 handshake returns nothing — indistinguishable from a relay
+    // with no mail — so a cold start where every relay was still waiting on
+    // the signer latched `exhausted` and the walk never ran again.
+    //
+    // Driven through the real read with a stubbed request rather than a dead
+    // socket: applesauce retries a refused connection, so a genuinely dead
+    // relay spends the full 25s read bound and a test cannot wait for it.
+    const subscription = await import("@/lib/relay-subscription");
+    const failing = vi
+      .spyOn(subscription, "requestEvents")
+      .mockRejectedValue(new Error("connection refused"));
+
+    const progress = await backfillDmHistory(ALICE, alice, {
+      relays: ["wss://dead.example.com/"],
+      maxPages: 1,
+    });
+
+    expect(progress.exhausted).toBe(false);
+    expect(await isHistoryExhausted(ALICE, ["wss://dead.example.com/"])).toBe(
+      false,
+    );
+    failing.mockRestore();
+  });
+
+  it("does call an EMPTY relay set the end of history", async () => {
+    // The other half: a relay that answers and has nothing really is the end,
+    // and refusing to record that would re-walk the whole inbox every load.
+    const r = await relay({ kind: "normal", events: [] });
+
+    const progress = await backfillDmHistory(ALICE, alice, {
+      relays: [r.url],
+    });
+
+    expect(progress.exhausted).toBe(true);
+    expect(await isHistoryExhausted(ALICE, [r.url])).toBe(true);
+  });
+
+  it("does not let a shallow relay bound a deep one's history", async () => {
+    // Relay A holds a page of recent mail; relay B holds one ancient message.
+    // Taking the MIN of the two tails as the next `until` skips everything A
+    // has between them — on a busy relay, most of its history.
+    const recent = await Promise.all(
+      Array.from({ length: 3 }, (_, i) =>
+        wrapMessage(bob, ALICE, `recent ${i}`),
+      ),
+    );
+    const ancient = await wrapMessage(bob, ALICE, "ancient");
+    const backdated = { ...ancient, created_at: 1000 };
+
+    const deep = await relay({ kind: "paged", events: recent, pageLimit: 2 });
+    const shallow = await relay({ kind: "paged", events: [backdated] });
+
+    await backfillDmHistory(ALICE, alice, { relays: [deep.url, shallow.url] });
+
+    const contents = (await db.dmRumors.toArray()).map((r) => r.content);
+    // Every one of the deep relay's messages, not just its first page — and
+    // the shallow relay's one ancient message alongside them.
+    expect(new Set(contents)).toEqual(
+      new Set(["recent 0", "recent 1", "recent 2", "ancient"]),
+    );
+  });
+
+  it("resumes a walk that was interrupted before it finished", async () => {
+    // The signature used to be written only on exhaustion, so every run before
+    // the first COMPLETE walk saw a mismatch, cleared the cursor, and started
+    // from the newest page again — an inbox needing more pages than one
+    // sitting never got deeper.
+    const base = Math.floor(Date.now() / 1000) - 600;
+    const wraps = await Promise.all(
+      Array.from({ length: 6 }, (_, i) => wrapMessage(bob, ALICE, `m${i}`)),
+    ).then((all) =>
+      // Distinct timestamps, or `until` has nowhere to walk to.
+      all.map((wrap, i) => ({ ...wrap, created_at: base + i })),
+    );
+    const r = await relay({ kind: "paged", events: wraps, pageLimit: 1 });
+
+    await backfillDmHistory(ALICE, alice, { relays: [r.url], maxPages: 4 });
+    const afterFirst = await db.dmRumors.count();
+    expect(afterFirst).toBeGreaterThan(0);
+    expect(afterFirst).toBeLessThan(wraps.length);
+    expect(await isHistoryExhausted(ALICE, [r.url])).toBe(false);
+
+    // A second, equally short run continues rather than re-walking the top.
+    await backfillDmHistory(ALICE, alice, { relays: [r.url], maxPages: 4 });
+    expect(await db.dmRumors.count()).toBeGreaterThan(afterFirst);
+  });
+
+  it("keeps decrypted messages when the walk is cut short", async () => {
+    // Marking a batch seen and writing it once at the end meant an abort in
+    // between left wraps recorded as opened with no row to show for it — and
+    // `seenWrapIds` never hands those back. Decrypted messages, gone for good.
+    const wraps = await Promise.all(
+      Array.from({ length: DECRYPT_WAVE * 2 }, (_, i) =>
+        wrapMessage(bob, ALICE, `m${i}`),
+      ),
+    ).then((w) => w.map(overTheWire));
+
+    await unlockWraps(ALICE, alice, wraps);
+
+    // Every wrap marked seen has a row behind it.
+    const seen = await db.dmSeenWraps.where({ viewer: ALICE }).toArray();
+    const opened = seen.filter((row) => row.opened);
+    expect(opened).toHaveLength(wraps.length);
+    expect(await db.dmRumors.count()).toBe(wraps.length);
+  });
+
+  it("tries unopened wraps again when the reader asks for a rescan", async () => {
+    // The attempt cap cannot tell a malformed wrap from a signer that was
+    // refusing, and a sync runs on mount AND on every conversation open — so
+    // three attempts can burn in under a minute. Rescan is the escape hatch.
+    const wraps = await Promise.all([
+      wrapMessage(bob, ALICE, "one"),
+      wrapMessage(bob, ALICE, "two"),
+    ]).then((w) => w.map(overTheWire));
+
+    const broken = vi
+      .spyOn(alice.nip44, "decrypt")
+      .mockRejectedValue(new Error("signer refused"));
+    for (let attempt = 0; attempt < DM_WRAP_MAX_ATTEMPTS; attempt += 1)
+      await unlockWraps(ALICE, alice, wraps);
+    broken.mockRestore();
+
+    // Written off by the cap.
+    expect(await unlockWraps(ALICE, alice, wraps)).toMatchObject({
+      written: 0,
+    });
+
+    await resetHistoryWalk(ALICE);
+    expect(await unlockWraps(ALICE, alice, wraps)).toMatchObject({
+      written: 2,
+    });
+  });
+});

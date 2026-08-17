@@ -42,6 +42,7 @@ import { ownDmReadRelays } from "@/lib/dm/relays";
 import { authenticateDmRelays } from "./dm-read-auth";
 import pool from "./relay-pool";
 import {
+  forgetFailedWraps,
   markWrapsSeen,
   readDmKv,
   seenWrapIds,
@@ -120,11 +121,23 @@ export async function isHistoryExhausted(
   return walked === relaySignature(relays);
 }
 
-/** Walk the history again from the top — for a bad first run, or a hunch. */
+/**
+ * Walk the history again from the top — for a bad first run, or a hunch.
+ *
+ * Also forgets every wrap that would not open. The attempt cap exists so a
+ * genuinely malformed wrap is not retried forever, but it cannot tell that
+ * apart from a signer that was refusing, timing out, or rate-limiting — and
+ * because a sync runs on mount AND on every conversation open, three attempts
+ * can burn in under a minute. This is the escape hatch for that, and it is the
+ * whole reason the reader is pressing the button.
+ */
 export async function resetHistoryWalk(viewer: string): Promise<void> {
   await writeDmKv(exhaustedKey(viewer), false);
   await writeDmKv(cursorKey(viewer), undefined);
   await writeDmKv(walkedRelaysKey(viewer), undefined);
+  const forgotten = await forgetFailedWraps(viewer);
+  if (forgotten > 0)
+    console.info(`[dm] will try ${forgotten} unopened wrap(s) again`);
 }
 
 /** A signer that can open a wrap. Absent `nip44` means it cannot. */
@@ -162,33 +175,81 @@ const RELAY_READ_TIMEOUT_MS = 25_000;
  * reads as an empty inbox, when what actually happened is that three of them
  * refused and one served everything it had.
  */
+interface RelayPage {
+  relay: string;
+  events: NostrEvent[];
+  /** The relay answered. False means it threw, timed out, or refused. */
+  answered: boolean;
+}
+
+export interface WrapPage {
+  wraps: NostrEvent[];
+  pages: RelayPage[];
+  /** Any relay answered at all. False means the read told us nothing. */
+  answered: boolean;
+  /**
+   * The oldest timestamp it is safe to walk back to, or undefined.
+   *
+   * The MAX of the per-relay page tails — not the min over the merged union,
+   * which is the bug this replaces. Relay A returns 200 wraps down to last
+   * week; relay B holds five old ones down to 2023. Taking the minimum sets
+   * `until` to 2023, and relay A is never asked for anything in between —
+   * which on a busy relay is most of its history.
+   *
+   * Deliberately NOT filtered to relays that filled their page. A relay that
+   * silently caps below the requested limit returns a short page that looks
+   * identical to running out, so treating short as spent walks straight past
+   * everything behind the cap. Termination is the dedupe's job instead.
+   */
+  nextUntil?: number;
+}
+
 async function readWrapsPerRelay(
   relays: string[],
   filter: Record<string, unknown>,
   label: string,
-): Promise<NostrEvent[]> {
-  const perRelay = await Promise.all(
-    relays.map(async (relay) => {
+): Promise<WrapPage> {
+  const pages = await Promise.all(
+    relays.map(async (relay): Promise<RelayPage> => {
       try {
         const events = await requestEvents([relay], [filter as never], {
           eventStore: null,
           timeout: RELAY_READ_TIMEOUT_MS,
         });
-        return { relay, events };
+        return { relay, events, answered: true };
       } catch (error) {
         console.warn(`[dm] ${relay} failed:`, error);
-        return { relay, events: [] as NostrEvent[] };
+        return { relay, events: [], answered: false };
       }
     }),
   );
 
-  for (const { relay, events } of perRelay)
-    console.info(`[dm] ${label}: ${relay} → ${events.length} wraps`);
+  for (const { relay, events, answered } of pages)
+    console.info(
+      `[dm] ${label}: ${relay} → ${answered ? `${events.length} wraps` : "no answer"}`,
+    );
 
   const merged = new Map<string, NostrEvent>();
-  for (const { events } of perRelay)
+  for (const { events } of pages)
     for (const event of events) merged.set(event.id, event);
-  return [...merged.values()];
+
+  let nextUntil: number | undefined;
+  for (const { events } of pages) {
+    if (events.length === 0) continue;
+    const tail = events.reduce(
+      (min, e) => Math.min(min, e.created_at),
+      Number.POSITIVE_INFINITY,
+    );
+    if (!Number.isFinite(tail)) continue;
+    if (nextUntil === undefined || tail > nextUntil) nextUntil = tail;
+  }
+
+  return {
+    wraps: [...merged.values()],
+    pages,
+    answered: pages.some((p) => p.answered),
+    ...(nextUntil !== undefined ? { nextUntil } : {}),
+  };
 }
 
 /**
@@ -242,11 +303,12 @@ async function openAndStore(
   signer: DmSigner,
   todo: NostrEvent[],
 ): Promise<UnlockOutcome> {
-  const rumors: Rumor[] = [];
+  let stored = 0;
   let failed = 0;
 
   for (let i = 0; i < todo.length; i += DECRYPT_WAVE) {
     const wave = todo.slice(i, i + DECRYPT_WAVE);
+    const rumors: Rumor[] = [];
     const marks: Array<{ id: string; created_at: number; opened: boolean }> =
       [];
 
@@ -264,24 +326,30 @@ async function openAndStore(
       }),
     );
 
-    // Per WAVE, not once at the end. A throw anywhere in the batch used to
-    // mean nothing was recorded, so a single malformed wrap made the whole
-    // page decryptable-again forever — two signer prompts per message, every
-    // session, for as long as it sat in the inbox.
+    // WRITE, then mark seen — in that order, and per wave.
+    //
+    // Both halves matter. Marking a batch seen and writing it once at the end
+    // meant an abort in between left wraps recorded as opened with no row to
+    // show for it, and `seenWrapIds` never hands those back: decrypted
+    // messages, gone permanently. Doing it per wave bounds that to nothing,
+    // because the write now precedes the mark. And marking per wave rather
+    // than per batch is what stopped one malformed wrap from making a whole
+    // page decryptable-again forever.
+    const { written, touched } = await writeDmRumors(viewer, rumors);
+    stored += written.length;
     await markWrapsSeen(viewer, marks);
+
+    // Store first, doorbell second. A missed ring is a stale render; a ring
+    // before the write is a reader that looks and finds nothing.
+    if (touched.length > 0)
+      emitDmScopes([DM_LIST_SCOPE, ...touched.map(conversationScope)]);
 
     // Let the browser paint between waves.
     if (i + DECRYPT_WAVE < todo.length)
       await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
-  // Store first, doorbell second. A missed ring is a stale render; a ring
-  // before the write is a reader that looks and finds nothing.
-  const { written, touched } = await writeDmRumors(viewer, rumors);
-  if (touched.length > 0)
-    emitDmScopes([DM_LIST_SCOPE, ...touched.map(conversationScope)]);
-
-  return { written: written.length, failed };
+  return { written: stored, failed };
 }
 
 /**
@@ -394,41 +462,42 @@ export async function syncDmInbox(
       ...(until !== undefined ? { until } : {}),
     };
 
-    const wraps = await readWrapsPerRelay(relays, filter, `page ${page + 1}`);
-    if (wraps.length === 0) {
-      console.info(
-        `[dm] page ${page + 1}: no wraps from ${relays.length} relay(s)`,
-      );
-      break;
-    }
+    const page_ = await readWrapsPerRelay(relays, filter, `page ${page + 1}`);
+    if (page_.wraps.length === 0) break;
 
-    const outcome = await unlockWraps(viewer, signer, wraps);
+    const outcome = await unlockWraps(viewer, signer, page_.wraps);
     written += outcome.written;
     failed += outcome.failed;
-    fetched += wraps.length;
+    fetched += page_.wraps.length;
 
     // Loud on purpose, once per page. Every question anyone has asked about a
     // short conversation list — is it the relays, the decryption, or the store
     // refusing rows — is answered by these numbers, and none of them is
     // visible from the UI.
     console.info(
-      `[dm] page ${page + 1}: ${wraps.length} wraps from ${relays.length} relay(s) → ` +
+      `[dm] page ${page + 1}: ${page_.wraps.length} wraps → ` +
         `${outcome.written} stored, ${outcome.failed} would not open, ` +
-        `${wraps.length - outcome.written - outcome.failed} already known`,
+        `${page_.wraps.length - outcome.written - outcome.failed} already known`,
     );
 
-    const pageOldest = wraps.reduce<number | undefined>(
+    const pageOldest = page_.wraps.reduce<number | undefined>(
       (min, w) =>
         min === undefined || w.created_at < min ? w.created_at : min,
       undefined,
     );
-    if (pageOldest === undefined) break;
-    if (oldest === undefined || pageOldest < oldest) oldest = pageOldest;
+    if (
+      pageOldest !== undefined &&
+      (oldest === undefined || pageOldest < oldest)
+    )
+      oldest = pageOldest;
 
-    // Strictly older next time, or a relay that returns the same page forever
-    // makes this loop `pages` round trips for one page of history.
-    if (until !== undefined && pageOldest >= until) break;
-    until = pageOldest;
+    // The MAX of the tails among relays that filled their page — see
+    // `readWrapsPerRelay`. Undefined means every relay is spent.
+    if (page_.nextUntil === undefined) break;
+    // Strictly older next time, or a relay that ignores `until` makes this
+    // loop `pages` round trips for one page of history.
+    if (until !== undefined && page_.nextUntil >= until) break;
+    until = page_.nextUntil;
   }
 
   if (oldest !== undefined) {
@@ -513,11 +582,20 @@ export async function backfillDmHistory(
   // From the top when the relay set has changed: the cursor records how far
   // back the OLD relays were walked, and starting a new relay there skips
   // everything it holds that is newer than that point.
+  //
+  // Recorded HERE, not on exhaustion. Writing it only at the end meant every
+  // run before the first completed walk saw a mismatched signature, cleared
+  // the cursor, and started from the newest page again — so an inbox needing
+  // more pages than one sitting never got deeper, and the "resumable" in the
+  // docstring above was not true of the code.
+  const signature = relaySignature(relays);
   const sameRelays =
-    (await readDmKv<string>(walkedRelaysKey(viewer))) ===
-    relaySignature(relays);
+    (await readDmKv<string>(walkedRelaysKey(viewer))) === signature;
   let until = sameRelays ? await readCursor(viewer) : undefined;
-  if (!sameRelays) await writeDmKv(cursorKey(viewer), undefined);
+  if (!sameRelays) {
+    await writeDmKv(cursorKey(viewer), undefined);
+    await writeDmKv(walkedRelaysKey(viewer), signature);
+  }
   // Ids this walk has already been handed. A relay that ignores `until` — or
   // one whose page cap is filled by the boundary wrap alone — would otherwise
   // serve the same page forever, and the walk would never end.
@@ -538,7 +616,7 @@ export async function backfillDmHistory(
     if (options.maxPages !== undefined && progress.pages >= options.maxPages)
       break;
 
-    const wraps = await readWrapsPerRelay(
+    const page = await readWrapsPerRelay(
       relays,
       {
         ...inboxFilter(viewer),
@@ -550,13 +628,22 @@ export async function backfillDmHistory(
 
     progress.pages += 1;
 
-    if (wraps.length === 0) {
+    // A read where NOTHING answered says nothing about the history. Treating
+    // it as the end is how a walk latches `exhausted` on a cold start where
+    // every auth-gated relay was still waiting on the signer — and then never
+    // runs again. Stop, but do not record an ending.
+    if (!page.answered) {
+      console.info("[dm] backfill paused: no relay answered");
+      break;
+    }
+
+    if (page.wraps.length === 0) {
       progress.exhausted = true;
       break;
     }
 
-    const fresh = wraps.filter((w) => !seenThisWalk.has(w.id));
-    for (const wrap of wraps) seenThisWalk.add(wrap.id);
+    const fresh = page.wraps.filter((w) => !seenThisWalk.has(w.id));
+    for (const wrap of page.wraps) seenThisWalk.add(wrap.id);
 
     if (fresh.length === 0) {
       if (steppedPast || until === undefined) {
@@ -579,11 +666,11 @@ export async function backfillDmHistory(
     progress.fetched += fresh.length;
     progress.written += outcome.written;
 
-    const pageOldest = fresh.reduce(
-      (min, w) => Math.min(min, w.created_at),
-      Number.POSITIVE_INFINITY,
-    );
-    if (!Number.isFinite(pageOldest)) {
+    // The MAX of the tails among relays that filled their page, so a shallow
+    // relay cannot drag the bound past a deep one's unread history. Undefined
+    // means every relay returned a short page: they are all spent.
+    const pageOldest = page.nextUntil;
+    if (pageOldest === undefined) {
       progress.exhausted = true;
       break;
     }
@@ -606,13 +693,9 @@ export async function backfillDmHistory(
 
   auth.unsubscribe();
 
-  if (progress.exhausted) {
-    await writeDmKv(exhaustedKey(viewer), true);
-    // WHICH relays were walked, not just that a walk finished. The next load
-    // compares its own set against this one, so adding a relay re-walks and
-    // removing one does not.
-    await writeDmKv(walkedRelaysKey(viewer), relaySignature(relays));
-  }
+  // The signature was recorded when the walk STARTED, so this only has to say
+  // that it reached the end.
+  if (progress.exhausted) await writeDmKv(exhaustedKey(viewer), true);
   options.onProgress?.({ ...progress });
   console.info(
     `[dm] backfill ${progress.exhausted ? "complete" : "paused"}: ` +

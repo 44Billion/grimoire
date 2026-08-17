@@ -22,6 +22,7 @@ import {
   isHistoryExhausted,
   resetHistoryWalk,
   syncDmInbox,
+  watchDmInbox,
   type BackfillProgress,
 } from "@/services/dm-inbox";
 import { dmUnreadSummary, listDmConversations } from "@/services/dm-store";
@@ -127,6 +128,7 @@ export function useDirectMessages(
     // A long walk must stop when the pane closes or the account changes, not
     // grind on against relays nobody is reading from any more.
     const abort = new AbortController();
+    let stopWatching: (() => void) | undefined;
 
     const read = async (status: DirectMessagesStatus) => {
       const rows = await listDmConversations(pubkey);
@@ -189,12 +191,24 @@ export function useDirectMessages(
 
       // Paint what is already on disk before touching a relay.
       await read("ready");
+
+      // Resolved once and shared by the sync, the watch and the backfill: the
+      // three disagreeing is how a wrap lands on a relay only one of them was
+      // reading, and how the walk's relay-set signature records a set that no
+      // read actually used.
+      const relays = await ownDmReadRelays(pubkey);
       try {
         // The fresh end first: whatever arrived since last time, so a reader
         // who opens the pane sees today's mail before a long walk starts.
-        await syncDmInbox(pubkey, signer, { pages: 2 });
+        await syncDmInbox(pubkey, signer, { relays, pages: 2 });
         if (cancelled) return;
         await read("ready");
+
+        // A standing subscription, for as long as this hook is mounted. Without
+        // it nothing arrives until something re-runs the sync — a window left
+        // open showed a list that was already stale, and a message sent to you
+        // while you were reading appeared only after a reopen.
+        stopWatching = watchDmInbox(pubkey, signer, relays);
 
         // Then the whole history, once PER RELAY SET. A wrap says nothing
         // about whose conversation it belongs to until it is open, so a
@@ -202,7 +216,6 @@ export function useDirectMessages(
         // everything — and every wrap is opened once, ever, so this is a
         // first-run cost. Passing the relays is what makes adding one re-walk
         // instead of silently doing nothing.
-        const relays = await ownDmReadRelays(pubkey);
         if (!(await isHistoryExhausted(pubkey, relays))) {
           await backfillDmHistory(pubkey, signer, {
             relays,
@@ -225,6 +238,7 @@ export function useDirectMessages(
     return () => {
       cancelled = true;
       abort.abort();
+      stopWatching?.();
     };
   }, [enabled, pubkey, signer, nonce]);
 
