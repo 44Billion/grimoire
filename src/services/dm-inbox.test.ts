@@ -44,6 +44,17 @@ async function relay(...args: Parameters<typeof startMockRelay>) {
   return r;
 }
 
+/**
+ * As a relay would hand it over: a fresh object with no symbols on it.
+ *
+ * `GiftWrapFactory` leaves the plaintext cached on the wrap it built, so a
+ * locally-created wrap opens without decrypting anything — which makes any
+ * test that counts signer calls silently measure nothing.
+ */
+function overTheWire(wrap: NostrEvent): NostrEvent {
+  return JSON.parse(JSON.stringify(wrap)) as NostrEvent;
+}
+
 /** A real NIP-17 wrap: rumor from `from`, sealed and wrapped to `to`. */
 async function wrapMessage(
   from: PrivateKeySigner,
@@ -204,6 +215,64 @@ describe("unlockWraps", () => {
     // Two decrypts per wrap (wrap then seal), but the seal's only starts after
     // its wrap's resolves, so a wave is at most DECRYPT_WAVE in flight.
     expect(peak).toBeLessThanOrEqual(DECRYPT_WAVE);
+    decrypt.mockRestore();
+  });
+});
+
+describe("wraps that fight back", () => {
+  it("records a malformed wrap instead of losing the whole batch to it", async () => {
+    // `unlockGiftWrap` caches the plaintext on the wrap BEFORE parsing it, and
+    // `lockGiftWrap` re-derives the seal to find what to clear — so on a wrap
+    // whose plaintext is not JSON it throws on the way out too. Thrown from a
+    // `finally` that used to sit inside `Promise.all`, that took down the whole
+    // wave and with it every markWrapsSeen: two signer prompts per message,
+    // every session, forever. Anyone who knows a pubkey can craft one.
+    const poison = await GiftWrapFactory.create(
+      bob,
+      ALICE,
+      // A "rumor" that decrypts to something that is not an event.
+      { kind: 14, created_at: 1, tags: [], content: "x", pubkey: BOB, id: "x" },
+    );
+    const broken = {
+      ...poison,
+      content: await bob.nip44.encrypt(ALICE, "this is not json"),
+    } as NostrEvent;
+    const good = await wrapMessage(bob, ALICE, "survives");
+
+    const outcome = await unlockWraps(ALICE, alice, [broken, good]);
+
+    expect(outcome.written).toBe(1);
+    // Both recorded, so neither is opened again.
+    expect(await db.dmSeenWraps.count()).toBe(2);
+  });
+
+  it("opens a wrap once even when four relays deliver it", async () => {
+    // `{ eventStore: null }` disables applesauce's cross-relay dedupe, so the
+    // same wrap arrives once per inbox relay. Without a batch-level dedupe a
+    // cold inbox costs its size times the relay count in signer calls.
+    const wrap = await wrapMessage(bob, ALICE, "delivered four times");
+    const copies = [1, 2, 3, 4].map(() => overTheWire(wrap));
+
+    const decrypt = vi.spyOn(alice.nip44, "decrypt");
+    await unlockWraps(ALICE, alice, copies);
+
+    // Two per wrap: the wrap, then the seal.
+    expect(decrypt).toHaveBeenCalledTimes(2);
+    decrypt.mockRestore();
+  });
+
+  it("opens a wrap once even when two callers race for it", async () => {
+    // `watchDmInbox` fires one call per arriving wrap per relay, and all of
+    // them read the seen table before any of them writes it.
+    const wrap = await wrapMessage(bob, ALICE, "raced");
+
+    const decrypt = vi.spyOn(alice.nip44, "decrypt");
+    await Promise.all([
+      unlockWraps(ALICE, alice, [overTheWire(wrap)]),
+      unlockWraps(ALICE, alice, [overTheWire(wrap)]),
+    ]);
+
+    expect(decrypt).toHaveBeenCalledTimes(2);
     decrypt.mockRestore();
   });
 });

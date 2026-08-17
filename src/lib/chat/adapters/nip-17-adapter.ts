@@ -1,0 +1,487 @@
+/**
+ * NIP-17 private direct messages.
+ *
+ * Like the Concord adapter and unlike every other one here, this does not
+ * subscribe to relays for its messages. `dm-inbox.ts` opens each gift wrap once
+ * and mirrors the rumor to Dexie; `loadMessages` reads that mirror and repaints
+ * when `dm-bus` rings. So a conversation paints from disk with no crypto and no
+ * signer prompt, and reopening it costs nothing.
+ *
+ * Two rules here are privacy rules rather than design preferences:
+ *
+ * - **Every message carries `metadata.reactions`, always present.**
+ *   `MessageReactions` opens a relay REQ `{kinds:[7], "#e":[messageId]}` unless
+ *   the field is present. A DM's message id is a private rumor id that exists
+ *   nowhere public; asking a relay about it announces that the conversation
+ *   happened. Reactions come from the local mirror instead — they are kind-7
+ *   rumors in gift wraps, as private as the messages they are about.
+ * - **`metadata.relays` is empty.** The header must not advertise which relays
+ *   hold this correspondence.
+ */
+
+import { Observable, ReplaySubject } from "rxjs";
+import { nip19 } from "nostr-tools";
+import type { EventPointer, AddressPointer } from "nostr-tools/nip19";
+import { ChatProtocolAdapter } from "./base-adapter";
+import type { SendMessageOptions } from "./base-adapter";
+import type {
+  ChatCapabilities,
+  Conversation,
+  ConversationType,
+  DMIdentifier,
+  LoadMessagesOptions,
+  Message,
+  ProtocolIdentifier,
+} from "@/types/chat";
+import type { NostrEvent } from "@/types/nostr";
+import type { EmojiTag } from "@/lib/emoji-helpers";
+import accountManager from "@/services/accounts";
+import eventStore from "@/services/event-store";
+import { getDisplayName } from "@/lib/nostr-utils";
+import { getProfileContent } from "applesauce-core/helpers";
+import {
+  dmReactionsByTarget,
+  foldDmMessages,
+  queryConversation,
+} from "@/services/dm-store";
+import type { DmRumorRow } from "@/services/db";
+import { conversationScope, onDmScope } from "@/services/dm-bus";
+import { syncDmInbox } from "@/services/dm-inbox";
+import { warmDmRelays } from "@/lib/dm/relays";
+import { sendDirectMessage, sendDirectReaction } from "@/lib/dm/send";
+import { timelineSignature } from "@/lib/chat/timeline-signature";
+import { markDmRead, readDmLastRead } from "@/services/dm-reads";
+
+/** What a conversation with yourself is called. */
+export const SAVED_MESSAGES_TITLE = "Saved messages";
+
+/** Rows per page, matching the Concord adapter's window. */
+const PAGE_ROWS = 200;
+
+/** Whatever kind 0 the store already holds. Never fetched — this is a title. */
+function cachedProfile(pubkey: string) {
+  const event = eventStore.getReplaceable(0, pubkey, "");
+  if (!event) return undefined;
+  try {
+    return getProfileContent(event);
+  } catch {
+    return undefined;
+  }
+}
+
+/** A conversation id is the participants, sorted and colon-joined. */
+function conversationIdFor(self: string, peer: string): string {
+  return Array.from(new Set([self, peer]))
+    .sort()
+    .join(":");
+}
+
+/** The other side of a 1:1 conversation, or the first stranger in a group. */
+function peerOf(conversationId: string, self: string): string {
+  const participants = conversationId.split(":").filter(Boolean);
+  return participants.find((p) => p !== self) ?? self;
+}
+
+/**
+ * A stored rumor as the renderers expect an event.
+ *
+ * `sig` is empty and stays empty: a rumor has none by construction — NIP-59
+ * proves authorship with the seal's signature at ingest — and inventing one
+ * would claim a proof that does not exist. The Concord adapter does the same.
+ */
+function toEvent(row: DmRumorRow): NostrEvent {
+  return {
+    id: row.id,
+    pubkey: row.pubkey,
+    kind: row.kind,
+    content: row.content,
+    tags: row.tags,
+    created_at: row.created_at,
+    sig: "",
+  } as NostrEvent;
+}
+
+function toMessage(
+  row: DmRumorRow,
+  conversationId: string,
+  reactions: DmRumorRow[] = [],
+): Message {
+  const parent = row.tags.find((t: string[]) => t[0] === "e" && t[1])?.[1];
+  return {
+    id: row.id,
+    conversationId,
+    author: row.pubkey,
+    content: row.content,
+    timestamp: row.created_at,
+    type: "user",
+    protocol: "nip-17",
+    event: toEvent(row),
+    ...(parent ? { replyTo: { id: parent } as EventPointer } : {}),
+    metadata: {
+      encrypted: true,
+      // ALWAYS present, even when empty — see the module docstring. Absent is
+      // what makes MessageReactions REQ a private rumor id.
+      reactions: reactions.map(toEvent),
+    },
+  };
+}
+
+export class Nip17Adapter extends ChatProtocolAdapter {
+  readonly protocol = "nip-17" as const;
+  readonly type: ConversationType = "dm";
+
+  private timelines = new Map<string, ReplaySubject<Message[]>>();
+  private started = new Set<string>();
+  private windows = new Map<string, number>();
+  private doorbells = new Map<string, () => void>();
+  private lastEmitted = new Map<string, string>();
+  private warmed = new Map<string, { unsubscribe(): void }>();
+
+  private self(): string {
+    const pubkey = accountManager.active?.pubkey;
+    if (!pubkey) throw new Error("Sign in to read direct messages.");
+    return pubkey;
+  }
+
+  private signer() {
+    const signer = accountManager.active?.signer;
+    if (!signer?.nip44)
+      throw new Error(
+        "This account's signer cannot encrypt — NIP-44 is required for private messages.",
+      );
+    return signer;
+  }
+
+  /**
+   * `npub` and `nprofile` only.
+   *
+   * Bare 64-hex is deliberately NOT claimed at the parser level even though the
+   * adapter accepts it for programmatic callers: a hex string is as plausibly an
+   * event id, and silently opening a private conversation with a stranger
+   * because someone pasted the wrong thing is the wrong failure.
+   */
+  parseIdentifier(input: string): DMIdentifier | null {
+    const value = input.trim();
+
+    if (value.startsWith("npub1")) {
+      try {
+        const decoded = nip19.decode(value);
+        if (decoded.type !== "npub") return null;
+        return { type: "chat-partner", value: decoded.data };
+      } catch {
+        return null;
+      }
+    }
+
+    if (value.startsWith("nprofile1")) {
+      try {
+        const decoded = nip19.decode(value);
+        if (decoded.type !== "nprofile") return null;
+        return {
+          type: "chat-partner",
+          value: decoded.data.pubkey,
+          ...(decoded.data.relays?.length
+            ? { relays: decoded.data.relays }
+            : {}),
+        };
+      } catch {
+        return null;
+      }
+    }
+
+    // Internal callers (the Concord sidebar) hand over resolved hex.
+    if (/^[0-9a-f]{64}$/i.test(value))
+      return { type: "chat-partner", value: value.toLowerCase() };
+
+    return null;
+  }
+
+  async resolveConversation(
+    identifier: ProtocolIdentifier,
+  ): Promise<Conversation> {
+    if (
+      identifier.type !== "chat-partner" &&
+      identifier.type !== "dm-recipient"
+    )
+      throw new Error(
+        `NIP-17 adapter cannot handle identifier type: ${identifier.type}`,
+      );
+
+    const self = this.self();
+    const peer = identifier.value;
+    const id = conversationIdFor(self, peer);
+
+    // Warm both sides' relay lists now, not at send time. Resolution is on a
+    // deadline and a cold read has to reach a relay first, so doing it when the
+    // conversation opens is what makes the first send land.
+    this.warmed.get(id)?.unsubscribe();
+    this.warmed.set(id, warmDmRelays([self, peer]));
+
+    return {
+      id,
+      type: "dm",
+      protocol: "nip-17",
+      // A conversation with yourself is a notepad, not correspondence, and
+      // titling it with your own display name reads as talking to a stranger
+      // who happens to share your face. Otherwise: resolved once from whatever
+      // profile is cached, since a DM has no name of its own.
+      title:
+        peer === self
+          ? SAVED_MESSAGES_TITLE
+          : getDisplayName(peer, cachedProfile(peer)),
+      participants: [{ pubkey: self }, { pubkey: peer }],
+      metadata: {
+        encrypted: true,
+        giftWrapped: true,
+        // Empty on purpose: the header must not advertise which relays hold
+        // this correspondence.
+        relays: [],
+      },
+      unreadCount: 0,
+    };
+  }
+
+  /** Read the current window and fold it. */
+  private async read(
+    conversationId: string,
+    options?: LoadMessagesOptions,
+  ): Promise<Message[]> {
+    const self = this.self();
+    const limit =
+      this.windows.get(conversationId) ?? options?.limit ?? PAGE_ROWS;
+    const rows = await queryConversation(self, conversationId, { limit });
+    const visible = foldDmMessages(rows);
+    const reactions = dmReactionsByTarget(
+      rows,
+      new Set(visible.map((r) => r.id)),
+    );
+    return visible.map((row) =>
+      toMessage(row, conversationId, reactions.get(row.id) ?? []),
+    );
+  }
+
+  /**
+   * Emit only when the timeline actually changed.
+   *
+   * A repaint with identical content still hands the virtualizer a fresh array,
+   * which re-anchors the scroll.
+   */
+  private publish(
+    conversationId: string,
+    emitter: ReplaySubject<Message[]>,
+    next: Message[],
+  ): void {
+    const signature = timelineSignature(next);
+    if (this.lastEmitted.get(conversationId) === signature) return;
+    this.lastEmitted.set(conversationId, signature);
+    emitter.next(next);
+  }
+
+  loadMessages(
+    conversation: Conversation,
+    options?: LoadMessagesOptions,
+  ): Observable<Message[]> {
+    const id = conversation.id;
+
+    let subject = this.timelines.get(id);
+    if (!subject) {
+      subject = new ReplaySubject<Message[]>(1);
+      this.timelines.set(id, subject);
+    }
+    const emitter = subject;
+
+    // Once per conversation: `loadMessages` runs again whenever the caller's
+    // `conversation` identity changes, and a second read+sync pair pushing into
+    // the same emitter makes the timeline flash.
+    if (this.started.has(id)) return emitter.asObservable();
+    this.started.add(id);
+    this.windows.set(id, options?.limit ?? PAGE_ROWS);
+
+    this.doorbells.get(id)?.();
+    this.doorbells.set(
+      id,
+      onDmScope(conversationScope(id), () => {
+        void this.read(id, options)
+          .then((next) => this.publish(id, emitter, next))
+          .catch(() => undefined);
+      }),
+    );
+
+    void (async () => {
+      try {
+        // Paint from the store first — but only if it has something. An empty
+        // first read is indistinguishable from an empty conversation, so
+        // emitting it puts "no messages" over a history still on the wire.
+        const stored = await this.read(id, options);
+        if (stored.length > 0) this.publish(id, emitter, stored);
+
+        // Then pull the inbox. The doorbell repaints as rumors land, so this
+        // needs no callback of its own.
+        await syncDmInbox(this.self(), this.signer());
+
+        // After the sync an empty answer IS the answer.
+        this.publish(id, emitter, await this.read(id, options));
+      } catch (error) {
+        console.warn("[dm] could not load the conversation:", error);
+      }
+    })();
+
+    return emitter.asObservable();
+  }
+
+  /**
+   * Page backwards.
+   *
+   * DM history pages by WRAP, not by conversation: the inbox is one
+   * undifferentiated gift-wrap stream and no relay can be asked for "older
+   * messages with this person". So widening the local window comes first, and
+   * only when that runs dry is another page of the global stream fetched —
+   * which may return mostly other people's conversations.
+   */
+  async loadMoreMessages(
+    conversation: Conversation,
+    before: number,
+  ): Promise<Message[]> {
+    const id = conversation.id;
+    const self = this.self();
+    const previous = this.windows.get(id) ?? PAGE_ROWS;
+    this.windows.set(id, previous + PAGE_ROWS);
+
+    const emitter = this.timelines.get(id);
+    const repaint = async () => {
+      const next = await this.read(id);
+      if (emitter) this.publish(id, emitter, next);
+      return next;
+    };
+
+    const local = await queryConversation(self, id, {
+      limit: PAGE_ROWS,
+      until: before - 1,
+    });
+    const older = foldDmMessages(local).filter((r) => r.created_at < before);
+    if (older.length > 0) {
+      await repaint();
+      return older.map((row) => toMessage(row, id));
+    }
+
+    // Local history is exhausted for this conversation; walk the wrap stream.
+    await syncDmInbox(self, this.signer(), { until: before }).catch(
+      () => undefined,
+    );
+    const after = await repaint();
+    return after.filter((m) => m.timestamp < before);
+  }
+
+  async sendMessage(
+    conversation: Conversation,
+    content: string,
+    options?: SendMessageOptions,
+  ): Promise<void> {
+    const self = this.self();
+    const peer = peerOf(conversation.id, self);
+
+    let replyTo;
+    if (options?.replyTo) {
+      const rows = await queryConversation(self, conversation.id, {
+        limit: PAGE_ROWS * 5,
+      });
+      const parent = rows.find((r) => r.id === options.replyTo);
+      if (parent)
+        replyTo = {
+          id: parent.id,
+          kind: parent.kind,
+          pubkey: parent.pubkey,
+          created_at: parent.created_at,
+          content: parent.content,
+          tags: parent.tags,
+        };
+    }
+
+    await sendDirectMessage({
+      viewer: self,
+      signer: this.signer(),
+      peer,
+      content,
+      ...(replyTo ? { replyTo } : {}),
+    });
+  }
+
+  /**
+   * React to a private message.
+   *
+   * A kind-7 RUMOR in a gift wrap, not a public kind 7 — a public reaction
+   * naming a rumor id would announce both that the conversation happened and
+   * how someone felt about it.
+   */
+  async sendReaction(
+    conversation: Conversation,
+    messageId: string,
+    emoji: string,
+    customEmoji?: EmojiTag,
+  ): Promise<void> {
+    const self = this.self();
+    await sendDirectReaction({
+      viewer: self,
+      signer: this.signer(),
+      peer: peerOf(conversation.id, self),
+      targetId: messageId,
+      emoji,
+      ...(customEmoji ? { customEmoji } : {}),
+    });
+  }
+
+  /**
+   * Resolve a replied-to message from the local mirror.
+   *
+   * Never the EventStore and never a relay: rumors exist nowhere but here, and
+   * asking a relay for one by id would leak it.
+   */
+  async loadReplyMessage(
+    conversation: Conversation,
+    pointer: EventPointer | AddressPointer,
+  ): Promise<NostrEvent | null> {
+    if (!("id" in pointer)) return null;
+    const rows = await queryConversation(this.self(), conversation.id, {
+      limit: PAGE_ROWS * 5,
+    });
+    const row = rows.find((r) => r.id === pointer.id);
+    return row ? toEvent(row) : null;
+  }
+
+  async getLastRead(conversation: Conversation): Promise<number> {
+    return readDmLastRead(this.self(), conversation.id);
+  }
+
+  async markRead(
+    conversation: Conversation,
+    timestampSecs: number,
+  ): Promise<void> {
+    await markDmRead(this.self(), conversation.id, timestampSecs);
+  }
+
+  getCapabilities(): ChatCapabilities {
+    return {
+      supportsEncryption: true,
+      supportsThreading: true,
+      supportsModeration: false,
+      supportsRoles: false,
+      supportsGroupManagement: false,
+      // A DM is opened by naming someone, not by creating anything.
+      canCreateConversations: true,
+      requiresRelay: false,
+      supportsDeletion: false,
+    };
+  }
+
+  cleanup(conversationId: string): void {
+    super.cleanup(conversationId);
+    this.doorbells.get(conversationId)?.();
+    this.doorbells.delete(conversationId);
+    this.warmed.get(conversationId)?.unsubscribe();
+    this.warmed.delete(conversationId);
+    this.timelines.delete(conversationId);
+    this.started.delete(conversationId);
+    this.windows.delete(conversationId);
+    this.lastEmitted.delete(conversationId);
+  }
+}

@@ -74,24 +74,20 @@ export class DmUndeliverableError extends Error {
   }
 }
 
-export async function sendDirectMessage({
-  viewer,
-  signer,
-  peer,
-  content,
-  replyTo,
-}: SendDmParams): Promise<SendDmResult> {
-  const { relays: peerRelays, source } = await resolveDmRelays(peer);
-  if (source === "none") throw new NoDmInboxError(peer);
-
-  const stamped = await (
-    replyTo
-      ? WrappedMessageFactory.reply(replyTo, peer, content)
-      : WrappedMessageFactory.create([peer], content)
-  )
-    .as(signer)
-    .stamp();
-
+/**
+ * Store a rumor locally, then wrap and publish a copy to each side.
+ *
+ * Everything a DM can be — a message, a file, a reaction, a delete — is a rumor
+ * in a gift wrap, so this is the one delivery path and each caller only decides
+ * what rumor to build.
+ */
+async function deliverRumor(
+  viewer: string,
+  signer: EventSigner,
+  peer: string,
+  stamped: Omit<Rumor, "id">,
+  peerRelays: string[],
+): Promise<SendDmResult> {
   // `stamp()` fills in pubkey and created_at but NOT the id — a rumor is an
   // unsigned event and applesauce leaves hashing to whoever needs it. Compute
   // it here, before wrapping, so the id the recipient receives is the id we
@@ -134,4 +130,78 @@ export async function sendDirectMessage({
     throw new DmUndeliverableError(peerDelivery);
 
   return { rumor, peer: peerDelivery, self: selfRelays };
+}
+
+export async function sendDirectMessage({
+  viewer,
+  signer,
+  peer,
+  content,
+  replyTo,
+}: SendDmParams): Promise<SendDmResult> {
+  const { relays: peerRelays, source } = await resolveDmRelays(peer);
+  if (source === "none") throw new NoDmInboxError(peer);
+
+  const stamped = await (
+    replyTo
+      ? WrappedMessageFactory.reply(replyTo, peer, content)
+      : WrappedMessageFactory.create([peer], content)
+  )
+    .as(signer)
+    .stamp();
+
+  return deliverRumor(viewer, signer, peer, stamped, peerRelays);
+}
+
+export interface SendDmReactionParams {
+  viewer: string;
+  signer: EventSigner;
+  peer: string;
+  /** The rumor id being reacted to. */
+  targetId: string;
+  /** Unicode emoji, or `:shortcode:` when `customEmoji` is given. */
+  emoji: string;
+  /** NIP-30 custom emoji: the bare shortcode and its image URL. */
+  customEmoji?: { shortcode: string; url: string };
+}
+
+/**
+ * React to a private message.
+ *
+ * A kind-7 rumor in a gift wrap, delivered exactly like a kind-14 — the
+ * reaction is as private as the message it is about, which is the only way it
+ * could be. A public kind 7 pointing at a rumor id would announce both that the
+ * conversation happened and how someone felt about it.
+ */
+export async function sendDirectReaction({
+  viewer,
+  signer,
+  peer,
+  targetId,
+  emoji,
+  customEmoji,
+}: SendDmReactionParams): Promise<SendDmResult> {
+  const { relays: peerRelays, source } = await resolveDmRelays(peer);
+  if (source === "none") throw new NoDmInboxError(peer);
+
+  // Built by hand rather than through a factory: applesauce's reaction
+  // blueprint targets a signed event, and the thing being reacted to here is an
+  // unsigned rumor that exists on no relay.
+  const stamped = {
+    kind: 7,
+    pubkey: await signer.getPublicKey(),
+    created_at: Math.floor(Date.now() / 1000),
+    content: customEmoji ? `:${customEmoji.shortcode}:` : emoji,
+    tags: [
+      ["e", targetId],
+      // The p tag is what files this rumor into the right conversation on the
+      // recipient's side — without it the store cannot tell whose it is.
+      ["p", peer],
+      ...(customEmoji
+        ? [["emoji", customEmoji.shortcode, customEmoji.url]]
+        : []),
+    ],
+  };
+
+  return deliverRumor(viewer, signer, peer, stamped, peerRelays);
 }

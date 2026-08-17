@@ -386,4 +386,12 @@ export interface ChatCapabilities {
    * either succeeds or throws, with nothing to show afterwards.
    */
   supportsDeliveryStatus?: boolean;
+  /**
+   * The viewer can react to a message.
+   *
+   * Absent means yes — every protocol here reacted before this flag existed,
+   * and `sendReaction` is a required method. Only an adapter that would throw
+   * sets `false`, and the UI then offers no reaction affordance at all.
+   */
+  supportsReactions?: boolean;
 }

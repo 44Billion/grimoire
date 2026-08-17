@@ -1,15 +1,64 @@
 # Chat System
 
-**Status**: only NIP-29 (relay-based groups) is enabled. Other protocol adapters
-are implemented but commented out.
+**Status**: NIP-10, NIP-17, NIP-22, NIP-29, NIP-53 and Concord are all
+registered. Only NIP-28 (public channels) remains commented out.
 
 ## Architecture
 
 A protocol adapter pattern:
 
 - `src/lib/chat/adapters/base-adapter.ts` — interface all adapters implement
-- `src/lib/chat/adapters/nip-29-adapter.ts` — NIP-29 relay groups (enabled)
-- NIP-10, NIP-22, NIP-53 adapters exist but are not registered
+- `nip-10-adapter.ts` — thread chat on a kind 1
+- `nip-17-adapter.ts` — private direct messages (see below)
+- `nip-22-adapter.ts` — comments; the catch-all
+- `nip-29-adapter.ts` — relay groups
+- `nip-53-adapter.ts` — live activity chat
+- `concord-adapter.ts` — E2E-encrypted community channels
+
+Registered in two places, both of which must agree: the `getAdapter` switch in
+`src/components/ChatViewer.tsx` and the priority array in
+`src/lib/chat-parser.ts`.
+
+## NIP-17 direct messages
+
+**applesauce does the crypto; Dexie does the storage and the reads.** Wraps are
+opened once at ingest (`src/services/dm-inbox.ts`) and the rumor is mirrored to
+`dmRumors`; the adapter reads that mirror and repaints on a `dm-bus` ring. The
+applesauce `WrappedMessages*` models are deliberately unused — they read the
+EventStore, and rumors never enter it.
+
+Four things here are load-bearing, and each of them was a bug first:
+
+1. **Reads authenticate; writes do not.** A gift wrap is signed by a throwaway
+   key so the relay cannot attribute it, and a socket that has NIP-42 AUTHed as
+   the sender gives that away for free. The peer's copy is published on
+   `dm-publish-pool.ts`, which no auth manager watches, and a relay answering
+   `auth-required` is reported undeliverable rather than satisfied. The inbox
+   REQ and the self-copy stay on the singleton pool, where authenticating to
+   your own mailbox costs nothing. `hub.ts` refuses to publish anyone else's
+   wrap, because applesauce turns an `auth-required` refusal into a retry that
+   WAITS for authentication — the leak succeeds rather than failing.
+2. **Every `Message` carries `metadata.reactions`, always.** `MessageReactions`
+   opens `{kinds:[7],"#e":[id]}` unless the field is present, and a DM's id is a
+   rumor id that exists on no relay — the REQ alone announces the conversation.
+   Reactions come from the mirror: they are kind-7 rumors in gift wraps.
+   `metadata.relays` is empty for the same class of reason.
+3. **Side rows are folded across the whole viewer, not the conversation.** A
+   NIP-09 delete usually carries only an `e` tag, so it is filed under its
+   author alone — and in a group DM under a two-person conversation that does
+   not exist. Target ids are globally unique, so the wider read is safe and the
+   narrow one loses tombstones. Kind 5 and kind 7 are both side rows, so the
+   delete fold matches on kind 5 ALONE: treating them alike makes liking a
+   message erase it.
+4. **Decrypt once, ever.** Two `nip44.decrypt` calls per wrap, against what may
+   be a browser prompt or a bunker. `dmSeenWraps` records every wrap, including
+   the ones that would not open; the batch dedupes within itself (applesauce's
+   cross-relay dedupe is off, so four inbox relays deliver four copies) and
+   across concurrent callers. `DmConsentGate` asks once per account before any
+   of it happens.
+
+A conversation with yourself is "Saved messages": pinned above the list, never
+unread, and named for what people use it as.
 
 ## Key components
 

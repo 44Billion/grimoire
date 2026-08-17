@@ -253,6 +253,53 @@ describe("queryConversation and foldDmMessages", () => {
   });
 });
 
+describe("side rows that carry no p tag", () => {
+  it("applies a delete that names only the message it removes", async () => {
+    // NIP-09 asks for an `e` tag and nothing else, so a delete's participant
+    // list is just its author. Requiring the viewer in it dropped every
+    // inbound delete on the floor and the message rendered forever.
+    const target = rumor({ content: "regretted" });
+    await writeDmRumors(ME, [target]);
+    const [conversation] = await listDmConversations(ME);
+
+    const bare = rumor({
+      kind: 5,
+      pubkey: PEER,
+      tags: [["e", target.id]],
+    });
+    await writeDmRumors(ME, [bare]);
+
+    const rows = await queryConversation(ME, conversation.conversationId, {
+      limit: 50,
+    });
+    expect(foldDmMessages(rows)).toEqual([]);
+  });
+
+  it("finds a tombstone filed under a different conversation", async () => {
+    // In a group DM a bare delete is filed under a two-person conversation
+    // that does not exist. Scoping the side-row lookup to the open
+    // conversation is how it goes missing.
+    const group = rumor({
+      pubkey: PEER,
+      tags: [
+        ["p", ME],
+        ["p", STRANGER],
+      ],
+      content: "in the group",
+    });
+    await writeDmRumors(ME, [group]);
+    await writeDmRumors(ME, [
+      rumor({ kind: 5, pubkey: PEER, tags: [["e", group.id]] }),
+    ]);
+
+    const [conversation] = await listDmConversations(ME);
+    const rows = await queryConversation(ME, conversation.conversationId, {
+      limit: 50,
+    });
+    expect(foldDmMessages(rows)).toEqual([]);
+  });
+});
+
 describe("sweepExpiredDms", () => {
   it("removes expired rows from disk rather than only hiding them", async () => {
     const deadline = nowSecs() + 60;
@@ -269,6 +316,24 @@ describe("sweepExpiredDms", () => {
 
     expect(await sweepExpiredDms(ME, deadline + 1)).toBe(1);
     expect(await db.dmRumors.count()).toBe(1);
+  });
+
+  it("does not leave a sidebar row pointing at nothing", async () => {
+    const deadline = nowSecs() + 60;
+    await writeDmRumors(ME, [
+      rumor({
+        content: "everything here expires",
+        tags: [
+          ["p", ME],
+          ["expiration", String(deadline)],
+        ],
+      }),
+    ]);
+    expect(await listDmConversations(ME)).toHaveLength(1);
+
+    await sweepExpiredDms(ME, deadline + 1);
+
+    expect(await listDmConversations(ME)).toEqual([]);
   });
 });
 

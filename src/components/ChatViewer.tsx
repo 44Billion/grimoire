@@ -33,6 +33,9 @@ import { Nip22Adapter } from "@/lib/chat/adapters/nip-22-adapter";
 import { ConcordAdapter } from "@/lib/chat/adapters/concord-adapter";
 import { CONCORD_URL } from "@/constants/concord-links";
 import { Nip29Adapter } from "@/lib/chat/adapters/nip-29-adapter";
+import { Nip17Adapter } from "@/lib/chat/adapters/nip-17-adapter";
+import { useDirectMessages } from "@/hooks/useDirectMessages";
+import { DmConsentGate } from "@/components/dm/DmConsentGate";
 import { Nip53Adapter } from "@/lib/chat/adapters/nip-53-adapter";
 import type {
   BlobAttachmentMeta,
@@ -897,6 +900,10 @@ export function ChatViewer({
   // Get active account with signing capability
   const { pubkey, canSign, signer } = useAccount();
 
+  // Private messages are gated on the reader asking for their inbox to be
+  // opened — see DmConsentGate. Inert for every other protocol.
+  const dms = useDirectMessages({ enabled: protocol === "nip-17" });
+
   // Day markers are dates, so they answer to the reader's calendar.
   const { locale } = useLocale();
 
@@ -1758,6 +1765,14 @@ export function ChatViewer({
     liveActivity?.hostPubkey,
   ]);
 
+  // Before anything else for a DM: without a signer that can decrypt, and
+  // without the reader having asked, there is no conversation to resolve — and
+  // `resolveConversation` would throw into the error branch, which reads as a
+  // failure rather than a question.
+  if (protocol === "nip-17" && dms.status !== "ready") {
+    return <DmConsentGate status={dms.status} onGrant={dms.grantConsent} />;
+  }
+
   // Handle loading state
   if (!conversationResult || conversationResult.status === "loading") {
     return (
@@ -2251,8 +2266,8 @@ function getAdapter(protocol: ChatProtocol): ChatProtocolAdapter {
       return new Nip22Adapter();
     case "nip-29":
       return new Nip29Adapter();
-    // case "nip-17":  // Phase 2 - Encrypted DMs (coming soon)
-    //   return new Nip17Adapter();
+    case "nip-17":
+      return new Nip17Adapter();
     // case "nip-28":  // Phase 3 - Public channels (coming soon)
     //   return new Nip28Adapter();
     case "nip-53":

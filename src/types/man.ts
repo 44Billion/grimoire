@@ -631,15 +631,17 @@ export const manPages: Record<string, ManPageEntry> = {
     section: "1",
     synopsis: "chat <identifier>",
     description:
-      "Join and participate in Nostr chat conversations. Supports NIP-29 relay-based groups, NIP-53 live activity chat, NIP-10 thread chat, NIP-22 comment threads on any event kind, and multi-room group list interface. NIP-22 comments work as a catch-all: any event that isn't kind 1 (NIP-10) or a relay group/live activity gets a comment thread. You can also comment on URLs and hashtags. In a room that can page backwards — a relay group, a live chat, a Concord channel — clicking a reply preview fetches history until it finds the message being answered, and the calendar button in the header jumps to a date. A thread or a comment set is loaded whole, so neither applies there.",
+      "Join and participate in Nostr chat conversations. Supports NIP-17 private direct messages, NIP-29 relay-based groups, NIP-53 live activity chat, NIP-10 thread chat, NIP-22 comment threads on any event kind, and multi-room group list interface. A direct message is gift-wrapped (NIP-59): the outer event is signed by a throwaway key, so the relay holding it cannot tell who sent it, and grimoire never authenticates on the socket it publishes one over. Messages are decrypted once and mirrored locally, so a conversation opens with no signer prompt; the first time an account reads its inbox it is asked for permission, because opening a backlog of wraps means two decryptions each. NIP-22 comments work as a catch-all: any event that isn't kind 1 (NIP-10) or a relay group/live activity gets a comment thread. You can also comment on URLs and hashtags. In a room that can page backwards — a relay group, a live chat, a Concord channel — clicking a reply preview fetches history until it finds the message being answered, and the calendar button in the header jumps to a date. A thread or a comment set is loaded whole, so neither applies there.",
     options: [
       {
         flag: "<identifier>",
         description:
-          "NIP-29 group (relay'group-id), NIP-53 live activity (naddr1...), NIP-10 thread (nevent1.../note1... kind 1), NIP-22 comments (nevent1.../naddr1... any other kind, URL, or #hashtag)",
+          "NIP-17 direct message (npub1.../nprofile1...), NIP-29 group (relay'group-id), NIP-53 live activity (naddr1...), NIP-10 thread (nevent1.../note1... kind 1), NIP-22 comments (nevent1.../naddr1... any other kind, URL, or #hashtag)",
       },
     ],
     examples: [
+      "chat npub1...                             Open a private conversation (NIP-17)",
+      "chat nprofile1...                         Same, with relay hints",
       "chat relay.example.com'bitcoin-dev        Join NIP-29 relay group",
       "chat wss://nos.lol'welcome                Join NIP-29 group with explicit protocol",
       "chat naddr1...30311...                    Join NIP-53 live activity chat",

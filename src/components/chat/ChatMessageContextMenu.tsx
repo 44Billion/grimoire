@@ -88,6 +88,11 @@ export function ChatMessageContextMenu({
     event.pubkey === activePubkey,
   );
 
+  // Absent means yes: every protocol here reacted before the flag existed. Only
+  // one that would throw on `sendReaction` opts out, and then the affordance is
+  // not offered at all rather than offered and refused.
+  const canReact = adapter?.getCapabilities().supportsReactions !== false;
+
   const deleteMessage = async () => {
     if (!adapter?.deleteMessage || !conversation) return;
     try {
@@ -216,10 +221,12 @@ export function ChatMessageContextMenu({
           )}
           {conversation && adapter && (
             <>
-              <ContextMenuItem onClick={openReactionPicker}>
-                <Smile className="size-4 mr-2" />
-                React
-              </ContextMenuItem>
+              {canReact && (
+                <ContextMenuItem onClick={openReactionPicker}>
+                  <Smile className="size-4 mr-2" />
+                  React
+                </ContextMenuItem>
+              )}
               {zapConfig?.supported && (
                 <ContextMenuItem onClick={openZapWindow}>
                   <Zap className="size-4 mr-2" />

@@ -29,6 +29,8 @@ import type { NostrEvent } from "nostr-tools";
 import {
   unlockGiftWrap,
   lockGiftWrap,
+  getGiftWrapSeal,
+  internalGiftWrapEvents,
 } from "applesauce-common/helpers/gift-wrap";
 import type { Rumor } from "applesauce-common/helpers/gift-wrap";
 import type { EncryptedContentSigner } from "applesauce-core/helpers/encrypted-content";
@@ -115,47 +117,70 @@ export async function unlockWraps(
       wrap.tags.some((t) => t[0] === "p" && t[1] === viewer),
   );
 
-  const seen = await seenWrapIds(
-    viewer,
-    addressed.map((w) => w.id),
+  // Within the batch first. `{ eventStore: null }` disables applesauce's
+  // cross-relay dedupe, so four inbox relays hand us the same wrap four times
+  // — which without this is four times the signer calls.
+  const unique = new Map<string, NostrEvent>();
+  for (const wrap of addressed)
+    if (!unique.has(wrap.id)) unique.set(wrap.id, wrap);
+
+  const seen = await seenWrapIds(viewer, [...unique.keys()]);
+  const todo = [...unique.values()].filter(
+    (w) => !seen.has(w.id) && !inFlight.has(`${viewer}:${w.id}`),
   );
-  const todo = addressed.filter((w) => !seen.has(w.id));
   if (todo.length === 0) return { written: 0, failed: 0 };
 
+  // And across concurrent calls. `watchDmInbox` fires one `unlockWraps` per
+  // arriving wrap per relay, and they all read `seenWrapIds` before any of
+  // them has written it back.
+  for (const wrap of todo) inFlight.add(`${viewer}:${wrap.id}`);
+  try {
+    return await openAndStore(viewer, signer, todo);
+  } finally {
+    for (const wrap of todo) inFlight.delete(`${viewer}:${wrap.id}`);
+  }
+}
+
+/** Wraps being opened right now, so two callers cannot both open one. */
+const inFlight = new Set<string>();
+
+async function openAndStore(
+  viewer: string,
+  signer: DmSigner,
+  todo: NostrEvent[],
+): Promise<UnlockOutcome> {
   const rumors: Rumor[] = [];
-  const marks: Array<{ id: string; created_at: number; opened: boolean }> = [];
+  let failed = 0;
 
   for (let i = 0; i < todo.length; i += DECRYPT_WAVE) {
     const wave = todo.slice(i, i + DECRYPT_WAVE);
+    const marks: Array<{ id: string; created_at: number; opened: boolean }> =
+      [];
+
     await Promise.all(
       wave.map(async (wrap) => {
+        let opened = false;
         try {
-          const rumor = await unlockGiftWrap(wrap, signer);
-          rumors.push(rumor);
-          marks.push({
-            id: wrap.id,
-            created_at: wrap.created_at,
-            opened: true,
-          });
+          rumors.push(await unlockGiftWrap(wrap, signer));
+          opened = true;
         } catch {
-          marks.push({
-            id: wrap.id,
-            created_at: wrap.created_at,
-            opened: false,
-          });
-        } finally {
-          // Drop the plaintext applesauce hangs off the wrap object. Dexie is
-          // the only place a decrypted message is meant to live.
-          lockGiftWrap(wrap);
+          failed += 1;
         }
+        discardPlaintext(wrap);
+        marks.push({ id: wrap.id, created_at: wrap.created_at, opened });
       }),
     );
+
+    // Per WAVE, not once at the end. A throw anywhere in the batch used to
+    // mean nothing was recorded, so a single malformed wrap made the whole
+    // page decryptable-again forever — two signer prompts per message, every
+    // session, for as long as it sat in the inbox.
+    await markWrapsSeen(viewer, marks);
+
     // Let the browser paint between waves.
     if (i + DECRYPT_WAVE < todo.length)
       await new Promise((resolve) => setTimeout(resolve, 0));
   }
-
-  await markWrapsSeen(viewer, marks);
 
   // Store first, doorbell second. A missed ring is a stale render; a ring
   // before the write is a reader that looks and finds nothing.
@@ -163,10 +188,40 @@ export async function unlockWraps(
   if (touched.length > 0)
     emitDmScopes([DM_LIST_SCOPE, ...touched.map(conversationScope)]);
 
-  return {
-    written: written.length,
-    failed: marks.filter((m) => !m.opened).length,
-  };
+  return { written: written.length, failed };
+}
+
+/**
+ * Get the decrypted message out of memory once Dexie has it.
+ *
+ * `lockGiftWrap` alone is not enough, and its name oversells it twice over.
+ * It drops the symbol references on the wrap, but every seal and rumor it ever
+ * derived stays in applesauce's module-level `internalGiftWrapEvents` — an
+ * `EventMemory` over an LRU constructed with no bound, so nothing is ever
+ * evicted and a logout cannot reach it. Worse, it re-derives the seal to find
+ * what to lock, which re-runs `JSON.parse` on plaintext that already failed to
+ * parse — so on a malformed wrap it throws on the way out.
+ *
+ * Both halves are handled here: evict explicitly, and never let this throw.
+ */
+function discardPlaintext(wrap: NostrEvent): void {
+  try {
+    const seal = getGiftWrapSeal(wrap);
+    if (seal) internalGiftWrapEvents.remove(seal);
+  } catch {
+    // A wrap that will not parse has no seal to evict.
+  }
+  try {
+    internalGiftWrapEvents.remove(wrap);
+  } catch {
+    // Not present; nothing to do.
+  }
+  try {
+    lockGiftWrap(wrap);
+  } catch {
+    // See above: this re-derives, and re-derivation is exactly what fails on
+    // the wraps that need locking most.
+  }
 }
 
 /** The filter for this account's mail, with the backdating slack applied. */

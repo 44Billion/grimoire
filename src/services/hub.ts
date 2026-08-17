@@ -78,7 +78,10 @@ function assertNotSomeoneElsesGiftWrap(event: NostrEvent): void {
   if (event.kind !== kinds.GiftWrap) return;
   const self = accountManager.active?.pubkey;
   const recipients = event.tags.filter((t) => t[0] === "p").map((t) => t[1]);
-  if (self && recipients.every((p) => p === self)) return;
+  // At least one, and every one ours. `every` alone passes vacuously for a
+  // wrap with no p tags at all, which is exactly the shape a bug would produce.
+  if (self && recipients.length > 0 && recipients.every((p) => p === self))
+    return;
   throw new Error(
     "Refusing to publish a gift wrap addressed to someone else on the authenticated pool. Use publishGiftWrap() from src/lib/dm/publish.ts.",
   );

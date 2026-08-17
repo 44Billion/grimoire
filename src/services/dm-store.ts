@@ -10,7 +10,7 @@
  * **This module is the only door.** Every acceptance rule lives here so there
  * is one place to read them and one place they can be wrong:
  *
- * - kinds 14 (message), 15 (file) and 5 (delete) only;
+ * - kinds 14 (message), 15 (file), 7 (reaction) and 5 (delete) only;
  * - the rumor id is recomputed and a lying one refused;
  * - a rumor whose author is not a participant is refused, which is NIP-59's
  *   own anti-spoof rule pushed to the last possible moment;
@@ -29,8 +29,12 @@ import db, { type DmRumorRow } from "./db";
 
 /** Kinds that occupy a row in a DM timeline. */
 export const DM_ROW_KINDS = [14, 15];
+/** A moderator-less self-delete (NIP-09). */
+export const DM_DELETE_KIND = 5;
+/** A reaction (NIP-25), wrapped like everything else so it stays private. */
+export const DM_REACTION_KIND = 7;
 /** Kinds that act on another rumor rather than standing alone. */
-export const DM_SIDE_KINDS = [5];
+export const DM_SIDE_KINDS = [DM_DELETE_KIND, DM_REACTION_KIND];
 const ACCEPTED_KINDS = new Set([...DM_ROW_KINDS, ...DM_SIDE_KINDS]);
 
 /**
@@ -100,8 +104,16 @@ export function toDmRow(
   // A wrap addressed to this account whose rumor names other people entirely
   // is someone using our mailbox as a drop box for a conversation we are not
   // in. It would show up as a conversation we cannot answer.
+  //
+  // Side rows are exempt, and have to be: a NIP-09 delete usually carries only
+  // an `e` tag, so its participant list is just its author. Requiring the
+  // viewer there dropped every inbound delete on the floor. What makes a side
+  // row safe is not its p tags but that it arrived in this account's mailbox
+  // and points at a rumor — the fold matches it by `author:targetId`, so where
+  // it happens to be filed does not matter.
   const participants = participantsOf(rumor);
-  if (!participants.includes(viewer))
+  const isSideRow = DM_SIDE_KINDS.includes(rumor.kind);
+  if (!isSideRow && !participants.includes(viewer))
     return { rejected: "viewer is not a participant" };
 
   const expiration = expirationOf(rumor.tags);
@@ -196,12 +208,19 @@ export async function listDmConversations(viewer: string) {
 }
 
 /**
- * One conversation's newest `limit` rows, plus the deletes that act on them.
+ * One conversation's newest `limit` rows, plus the side rows that act on them.
  *
- * `until` pages backwards. Deletes are collected across the whole conversation
- * rather than the page, because a tombstone written today removes a message
- * from a page loaded from last year, and a fold that cannot see it renders a
- * message its author erased.
+ * `until` pages backwards. Two widenings matter:
+ *
+ * - Side rows are collected across the whole conversation rather than the
+ *   page, because a tombstone written today removes a message from a page
+ *   loaded from last year, and a fold that cannot see it renders a message its
+ *   author erased.
+ * - They are collected across the whole VIEWER, not this conversation. A
+ *   delete carrying only an `e` tag is filed under its author alone, and in a
+ *   group DM under a two-person conversation that does not exist — scoping the
+ *   lookup to this conversation is how a tombstone goes missing. Target ids are
+ *   globally unique, so the wider read cannot mis-apply one.
  */
 export async function queryConversation(
   viewer: string,
@@ -242,16 +261,20 @@ export async function queryConversation(
     .sort((a, b) => b.created_at - a.created_at)
     .slice(0, opts.limit);
 
-  const deletes = await db.dmRumors
-    .where("[viewer+conversationId+created_at]")
-    .between(
-      [viewer, conversationId, Dexie.minKey],
-      [viewer, conversationId, Dexie.maxKey],
-    )
+  const side = await db.dmRumors
+    .where("[viewer+created_at]")
+    .between([viewer, Dexie.minKey], [viewer, Dexie.maxKey])
     .filter((r) => DM_SIDE_KINDS.includes(r.kind))
     .toArray();
 
-  return [...timeline, ...deletes];
+  // Only the ones pointing into this page. A viewer-wide read would otherwise
+  // hand the fold every reaction the account has ever received.
+  const visible = new Set(timeline.map((r) => r.id));
+  const relevant = side.filter((r) =>
+    r.tags.some((t) => t[0] === "e" && t[1] && visible.has(t[1])),
+  );
+
+  return [...timeline, ...relevant];
 }
 
 /**
@@ -273,7 +296,9 @@ export function foldDmMessages(
 ): DmRumorRow[] {
   const deleted = new Set<string>();
   for (const row of rows) {
-    if (!DM_SIDE_KINDS.includes(row.kind)) continue;
+    // Kind 5 ONLY. A reaction is also a side row and also carries an `e` tag —
+    // treating every side kind alike would make liking a message delete it.
+    if (row.kind !== DM_DELETE_KIND) continue;
     for (const tag of row.tags) {
       // Authors delete their own messages and no one else's — a kind 5 naming
       // someone else's rumor is a stranger trying to edit your mailbox.
@@ -286,6 +311,44 @@ export function foldDmMessages(
     .filter((row) => !deleted.has(`${row.pubkey}:${row.id}`))
     .filter((row) => !isExpired(row, at))
     .sort((a, b) => a.created_at - b.created_at);
+}
+
+/**
+ * Reactions in a page, grouped by the rumor they are about.
+ *
+ * Read from the same rows the timeline folds, never fetched: a DM reaction is a
+ * kind-7 RUMOR that exists on no relay, and asking one for reactions to a
+ * private message id would announce both the conversation and the id.
+ *
+ * A reaction whose target is gone — deleted or expired — is dropped with it,
+ * which is why the surviving ids are passed in rather than inferred.
+ */
+export function dmReactionsByTarget(
+  rows: DmRumorRow[],
+  visibleIds: Set<string>,
+  at = nowSecs(),
+): Map<string, DmRumorRow[]> {
+  const byTarget = new Map<string, DmRumorRow[]>();
+  // One reaction per author per target: a resend, or the same emoji arriving
+  // from both our own copy and the peer's relay, is one feeling either way.
+  const seen = new Set<string>();
+
+  for (const row of rows) {
+    if (row.kind !== DM_REACTION_KIND) continue;
+    if (isExpired(row, at)) continue;
+    const target = row.tags.find((t) => t[0] === "e" && t[1])?.[1];
+    if (!target || !visibleIds.has(target)) continue;
+
+    const signature = `${target}:${row.pubkey}:${row.content}`;
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+
+    const list = byTarget.get(target);
+    if (list) list.push(row);
+    else byTarget.set(target, [row]);
+  }
+
+  return byTarget;
 }
 
 /** Wrap ids this viewer has already tried, opened or not. */
@@ -315,7 +378,14 @@ export async function markWrapsSeen(
   );
 }
 
-/** Delete every rumor past its deadline. Returns how many went. */
+/**
+ * Delete every rumor past its deadline, and correct what it leaves behind.
+ *
+ * The summaries have to be recomputed in the same breath: a conversation whose
+ * newest message just expired would otherwise keep a sidebar row pointing at a
+ * timestamp no row backs, and one whose ONLY messages expired would keep a row
+ * that opens onto nothing.
+ */
 export async function sweepExpiredDms(
   viewer: string,
   at = nowSecs(),
@@ -327,7 +397,30 @@ export async function sweepExpiredDms(
     .toArray();
   if (expired.length === 0) return 0;
 
-  await db.dmRumors.bulkDelete(expired.map((r) => [r.viewer, r.id]));
+  const touched = new Set(expired.map((r) => r.conversationId));
+
+  await db.transaction("rw", db.dmRumors, db.dmConversations, async () => {
+    await db.dmRumors.bulkDelete(expired.map((r) => [r.viewer, r.id]));
+
+    for (const conversationId of touched) {
+      const newest = await db.dmRumors
+        .where("[viewer+conversationId+created_at]")
+        .between(
+          [viewer, conversationId, Dexie.minKey],
+          [viewer, conversationId, Dexie.maxKey],
+        )
+        .reverse()
+        .filter((r) => DM_ROW_KINDS.includes(r.kind))
+        .first();
+
+      if (newest)
+        await db.dmConversations.update([viewer, conversationId], {
+          lastAt: newest.created_at,
+        });
+      else await db.dmConversations.delete([viewer, conversationId]);
+    }
+  });
+
   return expired.length;
 }
 

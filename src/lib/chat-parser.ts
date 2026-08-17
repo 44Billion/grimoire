@@ -12,8 +12,8 @@ import { mergeRelaySets } from "applesauce-core/helpers";
 import eventStore from "@/services/event-store";
 import pool from "@/services/relay-pool";
 import { AGGREGATOR_RELAYS } from "@/services/loaders";
+import { Nip17Adapter } from "./chat/adapters/nip-17-adapter";
 // Import other adapters as they're implemented
-// import { Nip17Adapter } from "./chat/adapters/nip-17-adapter";
 // import { Nip28Adapter } from "./chat/adapters/nip-28-adapter";
 
 /**
@@ -23,7 +23,8 @@ import { AGGREGATOR_RELAYS } from "@/services/loaders";
  * 1. NIP-10 (thread chat) - nevent with kind=1, note1
  * 2. NIP-29 (groups) - relay'group-id format, naddr kind 39000
  * 3. NIP-53 (live chat) - naddr kind 30311
- * 4. NIP-22 (comments) - catch-all: nevent with explicit non-1/30311 kind,
+ * 4. NIP-17 (private DMs) - npub1.../nprofile1...
+ * 5. NIP-22 (comments) - catch-all: nevent with explicit non-1/30311 kind,
  *    non-NIP-29/53 naddr, URLs, hashtags
  *
  * For nevent/note without kind metadata, fetches the event first and
@@ -82,7 +83,10 @@ export async function parseChatCommand(
   // Try each adapter in priority order
   const adapters = [
     new Nip10Adapter(), // NIP-10 - Thread chat (nevent kind=1 or note1)
-    // new Nip17Adapter(),  // Phase 2
+    // NIP-17 claims npub/nprofile ONLY. A bare 64-hex string is as plausibly
+    // an event id, and silently opening a private conversation with a stranger
+    // because someone pasted the wrong thing is the wrong failure.
+    new Nip17Adapter(), // NIP-17 - Private direct messages
     // new Nip28Adapter(),  // Phase 3
     new Nip29Adapter(), // NIP-29 - Relay groups
     new Nip53Adapter(), // NIP-53 - Live activity chat
@@ -121,6 +125,10 @@ Currently supported formats:
   - naddr1... (Multi-room group list, kind 10009)
     Example:
       chat naddr1... (group list address)
+  - npub1.../nprofile1... (NIP-17 private direct messages)
+    Examples:
+      chat npub1abc... (a private conversation, gift-wrapped)
+      chat nprofile1... (same, with relay hints)
   - nevent1.../naddr1... (NIP-22 comments on any event kind)
     Examples:
       chat nevent1... (comment on article, issue, etc.)
@@ -131,9 +139,7 @@ Currently supported formats:
   - #hashtag (NIP-22 comments on a hashtag)
     Example:
       chat #bitcoin
-
-More formats coming soon:
-  - npub/nprofile/hex pubkey (NIP-17 direct messages)`,
+`,
   );
 }
 
