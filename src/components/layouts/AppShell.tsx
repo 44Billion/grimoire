@@ -13,6 +13,7 @@ import CommandLauncher from "../CommandLauncher";
 import { GlobalAuthPrompt } from "../GlobalAuthPrompt";
 import { SpellbookDropdown } from "../SpellbookDropdown";
 import { FavoriteSpellsDropdown } from "../FavoriteSpellsDropdown";
+import { CallPill } from "../call/CallPill";
 import UserMenu from "../nostr/user-menu";
 import { AppShellContext } from "./AppShellContext";
 
@@ -84,7 +85,12 @@ export function AppShell({ children, hideBottomBar = false }: AppShellProps) {
 
           <SpellbookDropdown />
 
-          <div className="flex-1 flex items-center justify-end">
+          <div className="flex-1 flex items-center justify-end gap-1">
+            {/* The running call, first in the right-hand cluster. The header is
+                the only chrome that is always there — the tab bar, where this
+                used to live, is hidden in some layouts, and a live microphone
+                with no indicator is a privacy problem rather than a UX one. */}
+            <CallPill />
             <FavoriteSpellsDropdown />
             <UserMenu />
           </div>

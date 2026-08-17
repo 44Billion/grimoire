@@ -8,9 +8,13 @@
  * not looking at, and a live microphone with no indicator is a privacy problem
  * rather than a UX one.
  *
- * So this lives in the tab bar, which is the only chrome every workspace shares.
- * It shows nothing at all when there is no call, and when there is one it offers
- * the two things worth reaching without navigating: the mute, and the way out.
+ * So this lives in the app header, beside the wand — the one piece of chrome
+ * that is always on screen. The tab bar it started in is hidden in some
+ * layouts, and an indicator that depends on which chrome is showing is no
+ * indicator at all.
+ *
+ * It shows nothing when there is no call, and when there is one it offers the
+ * two things worth reaching without navigating: the mute, and the way out.
  * Clicking the name goes to the call — switching workspaces if the window is on
  * another one.
  */

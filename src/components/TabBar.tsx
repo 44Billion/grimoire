@@ -3,7 +3,6 @@ import { Button } from "./ui/button";
 import { useGrimoire } from "@/core/state";
 import { cn } from "@/lib/utils";
 import { LayoutControls } from "./LayoutControls";
-import { CallPill } from "./call/CallPill";
 import { useEffect, useState } from "react";
 import { Reorder, useDragControls } from "framer-motion";
 import { Workspace } from "@/types/app";
@@ -249,11 +248,11 @@ export function TabBar() {
         {/* Spacer to push right side controls to the end */}
         <div className="flex-1" />
 
-        {/* Right side: the running call, then the layout controls. The call
-            sits here because this bar is the only chrome every workspace
-            shares — a call you cannot see is one you forget you are in. */}
+        {/* Right side: the layout controls. The running call used to sit here
+            too, and moved to the header — this bar is hidden in some layouts,
+            and a live microphone with no indicator is the one thing that must
+            not depend on which chrome is showing. */}
         <div className="flex items-center gap-1 flex-shrink-0">
-          <CallPill />
           <LayoutControls />
         </div>
       </div>
