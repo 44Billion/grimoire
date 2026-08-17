@@ -29,13 +29,17 @@ export interface ConcordWindowUpdate {
  * name: a channel id from the community you just left resolves nowhere, and
  * carrying it into the next session only makes the fallback chain do the work
  * twice.
+ *
+ * `dmPeer` is dropped too, and for a sharper reason: a channel and a private
+ * conversation are one selection with two families, so a window carrying both
+ * would reload showing the DM while the sidebar highlighted a channel.
  */
 export function buildConcordWindowUpdate(
   existingProps: Record<string, unknown> | undefined,
   communityIdHex: string,
   channelIdHex?: string,
 ): ConcordWindowUpdate {
-  const { channelId: _stale, ...rest } = existingProps ?? {};
+  const { channelId: _stale, dmPeer: _staleDm, ...rest } = existingProps ?? {};
   return {
     props: {
       ...rest,
@@ -46,5 +50,27 @@ export function buildConcordWindowUpdate(
     // address — so the reconstructed command names the community only, and the
     // channel rides in the props beside it.
     commandString: `concord ${communityIdHex}`,
+  };
+}
+
+/**
+ * The props a Concord window should carry after opening a private conversation.
+ *
+ * The mirror image of {@link buildConcordWindowUpdate}: the DM replaces the
+ * channel rather than joining it, and `communityId` survives so closing the
+ * conversation returns to the community the reader was in.
+ */
+export function buildConcordDmUpdate(
+  existingProps: Record<string, unknown> | undefined,
+  peerHex: string,
+): ConcordWindowUpdate {
+  const { channelId: _stale, dmPeer: _staleDm, ...rest } = existingProps ?? {};
+  const communityId =
+    typeof rest.communityId === "string" ? rest.communityId : undefined;
+  return {
+    props: { ...rest, dmPeer: peerHex },
+    // Still the community's command: a DM has no place in `concord`'s argument
+    // grammar, and `chat npub…` is the address a reader would type for one.
+    commandString: communityId ? `concord ${communityId}` : "concord",
   };
 }

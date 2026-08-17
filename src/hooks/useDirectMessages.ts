@@ -92,10 +92,10 @@ export function useDirectMessages(
   }, [pubkey, refresh]);
 
   useEffect(() => {
-    if (!enabled || !pubkey) {
-      setLoaded(undefined);
-      return;
-    }
+    // No clearing on the way out: what was loaded is already keyed by viewer,
+    // and the render below discards a value belonging to another account. A
+    // setState here would only be a cascading render saying the same thing.
+    if (!enabled || !pubkey) return;
 
     let cancelled = false;
 

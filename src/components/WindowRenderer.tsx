@@ -232,6 +232,7 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
           <ConcordViewer
             communityId={window.props.communityId}
             channelId={window.props.channelId}
+            dmPeer={window.props.dmPeer}
             windowId={window.id}
           />
         );

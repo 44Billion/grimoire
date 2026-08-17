@@ -51,13 +51,20 @@ import { useConcordDissolved } from "@/hooks/useConcordDissolved";
 import { useConcordImage } from "@/hooks/useConcordImage";
 import type { ImagePointer } from "@/lib/concord/types";
 import { resolveOpenChannel } from "@/lib/concord/channels";
-import { buildConcordWindowUpdate } from "@/lib/concord/window-props";
+import {
+  buildConcordDmUpdate,
+  buildConcordWindowUpdate,
+} from "@/lib/concord/window-props";
 import { useConcordInvites } from "@/hooks/useConcordInvites";
 import { useConcordPins } from "@/hooks/useConcordPins";
 import {
   useChannelVoice,
   useCommunityVoiceCounts,
 } from "@/hooks/useConcordVoice";
+import { DirectMessageList } from "./dm/DirectMessageList";
+import { DmConsentGate } from "./dm/DmConsentGate";
+import { useDirectMessages } from "@/hooks/useDirectMessages";
+import type { DMIdentifier } from "@/types/chat";
 import { useConcordPrefs } from "@/hooks/useConcordPrefs";
 import { useAccount } from "@/hooks/useAccount";
 import { useAtomValue } from "jotai";
@@ -82,6 +89,8 @@ interface ConcordViewerProps {
   communityId?: string;
   /** Channel to open on mount, if the caller already knows one. */
   channelId?: string;
+  /** A private conversation to open instead of a channel, by peer pubkey. */
+  dmPeer?: string;
   /** The window these props belong to, when there is one to write back to. */
   windowId?: string;
 }
@@ -96,6 +105,7 @@ interface ConcordViewerProps {
 export function ConcordViewer({
   communityId,
   channelId,
+  dmPeer,
   windowId,
 }: ConcordViewerProps) {
   const isMobile = useIsMobile();
@@ -107,6 +117,15 @@ export function ConcordViewer({
   const [selectedChannel, setSelectedChannel] = useState<string | undefined>(
     channelId,
   );
+  /**
+   * The open private conversation, by peer pubkey.
+   *
+   * One selection with two families: a DM and a channel cannot both be open,
+   * so each setter clears the other. Keeping them independent would leave the
+   * sidebar highlighting a channel while the pane showed a conversation.
+   */
+  const [selectedDm, setSelectedDm] = useState<string | undefined>(dmPeer);
+  const [composing, setComposing] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   /** Desktop only: the channel column is collapsible, the sheet is not. */
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
@@ -481,6 +500,7 @@ export function ConcordViewer({
 
   const handleChannelSelect = useCallback(
     (idHex: string) => {
+      setSelectedDm(undefined);
       setSelectedChannel(idHex);
       rememberNavigation(communityIdHex, idHex);
       setShowGuestbook(false);
@@ -495,6 +515,32 @@ export function ConcordViewer({
       if (isMobile) setSidebarOpen(false);
     },
     [isMobile, communityIdHex, rememberNavigation, closeInvites],
+  );
+
+  const dms = useDirectMessages();
+
+  const handleDmSelect = useCallback(
+    (peer: string) => {
+      setSelectedDm(peer);
+      setShowGuestbook(false);
+      setQuery("");
+      setJumpTo(undefined);
+      if (windowId) {
+        const existing = grimoire.windows[windowId]?.props;
+        if (existing)
+          updateWindow(windowId, buildConcordDmUpdate(existing, peer));
+      }
+      if (isMobile) setSidebarOpen(false);
+    },
+    [grimoire.windows, isMobile, updateWindow, windowId],
+  );
+
+  const dmIdentifier: DMIdentifier | undefined = useMemo(
+    () =>
+      selectedDm ? { type: "chat-partner", value: selectedDm } : undefined,
+    // Memoized BY VALUE: ChatViewer keys its conversation resolution on this
+    // object, and a fresh one per render makes it re-resolve and blank.
+    [selectedDm],
   );
 
   const { feed: guestbook, loading: guestbookLoading } = useConcordGuestbook(
@@ -592,39 +638,86 @@ export function ConcordViewer({
     [communityIdHex, openChannelIdHex],
   );
 
-  if (status === "loading") {
-    // Sized like the channel list's own "loading…", not like a headline: this
-    // is a wait of a few hundred milliseconds, and a large centred sentence
-    // announces it as an event.
-    return (
-      <div className="flex h-full items-center justify-center gap-1.5 text-xs text-muted-foreground">
+  /**
+   * What the communities half of the sidebar has to say — INSIDE the sidebar,
+   * not instead of the whole pane.
+   *
+   * Each of these used to be an early return, which meant an account with
+   * private messages and no Concord communities saw no sidebar at all and had
+   * no way to reach its own mail. A community list that is loading, undecryptable
+   * or empty is a fact about the communities, not about the window.
+   */
+  const communitiesSlot: ReactNode =
+    status === "loading" ? (
+      // Sized like the channel list's own "loading…", not like a headline: this
+      // is a wait of a few hundred milliseconds, and a large centred sentence
+      // announces it as an event.
+      <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground">
         <Loader2 className="size-3 animate-spin" />
         <span>Loading communities…</span>
       </div>
-    );
-  }
-
-  if (status === "no-decryptor") {
-    return (
-      <Empty>
+    ) : status === "no-decryptor" ? (
+      <p className="px-2 py-1 text-xs text-muted-foreground">
         Sign in with a signer that supports NIP-44 to read your Concord
         communities — the list is encrypted to yourself.
-      </Empty>
-    );
-  }
-
-  if (status === "decrypt-failed") {
-    return (
-      <Empty>
+      </p>
+    ) : status === "decrypt-failed" ? (
+      <p className="px-2 py-1 text-xs text-muted-foreground">
         Your community list would not decrypt, so nothing has been changed
         locally. Check that the signer holding your key is reachable.
-      </Empty>
+      </p>
+    ) : communities.length === 0 ? (
+      <NoCommunitiesEmpty onRefresh={refreshList} />
+    ) : (
+      <CommunityPicker
+        communities={communities.map((c) => ({
+          idHex: c.idHex,
+          name: c.name,
+          ...(icons.get(c.idHex) ? { icon: icons.get(c.idHex) } : {}),
+          ...(totals.get(c.idHex) ? { unread: totals.get(c.idHex) } : {}),
+        }))}
+        selected={selectedDm ? undefined : community?.idHex}
+        // The channels stay listed — only the ACTIVE marks go, because while
+        // the invites pane or a conversation is open, neither a channel nor a
+        // community is what the window is showing.
+        highlight={!showInvites && !selectedDm}
+        openness={openness}
+        opennessDetail={opennessDetail}
+        onSelect={(idHex) => {
+          setSelectedDm(undefined);
+          setDmSectionOpen(false);
+          setSelectedId(idHex);
+          // Come back to where you left this community, not to its first
+          // channel. Undefined is fine — the derived fallback covers it.
+          const remembered = lastChannel(idHex);
+          setSelectedChannel(remembered);
+          rememberNavigation(idHex, remembered);
+          setShowGuestbook(false);
+          setShowInvites(false);
+          setJumpTo(undefined);
+        }}
+      >
+        <>
+          <ChannelList
+            channels={channels}
+            communityId={community?.idHex}
+            selected={
+              showGuestbook || showInvites || selectedDm
+                ? undefined
+                : openChannel?.idHex
+            }
+            loading={loading}
+            error={error}
+            unread={unread}
+            inCall={inCall}
+            onSelect={handleChannelSelect}
+          />
+          {/* The guestbook entry is hidden for now: it sat between the channels
+              and nothing else, reading as a channel that is not one. The panel
+              and its state stay wired, so restoring the entry is one element. */}
+        </>
+      </CommunityPicker>
     );
-  }
-
-  if (communities.length === 0) {
-    return <NoCommunitiesEmpty onRefresh={refreshList} />;
-  }
 
   const sidebar = (
     <div className="flex h-full flex-col">
@@ -690,50 +783,85 @@ export function ConcordViewer({
         active={showInvites}
         onClick={toggleInvites}
       />
-      <CommunityPicker
-        communities={communities.map((c) => ({
-          idHex: c.idHex,
-          name: c.name,
-          ...(icons.get(c.idHex) ? { icon: icons.get(c.idHex) } : {}),
-          ...(totals.get(c.idHex) ? { unread: totals.get(c.idHex) } : {}),
-        }))}
-        selected={community?.idHex}
-        // The channels stay listed — only the ACTIVE marks go, because while
-        // the invites pane is open neither a channel nor a community is what
-        // the window is showing.
-        highlight={!showInvites}
-        openness={openness}
-        opennessDetail={opennessDetail}
-        onSelect={(idHex) => {
-          setSelectedId(idHex);
-          // Come back to where you left this community, not to its first
-          // channel. Undefined is fine — the derived fallback covers it.
-          const remembered = lastChannel(idHex);
-          setSelectedChannel(remembered);
-          rememberNavigation(idHex, remembered);
-          setShowGuestbook(false);
-          setShowInvites(false);
-          setJumpTo(undefined);
-        }}
-      >
-        <>
-          <ChannelList
-            channels={channels}
-            communityId={community?.idHex}
-            selected={
-              showGuestbook || showInvites ? undefined : openChannel?.idHex
-            }
-            loading={loading}
-            error={error}
-            unread={unread}
-            inCall={inCall}
-            onSelect={handleChannelSelect}
-          />
-          {/* The guestbook entry is hidden for now: it sat between the channels
-              and nothing else, reading as a channel that is not one. The panel
-              and its state stay wired, so restoring the entry is one element. */}
-        </>
-      </CommunityPicker>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        {/* Direct messages is a row like a community is a row: click it to
+            select it, and its conversations nest underneath the way a
+            community's channels do. Above the communities because mail is the
+            thing people check first, and because it is the one row every
+            account has whether or not it has joined anything. */}
+        <div className="flex shrink-0 flex-col">
+          <button
+            type="button"
+            onClick={openDirectMessages}
+            className={cn(
+              "flex w-full cursor-crosshair items-center gap-1.5 px-2 py-1 text-left text-sm hover:bg-muted/50",
+              dmSectionOpen && "bg-muted/70 font-medium",
+              dmUnreadCount > 0 && "font-semibold text-foreground",
+            )}
+          >
+            <Mail className="size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">Direct messages</span>
+            <span className="ml-auto flex shrink-0 items-center gap-1">
+              {dmUnreadCount > 0 && (
+                <span className="rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">
+                  {dmUnreadCount}
+                </span>
+              )}
+              {/* Icon only, and in the heading: the walk finishes on its own
+                  and re-runs when the relay set changes, so this is for the
+                  cases that mechanism cannot see — a relay that was down, a
+                  signer that was refusing. A labelled row in the list would
+                  give a rare escape hatch the weight of a conversation. */}
+              {dms.status === "ready" && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  title="Check for older messages"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void dms.rescan();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    void dms.rescan();
+                  }}
+                  className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <RefreshCw
+                    className={cn(
+                      "size-3",
+                      dms.backfill && "animate-spin",
+                    )}
+                  />
+                  <span className="sr-only">Check for older messages</span>
+                </span>
+              )}
+            </span>
+          </button>
+          {dmSectionOpen && (
+            <div className="pl-2">
+              {dms.status === "ready" ? (
+                <DirectMessageList
+                  conversations={dms.conversations}
+                  onSelect={handleDmSelect}
+                  onCompose={() => setComposing(true)}
+                  {...(selectedDm ? { selected: selectedDm } : {})}
+                  {...(dms.backfill ? { backfill: dms.backfill } : {})}
+                />
+              ) : (
+                <DmConsentGate
+                  status={dms.status}
+                  onGrant={dms.grantConsent}
+                  compact
+                />
+              )}
+            </div>
+          )}
+        </div>
+        {communitiesSlot}
+      </div>
     </div>
   );
 
@@ -763,6 +891,11 @@ export function ConcordViewer({
 
   return (
     <div className="flex h-full">
+      <NewDirectMessage
+        open={composing}
+        onOpenChange={setComposing}
+        onResolved={handleDmSelect}
+      />
       {isMobile ? (
         <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
           {/* `pt-10` clears the sheet's own close button, which otherwise sits
@@ -785,7 +918,16 @@ export function ConcordViewer({
             everything written before the rotation. */}
         {stranded && <StrandedBanner />}
         <div className="min-h-0 flex-1">
-          {showInvites ? (
+          {dmIdentifier ? (
+            // Before every Concord branch, because a DM is a whole different
+            // conversation family and the panes below all belong to the
+            // community the reader has stepped away from.
+            <ChatViewer
+              protocol="nip-17"
+              identifier={dmIdentifier as ProtocolIdentifier}
+              headerPrefix={headerPrefix}
+            />
+          ) : showInvites ? (
             <ConcordInvitesPanel
               invites={allInvites}
               loading={invitesLoading}

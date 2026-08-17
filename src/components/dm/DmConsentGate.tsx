@@ -12,7 +12,9 @@
  * same annoyance wearing a different hat.
  *
  * Rendered by both the DM pane in ChatViewer and the Concord sidebar, which is
- * why it is a component and not an inline branch in either.
+ * why it is a component and not an inline branch in either. `compact` is the
+ * sidebar's shape: the same words, left-aligned, sized for a column rather
+ * than for a pane.
  */
 
 import { useState } from "react";
@@ -23,15 +25,19 @@ import type { DirectMessagesStatus } from "@/hooks/useDirectMessages";
 export function DmConsentGate({
   status,
   onGrant,
+  compact,
 }: {
   status: DirectMessagesStatus;
   onGrant: () => Promise<void>;
+  compact?: boolean;
 }) {
   const [working, setWorking] = useState(false);
 
+  if (status === "loading") return null;
+
   if (status === "readonly")
     return (
-      <Shell>
+      <Shell compact={compact}>
         Sign in with a signer to read private messages — they are encrypted to
         your key, and a read-only account holds none.
       </Shell>
@@ -39,7 +45,7 @@ export function DmConsentGate({
 
   if (status === "no-nip44")
     return (
-      <Shell>
+      <Shell compact={compact}>
         This signer cannot do NIP-44, so private messages are unreadable to it.
         Sign in with one that can.
       </Shell>
@@ -48,9 +54,9 @@ export function DmConsentGate({
   if (status !== "needs-consent") return null;
 
   return (
-    <Shell>
-      <Lock className="mx-auto mb-2 size-4" />
-      <p className="mb-3">
+    <Shell compact={compact}>
+      <Lock className={compact ? "mb-1 size-3" : "mx-auto mb-2 size-4"} />
+      <p className={compact ? "mb-2" : "mb-3"}>
         Your private messages are stored encrypted, one envelope each. Opening
         them asks your signer to decrypt every one — after that they are kept
         locally and never decrypted again.
@@ -70,7 +76,17 @@ export function DmConsentGate({
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({
+  compact,
+  children,
+}: {
+  compact?: boolean;
+  children: React.ReactNode;
+}) {
+  if (compact)
+    return (
+      <div className="px-2 py-1 text-xs text-muted-foreground">{children}</div>
+    );
   return (
     <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
       <div className="max-w-sm">{children}</div>

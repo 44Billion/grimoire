@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildConcordWindowUpdate } from "./window-props";
+import { buildConcordDmUpdate, buildConcordWindowUpdate } from "./window-props";
 
 const COMMUNITY = "a".repeat(64);
+const PEER = "e".repeat(64);
 const CHANNEL = "c".repeat(64);
 
 describe("buildConcordWindowUpdate", () => {
@@ -54,5 +55,38 @@ describe("buildConcordWindowUpdate", () => {
     expect(buildConcordWindowUpdate(undefined, COMMUNITY).props).toEqual({
       communityId: COMMUNITY,
     });
+  });
+
+  it("drops an open private conversation, since a DM replaces a channel", () => {
+    // One selection, two families. A window carrying both reloads showing the
+    // conversation while the sidebar highlights a channel.
+    const update = buildConcordWindowUpdate(
+      { communityId: COMMUNITY, dmPeer: PEER },
+      COMMUNITY,
+      CHANNEL,
+    );
+    expect("dmPeer" in update.props).toBe(false);
+  });
+});
+
+describe("buildConcordDmUpdate", () => {
+  it("replaces the channel rather than joining it", () => {
+    const update = buildConcordDmUpdate(
+      { communityId: COMMUNITY, channelId: CHANNEL },
+      PEER,
+    );
+    expect(update.props).toEqual({ communityId: COMMUNITY, dmPeer: PEER });
+  });
+
+  it("keeps the community, so closing the DM comes back to it", () => {
+    expect(
+      buildConcordDmUpdate({ communityId: COMMUNITY }, PEER).commandString,
+    ).toBe(`concord ${COMMUNITY}`);
+  });
+
+  it("survives a window that never resolved a community", () => {
+    const update = buildConcordDmUpdate(undefined, PEER);
+    expect(update.props).toEqual({ dmPeer: PEER });
+    expect(update.commandString).toBe("concord");
   });
 });
