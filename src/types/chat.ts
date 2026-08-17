@@ -127,6 +127,15 @@ export interface Conversation {
  */
 export interface MessageMetadata {
   encrypted?: boolean;
+  /**
+   * Encrypted, but not private about WHO or WHEN.
+   *
+   * A NIP-04 direct message hides its content and nothing else: the author,
+   * the recipient and the timing are plain on a public event that any relay
+   * carried. Rendering one under the same chrome as a gift-wrapped message
+   * would claim a guarantee it does not have, so the row says so.
+   */
+  legacy?: boolean;
   reactions?: NostrEvent[];
   zaps?: NostrEvent[];
   deleted?: boolean;

@@ -394,7 +394,10 @@ export interface ChatDraftRow {
  * addressed to it.
  */
 export interface DmRumorRow {
-  /** The rumor id. Recomputed at ingest, never taken on trust. */
+  /**
+   * The rumor id, recomputed at ingest and never taken on trust — or, for a
+   * legacy kind-4, the signed event's own id, which its signature vouches for.
+   */
   id: string;
   /** The account that decrypted it. In every index, in every query. */
   viewer: string;
@@ -406,6 +409,18 @@ export interface DmRumorRow {
   tags: string[][];
   /** NIP-40 deadline in seconds, when the rumor carries one. Swept, not shown. */
   expiration?: number;
+  /**
+   * A legacy NIP-04 message, decrypted from a PUBLIC kind-4 event.
+   *
+   * The row looks like any other, and that is the point — a kind-4 exchange
+   * with someone is the same human conversation as the NIP-17 one, so it
+   * belongs in the same thread. But the event it came from is public: its
+   * author, its recipient and its timing were visible to every relay that
+   * carried it, and its id addresses something anyone can fetch. Nothing may
+   * quietly render it under gift-wrap chrome, and nothing may treat its id the
+   * way it treats a rumor's.
+   */
+  legacy?: true;
 }
 
 /**

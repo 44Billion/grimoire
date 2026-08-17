@@ -27,8 +27,22 @@ import {
 } from "@/services/dm-inbox";
 import { dmUnreadSummary, listDmConversations } from "@/services/dm-store";
 import { readDmLastRead } from "@/services/dm-reads";
-import { ownDmReadRelays } from "@/lib/dm/relays";
+import { followedPubkeys, ownDmReadRelays } from "@/lib/dm/relays";
+import {
+  hasImportedLegacyDms,
+  importLegacyDms,
+  resetLegacyImport,
+} from "@/services/dm-legacy-inbox";
 import type { DmConversationRow } from "@/services/db";
+
+/**
+ * How often an open list tops itself up.
+ *
+ * A backstop behind the live subscription, so it is measured in minutes rather
+ * than seconds: the cost is one REQ per relay, and anything faster is paying
+ * for a socket that is almost always working.
+ */
+const LIST_REFRESH_MS = 120_000;
 
 export type DirectMessagesStatus =
   /** Still working out which of the below applies. */
@@ -108,7 +122,11 @@ export function useDirectMessages(
 
   const rescan = useCallback(async () => {
     if (!pubkey) return;
+    // Both planes: the reader pressing this is asking for everything, and a
+    // rescan that quietly skipped the legacy half would be the same
+    // half-answer that made them press it.
     await resetHistoryWalk(pubkey);
+    await resetLegacyImport(pubkey);
     refresh();
   }, [pubkey, refresh]);
 
@@ -226,6 +244,36 @@ export function useDirectMessages(
             },
           });
         }
+        if (cancelled) return;
+
+        // Then the legacy plane, once. NIP-17 is young — most clients shipped
+        // it in 2026 — so for anyone with history, the kind-4 messages ARE the
+        // conversation list. They land in the same conversations, because a
+        // kind-4 exchange with someone is the same conversation as the
+        // gift-wrapped one.
+        //
+        // Skipped entirely without a follow list: the received direction is
+        // scoped to follows, so importing with none would fetch your own half
+        // of every conversation and nobody's replies — a stranger half-view is
+        // worse than waiting for the list to load.
+        if (signer.nip04 && !(await hasImportedLegacyDms(pubkey))) {
+          const follows = await followedPubkeys(pubkey);
+          if (follows.length > 0)
+            await importLegacyDms(pubkey, signer, {
+              follows,
+              relays,
+              signal: abort.signal,
+              onProgress: (progress) => {
+                if (!cancelled)
+                  setBackfill({
+                    pages: 0,
+                    fetched: progress.fetched,
+                    written: progress.written,
+                    exhausted: progress.exhausted,
+                  });
+              },
+            });
+        }
       } catch (error) {
         console.warn("[dm] could not sync the inbox:", error);
       }
@@ -247,6 +295,36 @@ export function useDirectMessages(
     () => (enabled ? onDmScope(DM_LIST_SCOPE, refresh) : undefined),
     [enabled, refresh],
   );
+
+  /**
+   * Heal a stale list: on a timer, on focus, and on reconnect.
+   *
+   * The standing subscription is the primary path and this is the backstop,
+   * because a WebSocket that a backgrounded tab or a sleeping laptop wedged
+   * does not announce itself — it just silently stops delivering, and the only
+   * symptom is a conversation list that stopped growing. Armada learned the
+   * same thing and lands on the same three triggers.
+   *
+   * `refresh` re-runs the effect above, which re-reads the store and tops up
+   * two pages. Cheap: every wrap it sees again is already in the seen memo, so
+   * the cost is a REQ, not a decryption.
+   */
+  useEffect(() => {
+    if (!enabled || !pubkey) return;
+
+    const timer = setInterval(refresh, LIST_REFRESH_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", refresh);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", refresh);
+    };
+  }, [enabled, pubkey, refresh]);
 
   // Keyed by viewer rather than reset in an effect: a stale account's
   // correspondents must never render under a new one, not even for a frame.

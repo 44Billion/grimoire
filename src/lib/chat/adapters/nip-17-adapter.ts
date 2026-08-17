@@ -141,8 +141,11 @@ function toMessage(
     metadata: {
       encrypted: true,
       // ALWAYS present, even when empty — see the module docstring. Absent is
-      // what makes MessageReactions REQ a private rumor id.
+      // what makes MessageReactions REQ a private rumor id. True for a legacy
+      // row too: its id IS public, but announcing to a relay that you are
+      // reading that particular DM is still a disclosure nobody asked for.
       reactions: reactions.map(toEvent),
+      ...(row.legacy ? { legacy: true } : {}),
     },
   };
 }

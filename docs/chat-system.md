@@ -58,7 +58,64 @@ Four things here are load-bearing, and each of them was a bug first:
    of it happens.
 
 A conversation with yourself is "Saved messages": pinned above the list, never
-unread, and named for what people use it as.
+unread, and named for what people use it as. It exists whether or not it holds
+anything — a notepad you can only reach after writing in it is one nobody finds.
+
+### Legacy NIP-04
+
+`dm-legacy-inbox.ts` imports kind-4 history into the SAME `dmRumors` table and
+the same conversations, because a kind-4 exchange with someone is the same
+human conversation as the gift-wrapped one. NIP-17 is young; for anyone with
+history, the legacy messages ARE the conversation list.
+
+Four things differ from the gift-wrap path, each for its own reason:
+
+1. **The signature is the vetting, not the id.** A kind-4 id was hashed over
+   the ciphertext, so it cannot be recomputed from a row holding plaintext.
+   `toLegacyDmRow` verifies the signature instead — strictly stronger, since a
+   kind 4 is signed and a rumor is not. It rebuilds the event from its fields
+   first: `verifyEvent` memoizes its verdict on a symbol, and a spread copy
+   carries that symbol, so `{...event, content: forged}` verifies as true.
+2. **Two filters.** `{authors:[self]}` for what you sent and `{"#p":[self]}`
+   for what you received. A gift-wrap inbox needs only the second, because the
+   self-copy is p-tagged to you.
+3. **Received is scoped to follows.** The kind-4 era has no gift wrap deciding
+   who may write to you, so unscoped this imports the entire spam era — and
+   each one costs a signer round trip to discover. The cost is real and stated:
+   a legacy message from someone you do not follow is not imported.
+4. **The row is marked `legacy`.** A kind 4 hid its contents and nothing else;
+   its author, recipient and timing were plain on a public event. The row says
+   so rather than rendering under gift-wrap chrome. `messageIdsArePrivate`
+   stays `true` for the whole adapter — on a mixed timeline the conservative
+   value is the correct one, and the cost is only that Copy ID stays suppressed
+   for ids that happen to be public.
+
+Read-only, deliberately. Sending kind 4 means porting a downgrade-consent flow,
+and it opens the one real leak: a public event quoting a private rumor id would
+put that id on relays permanently.
+
+### Coverage
+
+Everything in this section exists because a message that was fetched and then
+silently dropped is indistinguishable, to the reader, from one nobody sent.
+
+- **A relay that did not answer is not a relay with no mail.** `readWrapsPerRelay`
+  reports whether each relay ANSWERED. A page nobody answered pauses the walk;
+  only an empty answer from a live relay ends it. Conflating the two let a cold
+  start — every relay still waiting on the signer — latch `exhausted` forever.
+- **The paging bound is the MAX of the per-relay tails**, not the min over the
+  merged union. One relay holding a single ancient message would otherwise drag
+  `until` past everything a busy relay had in between.
+- **The relay-set signature is written when the walk starts**, so a walk
+  interrupted before it finishes resumes instead of restarting from the newest
+  page.
+- **Write, then mark seen** — in that order, per wave. The reverse leaves wraps
+  recorded as opened with no row behind them, and the seen memo never hands
+  those back.
+- **Reading is wider than sending.** A send goes to exactly what the recipient
+  nominated; a read of your own inbox unions the 10050, BOTH sides of the
+  NIP-65 list, and the configured read relays, because a wrap delivered to the
+  wrong relay is still yours and asking costs one REQ.
 
 ## Key components
 

@@ -10,7 +10,8 @@
  * **This module is the only door.** Every acceptance rule lives here so there
  * is one place to read them and one place they can be wrong:
  *
- * - kinds 14 (message), 15 (file), 7 (reaction) and 5 (delete) only;
+ * - kinds 14 (message), 15 (file), 7 (reaction), 5 (delete) and 4 (legacy)
+ *   only;
  * - the rumor id is recomputed and a lying one refused;
  * - a rumor whose author is not a participant is refused, which is NIP-59's
  *   own anti-spoof rule pushed to the last possible moment;
@@ -22,13 +23,16 @@
  */
 
 import Dexie from "dexie";
-import { getEventHash } from "nostr-tools";
+import { getEventHash, verifyEvent } from "nostr-tools";
+import type { NostrEvent } from "nostr-tools";
 import { createConversationIdentifier } from "applesauce-common/helpers/messages";
 import type { Rumor } from "applesauce-common/helpers/gift-wrap";
 import db, { type DmRumorRow } from "./db";
 
+/** A legacy NIP-04 direct message. Public event, private-ish content. */
+export const DM_LEGACY_KIND = 4;
 /** Kinds that occupy a row in a DM timeline. */
-export const DM_ROW_KINDS = [14, 15];
+export const DM_ROW_KINDS = [14, 15, DM_LEGACY_KIND];
 /** A moderator-less self-delete (NIP-09). */
 export const DM_DELETE_KIND = 5;
 /** A reaction (NIP-25), wrapped like everything else so it stays private. */
@@ -95,8 +99,15 @@ export function toDmRow(
   if (!ACCEPTED_KINDS.has(rumor.kind))
     return { rejected: `kind ${rumor.kind} is not a direct message` };
 
+  // A legacy kind-4 arrives decrypted, so its id cannot be re-derived from
+  // what it now holds — the id was hashed over the CIPHERTEXT. Its signature
+  // is checked instead, by `toLegacyDmRow`, which is a strictly stronger
+  // guarantee than the hash recompute below: kind 4 is signed, a rumor is not.
+  const legacy = rumor.kind === DM_LEGACY_KIND;
+
   const computedId = getEventHash(rumor);
-  if (rumor.id !== computedId) return { rejected: "rumor id does not match" };
+  if (!legacy && rumor.id !== computedId)
+    return { rejected: "rumor id does not match" };
 
   if (rumor.created_at > nowSecs() + DM_MAX_FUTURE_SECS)
     return { rejected: "rumor is dated too far in the future" };
@@ -121,7 +132,7 @@ export function toDmRow(
     return { rejected: "rumor has expired" };
 
   return {
-    id: computedId,
+    id: legacy ? rumor.id : computedId,
     viewer,
     conversationId: createConversationIdentifier(participants),
     kind: rumor.kind,
@@ -130,7 +141,52 @@ export function toDmRow(
     content: rumor.content,
     tags: rumor.tags,
     ...(expiration !== undefined ? { expiration } : {}),
+    ...(legacy ? { legacy: true as const } : {}),
   };
+}
+
+/**
+ * Vet a legacy kind-4 and shape it into a row.
+ *
+ * Takes the SIGNED event and the plaintext separately, because the two vetting
+ * questions are about different things: the signature is checked against the
+ * event as it came off the wire, and only then is the plaintext believed. Doing
+ * it the other way round would verify a document we had already rewritten.
+ *
+ * A kind-4 that fails here is not a transient problem — a bad signature stays
+ * bad — so the caller may write it off permanently.
+ */
+export function toLegacyDmRow(
+  viewer: string,
+  event: NostrEvent,
+  plaintext: string,
+): DmRumorRow | { rejected: string } {
+  if (event.kind !== DM_LEGACY_KIND)
+    return { rejected: `kind ${event.kind} is not a legacy direct message` };
+
+  // The whole basis for trusting this row. A rumor has no signature and is
+  // vouched for by the seal around it; a kind 4 has nothing around it.
+  //
+  // Rebuilt from the fields rather than handed the object, because
+  // `verifyEvent` MEMOIZES its verdict on a symbol — and a spread copy carries
+  // that symbol with it. So `{...event, content: forged}` verifies as true,
+  // and a forgery walks into the conversation it names. Reconstructing drops
+  // the symbol along with everything else that is not an event field.
+  const signed: NostrEvent = {
+    id: event.id,
+    pubkey: event.pubkey,
+    created_at: event.created_at,
+    kind: event.kind,
+    tags: event.tags,
+    content: event.content,
+    sig: event.sig,
+  };
+  if (!verifyEvent(signed)) return { rejected: "signature does not verify" };
+
+  return toDmRow(viewer, {
+    ...signed,
+    content: plaintext,
+  } as unknown as Rumor);
 }
 
 export interface WriteResult {
@@ -173,6 +229,22 @@ export async function writeDmRumors(
     );
   if (rows.length === 0) return { written: [], touched: [] };
 
+  const touched = await writeDmRows(viewer, rows, participantsById);
+  return { written: rows, touched };
+}
+
+/**
+ * Put vetted rows and refresh the summaries they belong to.
+ *
+ * The one place `dmConversations` is written, so the gift-wrap path and the
+ * legacy path cannot drift on what a conversation's `lastAt` means.
+ */
+export async function writeDmRows(
+  viewer: string,
+  rows: DmRumorRow[],
+  participantsById?: Map<string, string[]>,
+): Promise<string[]> {
+  if (rows.length === 0) return [];
   const touched = new Set(rows.map((r) => r.conversationId));
 
   await db.transaction("rw", db.dmRumors, db.dmConversations, async () => {
@@ -197,16 +269,28 @@ export async function writeDmRumors(
       // so it must not put an empty row in the sidebar while it waits.
       if (!newest) continue;
 
+      // From the participants the caller vouched for, or — for a legacy row,
+      // where there is no rumor to read them off — from the conversation id,
+      // which IS the sorted participant list.
+      const participants =
+        participantsById?.get(conversationId) ??
+        conversationId.split(":").filter(Boolean);
+
       await db.dmConversations.put({
         viewer,
         conversationId,
-        participants: participantsById.get(conversationId) ?? [],
+        participants,
         lastAt: newest.created_at,
       });
     }
   });
 
-  return { written: rows, touched: [...touched] };
+  return [...touched];
+}
+
+/** One row, for callers that vet and write one at a time. */
+export async function writeDmRow(row: DmRumorRow): Promise<string[]> {
+  return writeDmRows(row.viewer, [row]);
 }
 
 /** Conversations this account has, newest first. */
