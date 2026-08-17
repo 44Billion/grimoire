@@ -92,6 +92,7 @@ function folded(over: Partial<FoldedControl> = {}): FoldedControl {
     banned: new Set(),
     bannedAt: new Map(),
     pins: new Map(),
+    inviteLinks: new Map(),
     heads: new Map(),
     incomplete: [],
     ...over,

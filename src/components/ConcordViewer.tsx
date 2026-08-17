@@ -181,6 +181,27 @@ export function ConcordViewer({
   // channel this device was last left on in this community.
   const openChannel = resolveOpenChannel(channels, selectedChannel, remembered);
 
+  /**
+   * Public or private, as the protocol defines it (CORD-05 §5): the aggregate
+   * of every creator's invite Registry. A live link means anyone holding it can
+   * join; an empty set means membership only moves by direct handoff.
+   *
+   * Absent until the fold lands — an unread community is not a private one.
+   */
+  const openness = state?.folded
+    ? state.folded.inviteLinks.size > 0
+      ? "public"
+      : "private"
+    : undefined;
+  const linkCount = state?.folded
+    ? [...state.folded.inviteLinks.values()].reduce(
+        (n, links) => n + links.length,
+        0,
+      )
+    : 0;
+  const opennessDetail =
+    linkCount === 1 ? "one live link" : `${linkCount} live links`;
+
   // The open channel's pins, verified here rather than trusted: §7's proof
   // bundle is what lets a member with none of the history read them.
   const { pins, unavailable: pinsUnavailable } = useConcordPins(
@@ -386,6 +407,18 @@ export function ConcordViewer({
             title="This community was dissolved by its owner. History stays readable; nothing new is accepted."
           >
             dissolved
+          </span>
+        )}
+        {openness && (
+          <span
+            className="mr-auto ml-2 shrink-0 rounded border border-dotted px-1 text-[10px] text-muted-foreground"
+            title={
+              openness === "public"
+                ? `Anyone holding a live invite link can join: ${opennessDetail}. Retiring the last one turns the community private again.`
+                : "No live invite link exists, so nobody can join without a member handing them the keys directly."
+            }
+          >
+            {openness}
           </span>
         )}
         <Button

@@ -7,6 +7,7 @@ import {
   communityIdOf,
   grantLocator,
   hex32,
+  inviteLinksLocator,
   pinsLocator,
   random32,
 } from "./derive";
@@ -15,6 +16,7 @@ import {
   VSK_BANLIST,
   VSK_CHANNEL,
   VSK_GRANT,
+  VSK_INVITE_REGISTRY,
   VSK_METADATA,
   VSK_PINS,
   VSK_ROLE,
@@ -923,5 +925,67 @@ describe("pin lists (vsk 11)", () => {
       }),
     ]);
     expect(folded.pins.size).toBe(0);
+  });
+});
+
+describe("invite registries (vsk 8)", () => {
+  const linkSigner = bytesToHex(random32());
+  const ownerEid = inviteLinksLocator(CID, hex32(OWNER));
+
+  it("folds a creator's live links, and reads Public from them", () => {
+    const folded = fold([
+      edition({
+        vsk: VSK_INVITE_REGISTRY,
+        entityId: ownerEid,
+        content: [linkSigner],
+      }),
+    ]);
+    // Coordinates only — the Registry carries no tokens, URLs or secrets, so a
+    // member can see that a link exists without being able to use one.
+    expect(folded.inviteLinks.get(OWNER)).toEqual([linkSigner]);
+  });
+
+  it("reads Private when the last link is retired", () => {
+    const v1 = [linkSigner];
+    const h1 = hashOf(ownerEid, 1n, v1);
+    const folded = fold([
+      edition({ vsk: VSK_INVITE_REGISTRY, entityId: ownerEid, content: v1 }),
+      edition({
+        vsk: VSK_INVITE_REGISTRY,
+        entityId: ownerEid,
+        content: [],
+        version: 2n,
+        prevHash: h1,
+      }),
+    ]);
+    expect(folded.inviteLinks.size).toBe(0);
+  });
+
+  it("refuses links published into ANOTHER creator's coordinate", () => {
+    // The coordinate binds to its creator, so an edition whose eid is not the
+    // one the ACTOR derives is a forgery into someone else's list — which the
+    // fold would otherwise attribute to its owner.
+    const stranger = getPublicKey(generateSecretKey());
+    const folded = fold([
+      edition({
+        vsk: VSK_INVITE_REGISTRY,
+        entityId: inviteLinksLocator(CID, hex32(stranger)),
+        content: [linkSigner],
+      }),
+    ]);
+    expect(folded.inviteLinks.size).toBe(0);
+  });
+
+  it("drops an edition from someone without CREATE_INVITE", () => {
+    const stranger = getPublicKey(generateSecretKey());
+    const folded = fold([
+      edition({
+        vsk: VSK_INVITE_REGISTRY,
+        entityId: inviteLinksLocator(CID, hex32(stranger)),
+        content: [linkSigner],
+        author: stranger,
+      }),
+    ]);
+    expect(folded.inviteLinks.size).toBe(0);
   });
 });

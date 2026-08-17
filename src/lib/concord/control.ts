@@ -6,11 +6,10 @@
  * The edition BUILDERS, dissolution publishing and the Refounding's compaction
  * are absent — grimoire publishes nothing here.
  *
- * Two sections of armada's fold are absent, and their absence is safe rather
- * than merely untested: invite registries (vsk 8) and Community Signals
- * (vsk 12). Nothing in grimoire consumes either, and neither feeds the roster,
- * the channels, the metadata or the banlist. Signals in
- * particular ship in armada from an UNMERGED spec branch, and an unknown `vsk`
+ * One section of armada's fold is absent, and its absence is safe rather than
+ * merely untested: Community Signals (vsk 12). Nothing in grimoire consumes it,
+ * and it feeds neither the roster, the channels, the metadata nor the banlist.
+ * Signals ship in armada from an UNMERGED spec branch, and an unknown `vsk`
  * folding to nothing is the documented forward-compat contract — the visible
  * consequence is that a paused community will not appear paused here.
  *
@@ -30,6 +29,7 @@ import {
   grantLocator,
   hex32,
   hexToBytes,
+  inviteLinksLocator,
   pinsLocator,
 } from "@/lib/concord/derive";
 import {
@@ -42,6 +42,7 @@ import {
   VSK_BANLIST,
   VSK_CHANNEL,
   VSK_GRANT,
+  VSK_INVITE_REGISTRY,
   VSK_METADATA,
   VSK_PINS,
   VSK_ROLE,
@@ -154,6 +155,16 @@ export interface FoldedControl {
    * (`pins.ts`).
    */
   pins: Map<string, string>;
+  /**
+   * creator npub → the LIVE invite links they publish into the community
+   * (CORD-05 §5), each named by its link-signer pubkey.
+   *
+   * Coordinates only: the Registry deliberately carries no tokens, URLs or
+   * signing secrets, so members can see that links exist without being able to
+   * use one. The aggregate across creators is the community's Public/Private
+   * source of truth — non-empty means a live link exists.
+   */
+  inviteLinks: Map<string, string[]>;
   /** Per-entity head version + hash (key = eid hex). */
   heads: Map<string, EntityHead>;
   /**
@@ -968,6 +979,46 @@ function foldOnce(
     }
   }
 
+  // 7. Invite Registries (vsk 8), one per CREATOR, gated by CREATE_INVITE.
+  //
+  //    The coordinate binds to the creator, so the eid must be the one the
+  //    ACTOR's own npub derives — that is what stops a `CREATE_INVITE` holder
+  //    publishing links into somebody else's Registry, which the fold would
+  //    otherwise attribute to its owner.
+  const inviteLinks = new Map<string, string[]>();
+  for (const [eid, candidates] of candidatesOf(VSK_INVITE_REGISTRY)) {
+    const head = pickHead(candidates, heads, (p) => {
+      if (
+        !isAuthorized(roster, p.author, ownerHex, Permissions.CREATE_INVITE)
+      ) {
+        return false;
+      }
+      if (!citationOk(p)) return false;
+      let mine: string;
+      try {
+        mine = bytesToHex(inviteLinksLocator(communityId, hex32(p.author)));
+      } catch {
+        return false;
+      }
+      if (mine !== eid) return false;
+      try {
+        return Array.isArray(JSON.parse(p.content));
+      } catch {
+        return false;
+      }
+    });
+    if (!head) continue;
+    const signers = (JSON.parse(head.content) as unknown[]).filter(
+      (v): v is string => typeof v === "string" && /^[0-9a-f]{64}$/i.test(v),
+    );
+    if (signers.length > 0) {
+      inviteLinks.set(
+        head.author,
+        signers.map((s) => s.toLowerCase()),
+      );
+    }
+  }
+
   // Data-availability roll-up: gap-held entities, plus floored entities with
   // ZERO served editions this fold. A floored entity whose editions were served
   // but authority-rejected is NOT flagged — that's a deliberate drop (a stripped
@@ -986,6 +1037,7 @@ function foldOnce(
     metadata,
     channels,
     pins,
+    inviteLinks,
     banned,
     bannedAt,
     heads,

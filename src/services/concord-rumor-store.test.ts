@@ -327,6 +327,7 @@ describe("the materialized fold", () => {
     banned: new Set<string>(),
     bannedAt: new Map(),
     pins: new Map(),
+    inviteLinks: new Map(),
     heads: new Map(),
     incomplete: [] as string[],
   });
@@ -340,7 +341,7 @@ describe("the materialized fold", () => {
     // Dexie rehydrates behind an unchecked cast, so a snapshot from an older
     // build arrives TYPED as current and throws on first read. Rejecting costs
     // one re-fold from editions already on disk.
-    const { pins: _dropped, ...older } = emptyFold();
+    const { inviteLinks: _dropped, ...older } = emptyFold();
     await db.concordKv.put({
       key: `concordFold:${COMMUNITY}@0`,
       value: older,

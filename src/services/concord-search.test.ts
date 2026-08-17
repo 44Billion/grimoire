@@ -85,6 +85,7 @@ function folded(banned: string[] = []): FoldedControl {
     banned: new Set(banned),
     bannedAt: new Map(),
     pins: new Map(),
+    inviteLinks: new Map(),
     heads: new Map(),
     incomplete: [],
   };
