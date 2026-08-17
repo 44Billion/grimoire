@@ -17,6 +17,7 @@ import { KIND_MESSAGE } from "@/lib/concord/kinds";
 import { channelScope, emitWireScopes } from "@/lib/concord/wire-bus";
 import type { Channel, Community } from "@/lib/concord/types";
 import type { Conversation, Message } from "@/types/chat";
+import { voiceKeysOf } from "@/lib/concord/channels";
 
 const communityId = random32();
 const idHex = bytesToHex(communityId);
@@ -85,6 +86,7 @@ function channel(): Channel {
     isPrivate: false,
     streams: [{ epoch: 0n, group }],
     current: { epoch: 0n, group },
+    voice: voiceKeysOf(root, channelId, 0n),
   };
 }
 

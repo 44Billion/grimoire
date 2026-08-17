@@ -43,6 +43,12 @@ function channel(
       })),
     ],
     current,
+    // The spec never reads call coordinates; a stub keeps the fixture honest
+    // without paying for a derivation this test does not exercise.
+    voice: {
+      room: groupKey(`${currentSeed}-voice`),
+      mediaKey: new Uint8Array(32),
+    },
   };
 }
 

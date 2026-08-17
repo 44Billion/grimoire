@@ -2,8 +2,7 @@
  * The runtime channel view — the Control fold plus the keys the member holds.
  *
  * Ported from armada `bc19d1f` (`src/concord/lib/community.ts` `channelsView`,
- * `channelOrder.ts`, `channelCategory.ts`), minus every write path and minus
- * voice (CORD-07 is out of scope, so no channel derives call coordinates).
+ * `channelOrder.ts`, `channelCategory.ts`), minus every write path.
  *
  * Ordering and grouping are ARMADA CLIENT CONVENTIONS, not protocol: CORD-03
  * gives a Channel neither an ordering field nor any notion of grouping, so both
@@ -12,7 +11,14 @@
  * grimoire honours them so a community's sidebar looks the same in both clients.
  */
 
-import { bytesToHex, channelGroupKey, hex32 } from "@/lib/concord/derive";
+import {
+  bytesToHex,
+  channelGroupKey,
+  hex32,
+  voiceGroupKey,
+  voiceMediaKey,
+  type GroupKey,
+} from "@/lib/concord/derive";
 import type { FoldedControl } from "@/lib/concord/control";
 import {
   NAME_MAX_BYTES,
@@ -20,6 +26,7 @@ import {
   type Channel,
   type ChannelMetadata,
   type Community,
+  type VoiceKeys,
 } from "@/lib/concord/types";
 
 export const ARMADA_CHANNEL_ORDER_METADATA_KEY = "armada.order";
@@ -177,6 +184,31 @@ export function resolveOpenChannel<T extends { idHex: string }>(
 }
 
 /**
+ * A channel's CORD-07 call coordinates, derived on first read (§1).
+ *
+ * Lazy on purpose: a fold rebuilds every channel of every community, and each
+ * `voiceGroupKey` costs an HKDF plus a base-point multiplication (and an ECDH on
+ * first `convKey` read). Only an actual join needs either key — presence rides
+ * the channel's own stream address — so the sidebar pays nothing.
+ */
+export function voiceKeysOf(
+  secret: Uint8Array,
+  channelId: Uint8Array,
+  epoch: bigint,
+): VoiceKeys {
+  let room: GroupKey | undefined;
+  let mediaKey: Uint8Array | undefined;
+  return {
+    get room(): GroupKey {
+      return (room ??= voiceGroupKey(secret, channelId, epoch));
+    },
+    get mediaKey(): Uint8Array {
+      return (mediaKey ??= voiceMediaKey(secret, channelId, epoch));
+    },
+  };
+}
+
+/**
  * Assemble the channels the member can actually read, from the Control fold plus
  * the keys they hold:
  *
@@ -242,6 +274,11 @@ export function channelsView(
         // Writes go to the root stream; private-era streams stay readable.
         streams: [...rootStreams, ...channelStreams],
         current: rootStreams[0],
+        voice: voiceKeysOf(
+          community.heldRoots[0].key,
+          id,
+          community.heldRoots[0].epoch,
+        ),
       });
       continue;
     }
@@ -264,6 +301,7 @@ export function channelsView(
       // absent from the private view.
       streams: channelStreams,
       current: channelStreams[0],
+      voice: voiceKeysOf(held.key, id, held.epoch),
     });
   }
 
@@ -289,6 +327,7 @@ export function channelsView(
       isPrivate: true,
       streams: [stream, ...priorStreams],
       current: stream,
+      voice: voiceKeysOf(held.key, held.id, held.epoch),
     });
   }
 

@@ -36,6 +36,7 @@ import {
 } from "@/services/concord-rumor-store";
 
 import { searchConcordMessages } from "./concord-search";
+import { voiceKeysOf } from "@/lib/concord/channels";
 
 const communityId = random32();
 const idHex = bytesToHex(communityId);
@@ -56,6 +57,7 @@ function channel(id: Uint8Array, name: string, isPrivate = false): Channel {
     isPrivate,
     streams: [{ epoch: 0n, group }],
     current: { epoch: 0n, group },
+    voice: voiceKeysOf(root, id, 0n),
   };
 }
 

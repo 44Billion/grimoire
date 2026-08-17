@@ -38,6 +38,7 @@ import {
 import type { Channel, Community } from "@/lib/concord/types";
 import { startMockRelay, type MockRelay } from "@/test/mock-relay";
 import type { Conversation, Message } from "@/types/chat";
+import { voiceKeysOf } from "@/lib/concord/channels";
 
 // The adapter's backfill passes no pool, so plane reads go to Concord's own
 // singleton. Swapping it for a live pool is what puts the mock relay in the path.
@@ -84,6 +85,7 @@ function channel(): Channel {
     isPrivate: false,
     streams: [{ epoch: 0n, group }],
     current: { epoch: 0n, group },
+    voice: voiceKeysOf(root, channelId, 0n),
   };
 }
 

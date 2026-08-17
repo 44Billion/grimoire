@@ -27,6 +27,9 @@ import {
   pinsLocator,
   recipientLocator,
   verifyCommunityId,
+  voiceGroupKey,
+  voiceMediaKey,
+  voiceSenderKey,
 } from "./derive";
 
 const A = new Uint8Array(32).fill(1);
@@ -72,6 +75,20 @@ const VECTORS = {
     "50e50179593692b590c19d5f256b0c2edea163883b48f1a930258ee8afee4d7c",
   "baseRekey.pk":
     "32a09463ee1304cde07d48ab19028684d742b6b7170481a700a240d9c70caf4a",
+  "voice.pk":
+    "1e1f2f696f2885a85b02137a1c227a360aa3f40f2d01d366c1dc42da603d8a57",
+  "voice.pk@7":
+    "8844c1bf7adabc13313637a32cad906a26b283a94914f8f753a41bede6eccf44",
+  "voice.sk":
+    "89695aad5d1e8f39e9520e9ff002c479e9bae18e1d0e4e061c01ba119d07d451",
+  voiceMedia:
+    "e27f294b1f0e9a9b4afe581b29b16b34e434dcdff70258e6c32ce12ce01ad192",
+  "voiceMedia@7":
+    "a78154282c4e0480ecdcb879e3d344d88c79d8b1609e1b23c4ae7bd81655677d",
+  "voiceSender.alice":
+    "a47434c56879ce63014c6ea57d7c4ff470e766604b818455345ce19904d26014",
+  "voiceSender.empty":
+    "c5bace4dee84c8cc6ba1a660f1e3e9bbb4bcdee357259dab07314ec4b207f87c",
   grantLocator:
     "713ebaaab5e5abe7a6f5b359aa18aef61465dc8f2acf0537020332fc299fef5d",
   pinsLocator:
@@ -107,6 +124,23 @@ describe("frozen vectors (CORD-02 Appendix A)", () => {
     expect(dissolvedGroupKey(A).pk).toBe(VECTORS["dissolved.pk"]);
     expect(channelRekeyGroupKey(A, B, 1).pk).toBe(VECTORS["channelRekey.pk"]);
     expect(baseRekeyGroupKey(A, B, 1).pk).toBe(VECTORS["baseRekey.pk"]);
+    // CORD-07: the room name, its signing key, and the media roots. Generated
+    // by running this port and armada's `voiceGroupKey`/`voiceMediaKey`/
+    // `voiceSenderKey` side by side over the same inputs.
+    expect(voiceGroupKey(A, B, 0).pk).toBe(VECTORS["voice.pk"]);
+    expect(voiceGroupKey(A, B, 7).pk).toBe(VECTORS["voice.pk@7"]);
+    expect(bytesToHex(voiceGroupKey(A, B, 0).sk)).toBe(VECTORS["voice.sk"]);
+    expect(bytesToHex(voiceMediaKey(A, B, 0))).toBe(VECTORS.voiceMedia);
+    expect(bytesToHex(voiceMediaKey(A, B, 7))).toBe(VECTORS["voiceMedia@7"]);
+    const media = voiceMediaKey(A, B, 0);
+    expect(bytesToHex(voiceSenderKey(media, "alice"))).toBe(
+      VECTORS["voiceSender.alice"],
+    );
+    // The identity is hashed, never length-prefixed, so the empty one is a
+    // legitimate input rather than a degenerate case — pin it too.
+    expect(bytesToHex(voiceSenderKey(media, ""))).toBe(
+      VECTORS["voiceSender.empty"],
+    );
     expect(bytesToHex(grantLocator(A, B))).toBe(VECTORS.grantLocator);
     expect(bytesToHex(pinsLocator(A, B))).toBe(VECTORS.pinsLocator);
     expect(bytesToHex(banlistLocator(A))).toBe(VECTORS.banlistLocator);

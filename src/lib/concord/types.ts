@@ -211,10 +211,17 @@ export interface Community {
 }
 
 /**
+ * A Channel's CORD-07 call coordinates: the SFU room keypair (whose pk IS the
+ * room name) and the media-encryption root, both derived from the same
+ * `(secret, epoch)` that addresses the Chat Plane, so they roll with it.
+ */
+export interface VoiceKeys {
+  room: GroupKey;
+  mediaKey: Uint8Array;
+}
+
+/**
  * One channel as the UI consumes it: folded definition + derived stream keys.
- *
- * No `voice` member — grimoire does not do calls, so a Channel's CORD-07
- * coordinates are never derived.
  */
 export interface Channel {
   id: Uint8Array;
@@ -233,4 +240,11 @@ export interface Channel {
   streams: Array<{ epoch: bigint; group: GroupKey; retiredAt?: number }>;
   /** The current write coordinate. */
   current: { epoch: bigint; group: GroupKey };
+  /**
+   * Call coordinates for the CURRENT epoch (CORD-07 §1), derived LAZILY: only a
+   * join needs them, while a fold rebuilds every channel of every community. The
+   * sidebar's presence counts read the channel's *stream* address, not the room,
+   * so nothing but an actual call pays for the derivation.
+   */
+  readonly voice: VoiceKeys;
 }

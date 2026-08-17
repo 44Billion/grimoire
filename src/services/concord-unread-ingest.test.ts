@@ -33,6 +33,7 @@ import {
 import { channelUnreadSummary } from "./concord-rumor-store";
 import { ingestWireEvents } from "./concord-wire-ingest";
 import db from "./db";
+import { voiceKeysOf } from "@/lib/concord/channels";
 
 const root = random32();
 const communityId = random32();
@@ -50,6 +51,7 @@ const channel: Channel = {
   isPrivate: false,
   streams: [{ epoch: 0n, group: chatKey }],
   current: { epoch: 0n, group: chatKey },
+  voice: voiceKeysOf(root, channelId, 0n),
 };
 
 const spec = buildWireSpec({

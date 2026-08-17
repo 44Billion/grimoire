@@ -31,6 +31,7 @@ import {
 } from "./send";
 import { openWrap } from "./stream";
 import type { Channel } from "./types";
+import { voiceKeysOf } from "@/lib/concord/channels";
 
 const root = random32();
 const channelId = random32();
@@ -44,6 +45,7 @@ const channel: Channel = {
   isPrivate: false,
   streams: [{ epoch: 3n, group }],
   current: { epoch: 3n, group },
+  voice: voiceKeysOf(root, channelId, 3n),
 };
 
 const authorSk = generateSecretKey();

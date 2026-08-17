@@ -13,9 +13,7 @@
  * the epoch is the only omittable field. The scalar_normalize retry counter
  * (A.3) appends after whatever fields are present, starting at byte 0.
  *
- * Deliberately absent from the A.6 registry here, both recoverable later:
- *   - `concord/voice-signer` / `concord/voice-media` / `concord/voice-sender`
- *     (CORD-07) — grimoire does not do calls.
+ * Deliberately absent from the A.6 registry here, recoverable later:
  *   - `concord/signal` — armada ships it, but it comes from the spec's unmerged
  *     `community-signals` branch, so a community pause will not be honored here.
  */
@@ -35,6 +33,9 @@ const LABEL_REKEY_PSEUDONYM = "concord/rekey-pseudonym";
 const LABEL_BASE_REKEY_PSEUDONYM = "concord/base-rekey-pseudonym";
 const LABEL_RECIPIENT_PSEUDONYM = "concord/recipient-pseudonym";
 const LABEL_GUESTBOOK = "concord/guestbook";
+const LABEL_VOICE_SIGNER = "concord/voice-signer";
+const LABEL_VOICE_MEDIA = "concord/voice-media";
+const LABEL_VOICE_SENDER = "concord/voice-sender";
 const LABEL_DISSOLVED = "concord/dissolved";
 const LABEL_GRANT = "concord/grant";
 const LABEL_BANLIST = "concord/banlist";
@@ -429,6 +430,63 @@ export function guestbookGroupKey(
     communityRoot,
     communityId,
     toEpoch(epoch),
+  );
+}
+
+/**
+ * A Channel's SFU room keypair (CORD-07 §1). `voice_key.pk` IS the room name and
+ * `voice_key.sk` signs token grants (§2) — it is never a stream address; the
+ * `group_key` shape is reused only for its deterministic keypair.
+ *
+ * `secret`/`epoch` are the same pair that addresses the Channel's Chat Plane, so
+ * the room rolls exactly when the Channel's key does: a Rekey severs a removed
+ * member from the call as it severs them from chat.
+ */
+export function voiceGroupKey(
+  secret: Uint8Array,
+  channelId: Uint8Array,
+  epoch: number | bigint,
+): GroupKey {
+  assert32("secret", secret);
+  assert32("channelId", channelId);
+  return groupKeyCached(LABEL_VOICE_SIGNER, secret, channelId, toEpoch(epoch));
+}
+
+/**
+ * A Channel's raw 32-byte media-encryption root (CORD-07 §1). Never feeds a
+ * cipher directly — every publisher's per-sender key derives from it.
+ */
+export function voiceMediaKey(
+  secret: Uint8Array,
+  channelId: Uint8Array,
+  epoch: number | bigint,
+): Uint8Array {
+  assert32("secret", secret);
+  assert32("channelId", channelId);
+  return hkdf32(
+    secret,
+    buildInfo(LABEL_VOICE_MEDIA, channelId, toEpoch(epoch)),
+  );
+}
+
+/**
+ * A publisher's per-sender frame-key material (CORD-07 §3):
+ * `hkdf(voice_media_key, "concord/voice-sender", sha256(utf8(identity)))`, the
+ * epoch field omitted because `voice_media_key` already carries it.
+ *
+ * Distinct keys per sender partition the AEAD nonce domains — two senders
+ * colliding an IV under one GCM key is catastrophic, distinct keys make it
+ * harmless. Every member computes every sender's key from the identity the SFU
+ * presents, so there is no in-band exchange.
+ */
+export function voiceSenderKey(
+  mediaKey: Uint8Array,
+  identity: string,
+): Uint8Array {
+  assert32("mediaKey", mediaKey);
+  return hkdf32(
+    mediaKey,
+    buildInfo(LABEL_VOICE_SENDER, sha256(ASCII.encode(identity))),
   );
 }
 

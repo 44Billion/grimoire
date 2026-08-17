@@ -65,6 +65,7 @@ import {
 } from "@/services/concord-wire";
 import db from "@/services/db";
 import { startMockRelay, type MockRelay } from "@/test/mock-relay";
+import { voiceKeysOf } from "@/lib/concord/channels";
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -85,6 +86,7 @@ const channel: Channel = {
   isPrivate: false,
   streams: [{ epoch: 0n, group: chatKey }],
   current: { epoch: 0n, group: chatKey },
+  voice: voiceKeysOf(root, channelId, 0n),
 };
 
 /** A real control edition: plaintext-sealed, wrapped, signed by the plane key. */

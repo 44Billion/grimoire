@@ -14,6 +14,7 @@ import { bytesToHex, channelGroupKey, random32 } from "@/lib/concord/derive";
 import type { FoldedControl } from "@/lib/concord/control";
 import { KIND_MESSAGE } from "@/lib/concord/kinds";
 import type { Channel, Community } from "@/lib/concord/types";
+import { voiceKeysOf } from "@/lib/concord/channels";
 
 const communityId = random32();
 const idHex = bytesToHex(communityId);
@@ -68,6 +69,7 @@ function channel(): Channel {
     isPrivate: false,
     streams: [{ epoch: 0n, group }],
     current: { epoch: 0n, group },
+    voice: voiceKeysOf(root, channelId, 0n),
   };
 }
 
