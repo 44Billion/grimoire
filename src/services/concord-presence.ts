@@ -147,8 +147,14 @@ export function watchChannelVoice(
     );
     state.decay = setInterval(() => recompute(state), DECAY_MS);
   }
-  // Publish the seeded view at once rather than waiting for a live event to
-  // reveal what the shared memory already knows.
+  // Re-fold against the clock BEFORE seeding. The kept memory can be older than
+  // the staleness window — a community reopened an hour later — and the decay
+  // interval's first tick is 15 seconds away, so emitting the stored fold
+  // verbatim shows a call that ended long ago, in the sidebar and in the roster
+  // both.
+  recompute(state);
+  // Then publish at once rather than waiting for a live event to reveal what
+  // the shared memory already knows.
   watchers.onFold?.(state.fold);
 
   let released = false;

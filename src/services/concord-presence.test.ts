@@ -27,14 +27,16 @@ import {
 import { KIND_SEAL_ENCRYPTED, KIND_VOICE_PRESENCE } from "@/lib/concord/kinds";
 import { buildRumor, sealRumor, wrapSeal } from "@/lib/concord/stream";
 import type { Channel } from "@/lib/concord/types";
-import type { VoicePresenceFold } from "@/lib/concord/voice";
+import { VOICE_STALE_MS, type VoicePresenceFold } from "@/lib/concord/voice";
 import {
+  _configureEphemeralForTests,
   _liveAddressesForTests,
   _resetEphemeralForTests,
 } from "@/services/concord-ephemeral";
 import {
   clearVoicePresence,
   publishPresence,
+  voicePresenceOf,
   watchChannelVoice,
 } from "@/services/concord-presence";
 import db from "@/services/db";
@@ -249,6 +251,53 @@ describe("watchChannelVoice", () => {
     });
     expect(seeded?.present[0].identity).toBe("PA-9");
     stop();
+  });
+});
+
+describe("the retained memory", () => {
+  it("re-folds against the clock before seeding, so a dead call is not shown", async () => {
+    // The memory is deliberately kept after the last watcher leaves, and the
+    // decay interval leaves with it. Emitting the stored fold verbatim would
+    // show an hours-old call — badges in the sidebar, names in the roster, and
+    // channels popping out of collapsed groups — until the first decay tick.
+    const stop = watchChannelVoice([relay.url], channel, { onFold: () => {} });
+    await live();
+    relay.push(await presenceWrap({ status: "joined", identity: "PA-ghost" }));
+    await until(() => voicePresenceOf(chatKey.pk).present.length === 1);
+    stop();
+
+    const realNow = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(realNow + VOICE_STALE_MS + 1_000);
+    let seeded: VoicePresenceFold | undefined;
+    const probe = watchChannelVoice([relay.url], channel, {
+      onFold: (f) => {
+        seeded ??= f;
+      },
+    });
+    probe();
+    expect(seeded?.present).toHaveLength(0);
+  });
+});
+
+describe("the reconnect loop", () => {
+  it("backs off a relay that ends the stream right after EOSE", async () => {
+    // An ephemeral filter matches nothing stored, so EOSE arrives instantly and
+    // always. Treating it as progress would reset the backoff every cycle and
+    // pin this at one REQ per second per relay, for the session, silently.
+    await relay.close();
+    relay = await startMockRelay({ kind: "close-after-eose" });
+    _configureEphemeralForTests({ retryBaseMs: 40, healthyRoundMs: 60_000 });
+
+    const stop = watchChannelVoice([relay.url], channel, { onFold: () => {} });
+    await until(() => relay.reqCount() > 0);
+    await new Promise((r) => setTimeout(r, 1_200));
+    stop();
+
+    // Geometric from 40ms inside ~1.2s is ≈5 attempts; a defeated backoff would
+    // be ≈30. The bound is loose on purpose — what is under test is that the
+    // delay GROWS, not its exact value.
+    expect(relay.reqCount()).toBeLessThan(12);
+    expect(relay.reqCount()).toBeGreaterThan(1);
   });
 });
 
