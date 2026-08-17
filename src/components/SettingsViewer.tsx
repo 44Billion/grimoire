@@ -9,8 +9,9 @@ import {
 import { Switch } from "./ui/switch";
 import { useSettings } from "@/hooks/useSettings";
 import { useTheme } from "@/lib/themes";
-import { Palette, FileEdit, Radio } from "lucide-react";
+import { Palette, FileEdit, Phone, Radio } from "lucide-react";
 import { RelayListsSettings } from "./settings/RelayListsSettings";
+import { VoiceSettingsSection } from "./settings/VoiceSettings";
 
 // The Notifications pane is hidden along with the notification subsystem
 // itself, which is not wired up: `useConcordNotifier` is commented out in
@@ -33,6 +34,10 @@ export function SettingsViewer() {
             <TabsTrigger value="post" className="gap-2">
               <FileEdit className="h-4 w-4" />
               Post
+            </TabsTrigger>
+            <TabsTrigger value="voice" className="gap-2">
+              <Phone className="h-4 w-4" />
+              Voice
             </TabsTrigger>
             <TabsTrigger value="relays" className="gap-2">
               <Radio className="h-4 w-4" />
@@ -151,6 +156,10 @@ export function SettingsViewer() {
                 />
               </div>
             </div>
+          </TabsContent>
+
+          <TabsContent value="voice" className="m-0 p-6 space-y-6">
+            <VoiceSettingsSection />
           </TabsContent>
 
           <TabsContent value="relays" className="m-0 p-6 space-y-6">

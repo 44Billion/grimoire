@@ -14,16 +14,39 @@
  * still enough to decide whether to join.
  */
 
-import { Hand, MicOff, MonitorUp, ShieldAlert, Volume2 } from "lucide-react";
+import {
+  Hand,
+  MicOff,
+  MonitorUp,
+  ShieldAlert,
+  Volume1,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
+import { useState } from "react";
 
 import { UserName } from "@/components/nostr/UserName";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { applyVolumes } from "@/services/concord-call";
+import { setVolumeFor, volumeFor } from "@/services/concord-devices";
 import { VideoSurface } from "@/components/call/VideoSurface";
 import type { IdentityTracks } from "@/components/call/useRoomTracks";
-import { verifiedAuthorOf, type VoicePresenceFold } from "@/lib/concord/voice";
+import {
+  verifiedAuthorOf,
+  type VoicePresenceFold,
+  type VoiceReactionEntry,
+} from "@/lib/concord/voice";
 import { cn } from "@/lib/utils";
 
 export interface StageProps {
   fold: VoicePresenceFold;
+  /** Reactions in the air, floated over whoever sent them. */
+  reactions: VoiceReactionEntry[];
   ownIdentity?: string;
   speaking: Set<string>;
   muted: Set<string>;
@@ -83,6 +106,7 @@ function Tile({
   speaking,
   muted,
   tracks,
+  reactions,
   connected,
   compact,
 }: StageProps & {
@@ -94,8 +118,18 @@ function Tile({
   const isMuted = connected && muted.has(present.identity);
   const isSelf = present.identity === ownIdentity;
   const camera = verified ? tracks.get(present.identity)?.camera : undefined;
+  const mine = reactions.filter((r) => r.author === present.author);
+  // Re-read on every change so the icon follows the choice; the store is the
+  // authority, this is only what makes the row repaint.
+  const [, bumpVolume] = useState(0);
+  const volume = volumeFor(present.author);
+  const setVolume = (next: number) => {
+    setVolumeFor(present.author, next);
+    applyVolumes();
+    bumpVolume((n) => n + 1);
+  };
 
-  return (
+  const tile = (
     <div
       className={cn(
         "relative flex flex-col items-center justify-center overflow-hidden rounded border transition-colors",
@@ -108,6 +142,18 @@ function Tile({
         !verified && "opacity-70",
       )}
     >
+      {mine.length > 0 && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center gap-1">
+          {mine.map((r) => (
+            // Keyed by nonce, which is what makes each one fire exactly once:
+            // a replay of the same reaction re-uses the key and never mounts a
+            // second animation.
+            <span key={r.nonce} className="animate-in fade-in text-2xl">
+              {r.emoji}
+            </span>
+          ))}
+        </div>
+      )}
       {camera ? (
         <>
           {/* Our own camera is mirrored, the way every other client shows it:
@@ -126,6 +172,8 @@ function Tile({
           <div className="flex items-center gap-1 text-muted-foreground">
             {isSpeaking && <Volume2 className="size-3.5 text-primary" />}
             {isMuted && !isSpeaking && <MicOff className="size-3.5" />}
+            {volume === 0 && <VolumeX className="size-3.5" />}
+            {volume > 0 && volume < 1 && <Volume1 className="size-3.5" />}
             {present.hand && <Hand className="size-3.5" />}
             {!verified && (
               <span
@@ -140,6 +188,30 @@ function Tile({
         </>
       )}
     </div>
+  );
+
+  // The only moderation a blind SFU allows (§7): nothing signed can mute
+  // anyone, so what a client can do is decline to play what arrives. Local,
+  // never published, and it tells the member nothing.
+  if (isSelf) return tile;
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{tile}</ContextMenuTrigger>
+      <ContextMenuContent className="w-44">
+        <ContextMenuItem onSelect={() => setVolume(0)}>
+          <VolumeX className="mr-2 size-4" />
+          Silence here
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => setVolume(0.5)}>
+          <Volume1 className="mr-2 size-4" />
+          Half volume
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => setVolume(1)}>
+          <Volume2 className="mr-2 size-4" />
+          As published
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 

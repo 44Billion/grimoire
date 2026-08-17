@@ -26,6 +26,7 @@ import {
   Monitor,
   Phone,
   PhoneOff,
+  SmilePlus,
   Video,
   VideoOff,
 } from "lucide-react";
@@ -34,17 +35,21 @@ import { Button } from "@/components/ui/button";
 import { useAccount } from "@/hooks/useAccount";
 import { useChannelVoice } from "@/hooks/useConcordVoice";
 import type { Channel, Community } from "@/lib/concord/types";
+import type { VoiceReactionEntry } from "@/lib/concord/voice";
 import { cn } from "@/lib/utils";
 import {
+  callReactionsAtom,
   callStateAtom,
   callsSupported,
   joinCall,
   leaveCall,
+  sendReaction,
   setCameraEnabled,
   setHandRaised,
   setMicEnabled,
   setScreenShareEnabled,
 } from "@/services/concord-call";
+import { EmojiPickerDialog } from "@/components/chat/EmojiPickerDialog";
 import { resolveChannel } from "@/services/concord-channel-resolve";
 import { CallAudio } from "@/components/call/CallAudio";
 import { CallStage } from "@/components/call/CallStage";
@@ -60,6 +65,7 @@ interface CallViewerProps {
 }
 
 const EMPTY_RELAYS: string[] = [];
+const EMPTY_REACTIONS: VoiceReactionEntry[] = [];
 
 /** Screensharing needs an API Safari on iOS and most mobiles do not have. */
 const canShareScreen =
@@ -72,6 +78,8 @@ export function CallViewer({
   windowId,
 }: CallViewerProps) {
   const call = useAtomValue(callStateAtom);
+  const reactions = useAtomValue(callReactionsAtom);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const { account } = useAccount();
   const [joinError, setJoinError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -162,6 +170,7 @@ export function CallViewer({
           speaking={speaking}
           muted={muted}
           tracks={tracks}
+          reactions={connected ? reactions : EMPTY_REACTIONS}
           connected={connected}
           supported={callsSupported()}
           hasTarget={Boolean(target)}
@@ -219,6 +228,14 @@ export function CallViewer({
             OnIcon={Hand}
             OffIcon={Hand}
           />
+          <Toggle
+            on={false}
+            disabled={!connected}
+            onClick={() => setPickerOpen(true)}
+            title="Float an emoji at everyone"
+            OnIcon={SmilePlus}
+            OffIcon={SmilePlus}
+          />
         </div>
 
         {connected ? (
@@ -257,6 +274,18 @@ export function CallViewer({
           </Button>
         )}
       </div>
+
+      <EmojiPickerDialog
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        onEmojiSelect={(emoji) => {
+          // Unicode only: a NIP-30 custom emoji is a URL the receiver would
+          // have to fetch, and a reaction that arrives after it has already
+          // floated away is worse than one that never arrived.
+          sendReaction(emoji);
+          setPickerOpen(false);
+        }}
+      />
     </div>
   );
 }

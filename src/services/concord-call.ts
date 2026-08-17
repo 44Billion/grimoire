@@ -50,6 +50,7 @@ import {
   verifiedAuthorOf,
   type AvToken,
   type VoicePresenceFold,
+  type VoiceReactionEntry,
 } from "@/lib/concord/voice";
 import { releaseWire, retainWire } from "@/hooks/useConcordWire";
 import {
@@ -58,6 +59,13 @@ import {
   watchChannelVoice,
 } from "@/services/concord-presence";
 import { preferredBrokers } from "@/services/concord-brokers";
+import {
+  preferredCameraId,
+  preferredMicId,
+  setPreferredCameraId,
+  setPreferredMicId,
+  volumeFor,
+} from "@/services/concord-devices";
 
 export type CallStatus =
   | "idle"
@@ -106,6 +114,36 @@ const IDLE: CallState = {
 
 /** The UI's view of the call. Written only by this module. */
 export const callStateAtom = atom<CallState>(IDLE);
+
+/**
+ * Reactions currently in the air.
+ *
+ * Kept out of `callStateAtom` deliberately: these change several times a second
+ * while a call is lively, and every consumer of the call's identity, roster and
+ * mute state would re-render with them. Nothing is folded — an entry appears,
+ * floats, and is dropped.
+ */
+export const callReactionsAtom = atom<VoiceReactionEntry[]>([]);
+
+/** How long a reaction floats before it is aged out. */
+const REACTION_TTL_MS = 4_000;
+
+let reactionSweep: ReturnType<typeof setInterval> | undefined;
+
+function floatReaction(reaction: VoiceReactionEntry): void {
+  store().set(callReactionsAtom, [...store().get(callReactionsAtom), reaction]);
+  reactionSweep ??= setInterval(() => {
+    const cutoff = Date.now() - REACTION_TTL_MS;
+    const live = store()
+      .get(callReactionsAtom)
+      .filter((r) => r.ms > cutoff);
+    store().set(callReactionsAtom, live);
+    if (live.length === 0) {
+      clearInterval(reactionSweep);
+      reactionSweep = undefined;
+    }
+  }, REACTION_TTL_MS / 4);
+}
 
 /**
  * How long a joiner listens before deciding a room is empty.
@@ -289,7 +327,14 @@ async function connect(
       if (!call || active !== call) return;
       patch({ fold });
       syncKeys(call);
+      applyVolumes();
       void maybeMigrate(call, fold);
+    },
+    // Our own reactions echo back through the same subscription and animate
+    // identically, so there is no optimistic path to keep in step.
+    onReaction: (reaction) => {
+      if (!call || active !== call) return;
+      floatReaction(reaction);
     },
   });
   let owned = true;
@@ -331,11 +376,15 @@ async function connect(
       dynacast: true,
       e2ee: { keyProvider, worker },
       audioCaptureDefaults: {
+        ...(preferredMicId() ? { deviceId: preferredMicId() } : {}),
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
       },
-      videoCaptureDefaults: { resolution: VideoPresets.h720.resolution },
+      videoCaptureDefaults: {
+        ...(preferredCameraId() ? { deviceId: preferredCameraId() } : {}),
+        resolution: VideoPresets.h720.resolution,
+      },
       publishDefaults: {
         videoSimulcastLayers: [
           VideoPresets.h180,
@@ -376,7 +425,10 @@ async function connect(
     call.applied.set(token.identity, "sender");
 
     const owner = call;
-    lkRoom.on(RoomEvent.ParticipantConnected, () => syncKeys(owner));
+    lkRoom.on(RoomEvent.ParticipantConnected, () => {
+      syncKeys(owner);
+      applyVolumes();
+    });
     lkRoom.on(RoomEvent.Disconnected, () => {
       // A disconnect we did not ask for. Nothing here retries: the SFU token is
       // single-use and re-minting would change our identity mid-call, which is
@@ -611,6 +663,41 @@ export function setHandRaised(raised: boolean): void {
   beat(active);
 }
 
+/**
+ * Float an emoji at everyone in the call.
+ *
+ * An Armada client extension rather than CORD-07, and a deliberately cheap one:
+ * it rides an additive `react` tag on an off-cycle presence rumor, which doubles
+ * as that member's heartbeat. So it spends no frozen kind, inherits presence's
+ * blindness — no relay and no broker sees it — and a client that does not know
+ * the tag round-trips it untouched.
+ *
+ * Fire-and-forget by design: the nonce makes each one fire exactly once at every
+ * receiver, and nothing folds it into state. It is never retried, because an
+ * emoji that arrives late is worse than one that never arrives.
+ */
+export function sendReaction(emoji: string): void {
+  const call = active;
+  if (!call) return;
+  const nonce = crypto.randomUUID();
+  void publishPresence({
+    relays: call.community.relays,
+    channel: call.channel,
+    pubkey: call.pubkey,
+    signer: call.signer,
+    status: "joined",
+    identity: call.token.identity,
+    broker: call.token.origin,
+    hand: store().get(callStateAtom).handRaised,
+    reaction: { emoji, nonce },
+  }).catch(() => undefined);
+  // It WAS a heartbeat, so the next one is due a full interval from now rather
+  // than on the old schedule — otherwise a run of reactions publishes a beat
+  // each, on top of the reactions themselves.
+  clearTimeout(call.heartbeat);
+  call.heartbeat = setTimeout(() => beat(call), heartbeatDelayMs());
+}
+
 /** Leave the call, best-effort announcing it (§4: a missed `left` heals). */
 export async function leaveCall(error?: string): Promise<void> {
   const call = active;
@@ -734,4 +821,35 @@ export async function syncCall(input: {
 /** The live room, for the components that render its tracks. */
 export function activeRoom(): Room | undefined {
   return active?.room;
+}
+
+/** Switch capture device mid-call, so a choice takes effect without rejoining. */
+export async function switchCaptureDevice(
+  kind: "audioinput" | "videoinput",
+  deviceId: string,
+): Promise<void> {
+  if (kind === "audioinput") setPreferredMicId(deviceId);
+  else setPreferredCameraId(deviceId);
+  await active?.room.switchActiveDevice(kind, deviceId).catch(() => undefined);
+}
+
+/**
+ * Apply this device's per-member volumes to the room (§7).
+ *
+ * The only moderation a blind SFU allows: nothing signed can mute anyone, so
+ * what a client can do is decline to play what it receives. Local, never
+ * published, and it says nothing to the member being turned down.
+ *
+ * Volumes are stored per PUBKEY but applied per SFU IDENTITY, and only for an
+ * identity presence actually vouches for — an unverified one is playing nothing
+ * decodable anyway, and matching it to a member would be the guess §4 refuses.
+ */
+export function applyVolumes(): void {
+  const call = active;
+  if (!call) return;
+  const fold = currentFold(call.channel);
+  for (const participant of call.room.remoteParticipants.values()) {
+    const author = verifiedAuthorOf(fold, participant.identity);
+    participant.setVolume(author ? volumeFor(author) : 1);
+  }
 }
