@@ -431,6 +431,8 @@ export function ConcordViewer({
     // render with the sidebar highlighting neither.
     setSelectedDm(undefined);
     setDmSectionOpen(false);
+    setSelectedGroup(undefined);
+    setGroupSectionOpen(false);
     setShowInvites((open) => {
       const next = !open;
       if (windowId) {
@@ -700,12 +702,15 @@ export function ConcordViewer({
   // a second Concord window showing the same channel must not be un-silenced by
   // the first one closing.
   //
-  // "Selected" is not "on screen": the search results and the guestbook take
-  // the whole pane, and a channel registered from behind one of them silences
-  // alerts and badges for messages nobody can see. Both panes therefore hand
-  // the channel back for as long as they are up.
+  // "Selected" is not "on screen": the search results, the guestbook, the
+  // invites pane and the other two conversation families each take the whole
+  // pane, and a channel registered from behind one of them silences alerts and
+  // badges for messages nobody can see. All of them therefore hand the channel
+  // back for as long as they are up.
   const channelOnScreen =
-    searchActive || showGuestbook ? undefined : openChannelIdHex;
+    searchActive || showGuestbook || showInvites || selectedDm || selectedGroup
+      ? undefined
+      : openChannelIdHex;
   useEffect(() => {
     if (!channelOnScreen) return;
     registerActiveChannel(channelOnScreen);
@@ -724,6 +729,13 @@ export function ConcordViewer({
       setShowGuestbook(false);
       setShowPins(false);
       closeInvites();
+      // And the other two families. Search reaches the whole community from
+      // wherever the reader was, so a hit can be clicked with a private
+      // conversation or a group still selected — and those branches render
+      // BEFORE the channel, so the jump would land in a timeline nobody could
+      // see while the pane showed the conversation it was clicked from.
+      setSelectedDm(undefined);
+      setSelectedGroup(undefined);
       setSelectedChannel(hit.channelIdHex);
       // A result is a deliberate pick of the channel it was found in, so it is
       // remembered exactly like a click on the row would be. Leaving it out
@@ -1075,7 +1087,28 @@ export function ConcordViewer({
             everything written before the rotation. */}
         {stranded && <StrandedBanner />}
         <div className="min-h-0 flex-1">
-          {dmIdentifier ? (
+          {searchActive ? (
+            // FIRST, above every selection. Search only becomes active when
+            // something has been typed, which is as deliberate an act as
+            // clicking a row — and the search box lives in the sidebar, which
+            // is on screen whatever the pane below is showing. Underneath the
+            // conversation branches it was a box that did nothing at all while
+            // a private conversation or a group was open.
+            <ConcordSearchPanel
+              hits={hits}
+              searching={searching}
+              waiting={searchWaiting}
+              query={query.trim()}
+              onOpen={handleOpenHit}
+              thisChannelOnly={searchThisChannel}
+              {...(openChannel
+                ? {
+                    scopeChannelName: openChannel.name,
+                    onToggleScope: () => setSearchThisChannel((v) => !v),
+                  }
+                : {})}
+            />
+          ) : dmIdentifier ? (
             // Before every Concord branch, because a DM is a whole different
             // conversation family and the panes below all belong to the
             // community the reader has stepped away from.
@@ -1105,21 +1138,6 @@ export function ConcordViewer({
               onOpenLink={handleOpenLink}
               headerPrefix={headerPrefix}
               onRefresh={refreshInvites}
-            />
-          ) : searchActive ? (
-            <ConcordSearchPanel
-              hits={hits}
-              searching={searching}
-              waiting={searchWaiting}
-              query={query.trim()}
-              onOpen={handleOpenHit}
-              thisChannelOnly={searchThisChannel}
-              {...(openChannel
-                ? {
-                    scopeChannelName: openChannel.name,
-                    onToggleScope: () => setSearchThisChannel((v) => !v),
-                  }
-                : {})}
             />
           ) : showGuestbook ? (
             <ConcordGuestbookPanel

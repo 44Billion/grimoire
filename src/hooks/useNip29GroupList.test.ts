@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  extractGroupEntries,
-  sortGroupsByRecency,
-} from "./useNip29GroupList";
+import { extractGroupEntries, sortGroupsByRecency } from "./useNip29GroupList";
 import type { NostrEvent } from "@/types/nostr";
 
 function list(tags: string[][]): NostrEvent {
@@ -20,8 +17,9 @@ function list(tags: string[][]): NostrEvent {
 
 describe("extractGroupEntries", () => {
   it("normalises a schemeless relay", () => {
-    expect(extractGroupEntries(list([["group", "bitcoin", "relay.example.com"]])))
-      .toEqual([{ groupId: "bitcoin", relayUrl: "wss://relay.example.com/" }]);
+    expect(
+      extractGroupEntries(list([["group", "bitcoin", "relay.example.com"]])),
+    ).toEqual([{ groupId: "bitcoin", relayUrl: "wss://relay.example.com/" }]);
   });
 
   it("drops an entry with no relay", () => {
