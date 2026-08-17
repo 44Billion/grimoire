@@ -60,6 +60,12 @@ function getWasmBinary(): Promise<ArrayBuffer> {
   wasmBinary ??= loadRnnoise({
     url: rnnoiseWasmUrl,
     simdUrl: rnnoiseSimdWasmUrl,
+  }).catch((error: unknown) => {
+    // Forget a failure, or one bad fetch disables suppression for the whole
+    // session: a cached rejected promise answers every later attempt without
+    // retrying. The next call gets to try again.
+    wasmBinary = undefined;
+    throw error;
   });
   return wasmBinary;
 }
@@ -97,7 +103,16 @@ class RnnoiseTrackProcessor implements AudioTrackProcessor {
 
     let modulePromise = RnnoiseTrackProcessor.moduleByContext.get(audioContext);
     if (!modulePromise) {
-      modulePromise = audioContext.audioWorklet.addModule(rnnoiseWorkletUrl);
+      modulePromise = audioContext.audioWorklet
+        .addModule(rnnoiseWorkletUrl)
+        .catch((error: unknown) => {
+          // Same reason as the WASM above: a cached rejection would answer
+          // every later attempt on this context — which lives as long as the
+          // room does — so one failed load would disable suppression for the
+          // whole call rather than for one attempt.
+          RnnoiseTrackProcessor.moduleByContext.delete(audioContext);
+          throw error;
+        });
       RnnoiseTrackProcessor.moduleByContext.set(audioContext, modulePromise);
     }
     await modulePromise;
