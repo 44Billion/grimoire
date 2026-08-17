@@ -12,15 +12,21 @@
  * is the failure mode this avoids.
  */
 
+import { useAtomValue } from "jotai";
 import { useEffect, useRef, useState } from "react";
 import { RoomEvent, type RemoteTrack } from "livekit-client";
 
 import { Button } from "@/components/ui/button";
-import { activeRoom } from "@/services/concord-call";
+import { activeRoom, callStateAtom } from "@/services/concord-call";
 
 export function CallAudio() {
   const holder = useRef<HTMLDivElement>(null);
   const [blocked, setBlocked] = useState(false);
+  // A §5 migration and a §7 rejoin both build a NEW room while the call stays
+  // "connected" throughout, so binding on mount alone would leave this attached
+  // to a room that has been disconnected and stripped of its listeners — the
+  // call would look healthy and be silent. `roomEpoch` is what changes.
+  const roomEpoch = useAtomValue(callStateAtom).roomEpoch;
 
   useEffect(() => {
     const room = activeRoom();
@@ -57,7 +63,7 @@ export function CallAudio() {
       room.off(RoomEvent.AudioPlaybackStatusChanged, onPlayback);
       holder.current?.replaceChildren();
     };
-  }, []);
+  }, [roomEpoch]);
 
   return (
     <>

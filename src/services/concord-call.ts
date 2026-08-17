@@ -54,6 +54,7 @@ import {
 import { releaseWire, retainWire } from "@/hooks/useConcordWire";
 import {
   publishPresence,
+  voicePresenceOf,
   watchChannelVoice,
 } from "@/services/concord-presence";
 import { preferredBrokers } from "@/services/concord-brokers";
@@ -81,6 +82,14 @@ export interface CallState {
   fold: VoicePresenceFold;
   /** The window that owns this call; it ends when that window is closed. */
   windowId?: string;
+  /**
+   * Bumped every time a NEW `Room` is built — a rejoin after a rekey, or a §5
+   * migration. Nothing about the call's identity changes, so `status` stays
+   * "connected" through a migration and a component watching status alone would
+   * keep holding the room that was just torn down. Anything that binds to the
+   * room object itself keys on this.
+   */
+  roomEpoch: number;
 }
 
 const IDLE: CallState = {
@@ -88,10 +97,25 @@ const IDLE: CallState = {
   micEnabled: false,
   handRaised: false,
   fold: { present: [], claims: new Map() },
+  roomEpoch: 0,
 };
 
 /** The UI's view of the call. Written only by this module. */
 export const callStateAtom = atom<CallState>(IDLE);
+
+/**
+ * How long a joiner listens before deciding a room is empty.
+ *
+ * §5 says a full heartbeat interval (30s), because presence is ephemeral and a
+ * client that has not been listening knows nothing. A 30-second stare before a
+ * click does anything is not a call anyone would make, so this waits for a
+ * heartbeat already in flight and otherwise joins — and the split that risks is
+ * exactly what the migration below heals.
+ */
+const EMPTY_ROOM_LISTEN_MS = 1_500;
+
+/** Bound on the goodbye. §4: a missed `left` heals by staleness anyway. */
+const LEAVE_ANNOUNCE_MS = 4_000;
 
 interface ActiveCall {
   community: Community;
@@ -111,6 +135,10 @@ interface ActiveCall {
   triedBrokers: Set<string>;
   /** Set while a rejoin or a migration is in flight, so nothing races it. */
   moving: boolean;
+  /** Whether this call still holds the wire retain. Released exactly once. */
+  wireHeld: boolean;
+  /** Whether teardown has already run, so it never runs twice. */
+  torn: boolean;
 }
 
 let active: ActiveCall | undefined;
@@ -212,147 +240,193 @@ export async function joinCall(opts: {
       status: "failed",
       error: error instanceof Error ? error.message : String(error),
     });
-    await leaveCall();
   }
 }
 
-/** Resolve a broker, mint, connect, and start announcing ourselves. */
+interface ConnectOptions {
+  community: Community;
+  channel: Channel;
+  pubkey: string;
+  signer: StreamSigner;
+}
+
+/**
+ * Resolve a broker, mint, connect, and start announcing ourselves.
+ *
+ * Everything acquired here is released here on failure. The two resources that
+ * outlive a single statement — the wire retain and the presence subscription —
+ * are taken before anything can throw, and ownership of them passes to the
+ * `ActiveCall` the moment one exists; after that, teardown is what releases
+ * them, exactly once. An earlier version retained the wire only at the very end,
+ * so a failed join released a retain it never took and dropped the CHAT wire's
+ * sockets for the whole app.
+ */
 async function connect(
-  opts: {
-    community: Community;
-    channel: Channel;
-    pubkey: string;
-    signer: StreamSigner;
-    windowId?: string;
-  },
+  opts: ConnectOptions,
   tried: Set<string>,
 ): Promise<void> {
   const { community, channel } = opts;
   const room = channel.voice.room;
 
-  // §5: join the call where it already is. The fold we have been watching from
-  // the sidebar is the input, so this needs no round trip of its own.
-  const seed = currentFold(channel);
-  const candidates = rendezvousCandidates(
-    room.pk,
-    seed,
-    preferredBrokers(),
-  ).filter((origin) => !tried.has(origin));
-  if (candidates.length === 0) {
-    throw new Error("No voice broker left to try for this channel.");
-  }
-
-  // Probe first (§5), but never let a probe be the last word: a broker can
-  // answer its capability endpoint and still refuse to mint, so the mint itself
-  // falls through the remaining candidates.
-  const reachable: string[] = [];
-  for (const origin of candidates) {
-    if (await probeAvBroker(origin)) reachable.push(origin);
-  }
-  const token = await fetchAvTokenFromAny(
-    reachable.length > 0 ? reachable : candidates,
-    room,
-  );
-
-  const keyProvider = new SenderKeyProvider();
-  // A static URL, so the bundler can see the worker. A template literal here
-  // builds in dev and silently fails to bundle for production.
-  const worker = new Worker(
-    new URL("livekit-client/e2ee-worker", import.meta.url),
-    { type: "module" },
-  );
-  const options: RoomOptions = {
-    adaptiveStream: true,
-    dynacast: true,
-    e2ee: { keyProvider, worker },
-    audioCaptureDefaults: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-    videoCaptureDefaults: { resolution: VideoPresets.h720.resolution },
-    publishDefaults: {
-      videoSimulcastLayers: [
-        VideoPresets.h180,
-        VideoPresets.h360,
-        VideoPresets.h720,
-      ],
-      screenShareEncoding: VideoPresets.h1080.encoding,
-    },
-  };
-  const lkRoom = new Room(options);
-
-  const call: ActiveCall = {
-    community,
-    channel,
-    pubkey: opts.pubkey,
-    signer: opts.signer,
-    token,
-    room: lkRoom,
-    keyProvider,
-    worker,
-    releasePresence: () => {},
-    releaseWindows: () => {},
-    applied: new Map(),
-    triedBrokers: new Set([...tried, token.origin]),
-    moving: false,
-  };
-  active = call;
-
-  // Our own key first: E2EE is only enabled once we can encrypt, or the first
-  // frames we publish go out under no key at all.
-  await keyProvider.setSenderMaterial(
-    voiceSenderKey(channel.voice.mediaKey, token.identity),
-    token.identity,
-  );
-  call.applied.set(token.identity, "sender");
-
-  lkRoom.on(RoomEvent.ParticipantConnected, () => syncKeys(call));
-  lkRoom.on(RoomEvent.Disconnected, () => {
-    // A disconnect we did not ask for. Nothing here retries: the SFU token is
-    // single-use and re-minting would change our identity mid-call, which is
-    // exactly what §4's verification rule reads as an impostor.
-    if (active === call && !call.moving)
-      void leaveCall("The call disconnected.");
-  });
-
-  await lkRoom.connect(token.url, token.token);
-  await lkRoom.setE2EEEnabled(true);
-  // Joined muted. A call that starts hot publishes a room before its member has
-  // decided to speak in it.
-  await lkRoom.localParticipant.setMicrophoneEnabled(false);
-
-  // Presence: both what we read (verification, rendezvous, §7) and, through the
-  // heartbeat below, what we say.
-  call.releasePresence = watchChannelVoice(community.relays, channel, {
+  // The heartbeat publishes through the wire's own sockets, so the call holds
+  // the wire open for as long as it runs — a Concord window closing must not
+  // silently stop us announcing ourselves.
+  retainWire();
+  // Listen BEFORE choosing a broker. Presence is the §5 rendezvous input and it
+  // is ephemeral, so a client that has not been listening knows nothing and
+  // heads for its own default — splitting away from a call already running
+  // elsewhere. Opening the channel in Concord already holds this; opening the
+  // call window straight after a reload does not.
+  let call: ActiveCall | undefined;
+  const releasePresence = watchChannelVoice(community.relays, channel, {
     onFold: (fold) => {
-      if (active !== call) return;
+      if (!call || active !== call) return;
       patch({ fold });
       syncKeys(call);
       void maybeMigrate(call, fold);
     },
   });
-  // The heartbeat publishes through the wire's own sockets, so the call holds
-  // the wire open for as long as it runs — a Concord window closing must not
-  // silently stop us announcing ourselves.
-  retainWire();
-  call.releaseWindows = watchOwningWindow(call);
+  let owned = true;
 
-  patch({
-    status: "connected",
-    broker: token.origin,
-    identity: token.identity,
-    error: undefined,
-  });
-  beat(call);
+  try {
+    if (currentFold(channel).present.length === 0) {
+      await new Promise((r) => setTimeout(r, EMPTY_ROOM_LISTEN_MS));
+    }
+    const candidates = rendezvousCandidates(
+      room.pk,
+      currentFold(channel),
+      preferredBrokers(),
+    ).filter((origin) => !tried.has(origin));
+    if (candidates.length === 0) {
+      throw new Error("No voice broker left to try for this channel.");
+    }
+
+    // Probe first (§5), but never let a probe be the last word: a broker can
+    // answer its capability endpoint and still refuse to mint, so the mint
+    // itself falls through the remaining candidates.
+    const reachable: string[] = [];
+    for (const origin of candidates) {
+      if (await probeAvBroker(origin)) reachable.push(origin);
+    }
+    const token = await fetchAvTokenFromAny(
+      reachable.length > 0 ? reachable : candidates,
+      room,
+    );
+
+    const keyProvider = new SenderKeyProvider();
+    // A static URL, so the bundler can see the worker. A template literal here
+    // builds in dev and silently fails to bundle for production.
+    const worker = new Worker(
+      new URL("livekit-client/e2ee-worker", import.meta.url),
+      { type: "module" },
+    );
+    const options: RoomOptions = {
+      adaptiveStream: true,
+      dynacast: true,
+      e2ee: { keyProvider, worker },
+      audioCaptureDefaults: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      videoCaptureDefaults: { resolution: VideoPresets.h720.resolution },
+      publishDefaults: {
+        videoSimulcastLayers: [
+          VideoPresets.h180,
+          VideoPresets.h360,
+          VideoPresets.h720,
+        ],
+        screenShareEncoding: VideoPresets.h1080.encoding,
+      },
+    };
+    const lkRoom = new Room(options);
+
+    call = {
+      community,
+      channel,
+      pubkey: opts.pubkey,
+      signer: opts.signer,
+      token,
+      room: lkRoom,
+      keyProvider,
+      worker,
+      releasePresence,
+      releaseWindows: () => {},
+      applied: new Map(),
+      triedBrokers: new Set([...tried, token.origin]),
+      moving: false,
+      wireHeld: true,
+      torn: false,
+    };
+    active = call;
+    owned = false;
+
+    // Our own key first: E2EE is only enabled once we can encrypt, or the first
+    // frames we publish go out under no key at all.
+    await keyProvider.setSenderMaterial(
+      voiceSenderKey(channel.voice.mediaKey, token.identity),
+      token.identity,
+    );
+    call.applied.set(token.identity, "sender");
+
+    const owner = call;
+    lkRoom.on(RoomEvent.ParticipantConnected, () => syncKeys(owner));
+    lkRoom.on(RoomEvent.Disconnected, () => {
+      // A disconnect we did not ask for. Nothing here retries: the SFU token is
+      // single-use and re-minting would change our identity mid-call, which is
+      // exactly what §4's verification rule reads as an impostor. A disconnect
+      // DURING the connect handshake is left to the throw below, which cleans
+      // up in one place.
+      if (active === owner && !owner.moving && !owner.torn) {
+        void leaveCall("The call disconnected.");
+      }
+    });
+
+    await lkRoom.connect(token.url, token.token);
+    await lkRoom.setE2EEEnabled(true);
+    // Joined muted. A call that starts hot publishes a room before its member
+    // has decided to speak in it.
+    await lkRoom.localParticipant.setMicrophoneEnabled(false);
+
+    call.releaseWindows = watchOwningWindow(call);
+
+    patch({
+      status: "connected",
+      broker: token.origin,
+      identity: token.identity,
+      error: undefined,
+      micEnabled: false,
+      fold: currentFold(channel),
+      roomEpoch: store().get(callStateAtom).roomEpoch + 1,
+    });
+    syncKeys(call);
+    beat(call);
+  } catch (error) {
+    if (owned) {
+      // Nothing took ownership: release exactly what this attempt acquired.
+      releasePresence();
+      releaseWire();
+    } else if (call) {
+      // A call object exists, so teardown owns both — and it is idempotent, so
+      // a `Disconnected` handler that already ran costs nothing here.
+      await teardown(call, { announceLeave: false });
+    }
+    throw error;
+  }
 }
 
-/** The presence we already hold for a channel, without opening anything. */
+/**
+ * The presence already known for a channel, read from the shared memory rather
+ * than from the call's own state.
+ *
+ * This is the §5 rendezvous input, and reading it off `callStateAtom` would make
+ * it useless: that fold is only populated once a call is CONNECTED, so at join
+ * time it is always empty and every join would head for our own default broker,
+ * splitting away from a call armada started elsewhere. The presence service has
+ * been watching this channel since the sidebar rendered it, and is what knows.
+ */
 function currentFold(channel: Channel): VoicePresenceFold {
-  const seen = store().get(callStateAtom);
-  return seen.channelIdHex === channel.idHex
-    ? seen.fold
-    : { present: [], claims: new Map() };
+  return voicePresenceOf(channel.current.group.pk);
 }
 
 /**
@@ -365,10 +439,11 @@ function currentFold(channel: Channel): VoicePresenceFold {
  */
 function syncKeys(call: ActiveCall): void {
   if (active !== call) return;
-  const fold = store().get(callStateAtom).fold;
+  const fold = currentFold(call.channel);
   const identities = new Set<string>([call.token.identity]);
-  for (const p of call.room.remoteParticipants.values())
+  for (const p of call.room.remoteParticipants.values()) {
     identities.add(p.identity);
+  }
   // Pre-warm from presence, so audio decodes from the first frame after a
   // track subscribes rather than after the next fold.
   for (const p of fold.present) identities.add(p.identity);
@@ -406,11 +481,6 @@ function beat(call: ActiveCall): void {
   call.heartbeat = setTimeout(() => beat(call), heartbeatDelayMs());
 }
 
-/** Republish off-cycle — a hand raised or lowered should not wait 30s. */
-function announceNow(): void {
-  if (active) beat(active);
-}
-
 /** §5 split healing: move to the origin the tie-break says the call is on. */
 async function maybeMigrate(
   call: ActiveCall,
@@ -426,22 +496,25 @@ async function maybeMigrate(
   if (!target) return;
   call.moving = true;
   const tried = new Set(call.triedBrokers);
-  const opts = {
+  const opts: ConnectOptions = {
     community: call.community,
     channel: call.channel,
     pubkey: call.pubkey,
     signer: call.signer,
-    ...(store().get(callStateAtom).windowId !== undefined
-      ? { windowId: store().get(callStateAtom).windowId as string }
-      : {}),
   };
   await teardown(call, { announceLeave: true });
+  // Say so: a migration rebuilds the room, and anything bound to the old one
+  // has to know it is gone rather than reading a status that never changed.
+  patch({ status: "joining" });
   try {
     await connect(opts, tried);
   } catch {
     // The winner would not have us. We are already out of the old room, so say
     // so rather than pretending to still be in it.
-    patch({ status: "failed", error: "Could not move to the call's broker." });
+    patch({
+      status: "failed",
+      error: "Could not move to the broker this call is on.",
+    });
   }
 }
 
@@ -463,18 +536,34 @@ function watchOwningWindow(call: ActiveCall): () => void {
   });
 }
 
-/** Mic on or off. The only publish this phase makes. */
+/**
+ * Mic on or off.
+ *
+ * The reported state comes from LiveKit rather than from the request, so a
+ * denied microphone permission shows as muted instead of a button that says we
+ * are speaking into a room we are not.
+ */
 export async function setMicEnabled(on: boolean): Promise<void> {
-  if (!active) return;
-  await active.room.localParticipant.setMicrophoneEnabled(on);
-  patch({ micEnabled: on });
+  const call = active;
+  if (!call) return;
+  try {
+    await call.room.localParticipant.setMicrophoneEnabled(on);
+  } catch (error) {
+    patch({
+      micEnabled: call.room.localParticipant.isMicrophoneEnabled,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+  patch({ micEnabled: call.room.localParticipant.isMicrophoneEnabled });
 }
 
 /** Raise or lower a hand — sticky state, carried on every heartbeat. */
 export function setHandRaised(raised: boolean): void {
   if (!active) return;
   patch({ handRaised: raised });
-  announceNow();
+  // Off-cycle, so others see it now rather than up to 30 seconds from now.
+  beat(active);
 }
 
 /** Leave the call, best-effort announcing it (§4: a missed `left` heals). */
@@ -487,28 +576,30 @@ export async function leaveCall(error?: string): Promise<void> {
   await teardown(call, { announceLeave: true });
   store().set(callStateAtom, {
     ...IDLE,
+    roomEpoch: store().get(callStateAtom).roomEpoch + 1,
     ...(error !== undefined ? { status: "failed", error } : {}),
   });
 }
 
+/**
+ * Release everything one call holds, exactly once.
+ *
+ * The room is disconnected FIRST and the goodbye published after. Announcing
+ * first means the microphone stays live while a signer decides whether to sign
+ * — and on a bunker awaiting manual approval that is an open mic for as long as
+ * the person takes. §4 is explicit that a missed `left` heals by staleness, so
+ * the ordering costs nothing and the alternative costs privacy.
+ */
 async function teardown(
   call: ActiveCall,
   opts: { announceLeave: boolean },
 ): Promise<void> {
+  if (call.torn) return;
+  call.torn = true;
   if (active === call) active = undefined;
   clearTimeout(call.heartbeat);
   call.releaseWindows();
-  if (opts.announceLeave) {
-    await publishPresence({
-      relays: call.community.relays,
-      channel: call.channel,
-      pubkey: call.pubkey,
-      signer: call.signer,
-      status: "left",
-    }).catch(() => undefined);
-  }
-  call.releasePresence();
-  releaseWire();
+
   try {
     await call.room.disconnect();
   } catch {
@@ -516,6 +607,25 @@ async function teardown(
   }
   call.room.removeAllListeners();
   call.worker.terminate();
+
+  if (opts.announceLeave) {
+    await Promise.race([
+      publishPresence({
+        relays: call.community.relays,
+        channel: call.channel,
+        pubkey: call.pubkey,
+        signer: call.signer,
+        status: "left",
+      }).catch(() => undefined),
+      new Promise((r) => setTimeout(r, LEAVE_ANNOUNCE_MS)),
+    ]);
+  }
+
+  call.releasePresence();
+  if (call.wireHeld) {
+    call.wireHeld = false;
+    releaseWire();
+  }
 }
 
 /**
@@ -558,7 +668,7 @@ export async function syncCall(input: {
   // removed member from chat has to move the call too, or everyone stays in the
   // room that member can still derive.
   call.moving = true;
-  const opts = {
+  const opts: ConnectOptions = {
     community: decision.community,
     channel: decision.channel,
     pubkey: call.pubkey,
@@ -579,9 +689,4 @@ export async function syncCall(input: {
 /** The live room, for the components that render its tracks. */
 export function activeRoom(): Room | undefined {
   return active?.room;
-}
-
-/** Test seam. */
-export function _activeCallForTests(): ActiveCall | undefined {
-  return active;
 }
