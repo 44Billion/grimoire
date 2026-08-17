@@ -16,9 +16,17 @@
  * rows in the same conditions. The prop is the trigger, and dropping it is not
  * the fix — it is the thing that makes a channel open where the reader left it.
  *
- * So the list gets remounted instead. A fresh mount re-runs the initial anchor
- * against the container that exists by then, which is the same answer the
- * reader would get by closing the window and opening it again.
+ * So the list gets remounted WITHOUT the gate, and scrolled to the end by hand.
+ *
+ * Remounting with the prop still set was the first version of this fix, and it
+ * does not work: observed live, the watchdog fired, remounted three times, and
+ * every mount came back with zero rows — whatever starved the first measurement
+ * starves the next one just the same. Calling `scrollToIndex` on the stuck list
+ * does not lift it either; the gate is not a scroll position, it is a flag that
+ * only the initial scroll clears. Dropping the prop for the revival mount is
+ * what renders, and the imperative scroll is what puts the reader back at the
+ * newest message. The first mount keeps the prop: it costs nothing when it
+ * works, and it works without a flash.
  */
 
 /** How long a timeline may hold data while rendering nothing before it is revived. */
@@ -26,6 +34,19 @@ export const REVIVE_AFTER_MS = 1200;
 
 /** How many times one conversation may be revived before we stop trying. */
 export const MAX_REVIVALS = 3;
+
+/** How often a revived list re-tries the scroll that puts it at the newest message. */
+export const REVIVE_ANCHOR_EVERY_MS = 250;
+
+/**
+ * How many of those tries it gets — about eight seconds' worth.
+ *
+ * Generous because the retry is what covers a list revived while the document
+ * was not painting: the scroll cannot land until frames resume, and a reader
+ * coming back to a backgrounded tab must not find the channel at the top of its
+ * history. It costs nothing to be patient — the first try that lands stops it.
+ */
+export const REVIVE_ANCHOR_TRIES = 32;
 
 /**
  * Whether a list showing `rendered` rows out of `dataLength` is stuck.

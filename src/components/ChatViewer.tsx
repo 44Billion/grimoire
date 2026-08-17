@@ -99,7 +99,12 @@ import {
   computeFirstItemIndexDelta,
   FIRST_ITEM_INDEX_BASE,
 } from "./chat/prepend-anchor";
-import { REVIVE_AFTER_MS, shouldRevive } from "./chat/list-revival";
+import {
+  REVIVE_AFTER_MS,
+  REVIVE_ANCHOR_EVERY_MS,
+  REVIVE_ANCHOR_TRIES,
+  shouldRevive,
+} from "./chat/list-revival";
 import {
   clearDraft,
   draftKey,
@@ -1265,6 +1270,7 @@ export function ChatViewer({
    * healthy list reports for one frame between mounting and measuring.
    */
   const [listKey, setListKey] = useState(0);
+  const [revivedFor, setRevivedFor] = useState<string | undefined>(undefined);
   const renderedCount = useRef(0);
   const revivals = useRef(0);
   const revivingFor = useRef<string | undefined>(undefined);
@@ -1284,10 +1290,43 @@ export function ChatViewer({
     const timer = setTimeout(() => {
       if (!shouldRevive(renderedCount.current, count, revivals.current)) return;
       revivals.current += 1;
+      setRevivedFor(id);
       setListKey((k) => k + 1);
     }, REVIVE_AFTER_MS);
     return () => clearTimeout(timer);
   }, [conversation?.id, messagesWithMarkers.length, listKey]);
+
+  /**
+   * The bottom-anchor a revived list no longer gets for free.
+   *
+   * The revival mount drops `initialTopMostItemIndex`, so it opens at the TOP
+   * of the history — the wrong end of a chat. Scrolling is the same call the
+   * End key makes, but ONE call does not do it: the revival usually happens in
+   * the same starved conditions that caused the blank, so the scroll lands on a
+   * list that has measured nothing and is undone the moment frames resume. So
+   * it retries until the list reports itself at the bottom, and stops there.
+   */
+  const atBottom = useRef(true);
+  useEffect(() => {
+    if (listKey === 0 || revivedFor !== conversation?.id) return;
+    const count = messagesWithMarkers.length;
+    if (count === 0) return;
+    atBottom.current = false;
+    let left = REVIVE_ANCHOR_TRIES;
+    const toEnd = () => {
+      if (atBottom.current || left-- <= 0) return clearInterval(timer);
+      virtuosoRef.current?.scrollToIndex({ index: count - 1, align: "end" });
+    };
+    const timer = setInterval(toEnd, REVIVE_ANCHOR_EVERY_MS);
+    toEnd();
+    return () => clearInterval(timer);
+  }, [
+    listKey,
+    revivedFor,
+    conversation?.id,
+    messagesWithMarkers.length,
+    virtuosoRef,
+  ]);
 
   const anchoredFor = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -1954,17 +1993,29 @@ export function ChatViewer({
       <div className="flex-1 overflow-hidden" onKeyDown={handleFeedKeyDown}>
         {messagesWithMarkers && messagesWithMarkers.length > 0 ? (
           <Virtuoso
-            // A remount is the revival: it re-runs `initialTopMostItemIndex`
-            // against a container that is laid out by now. Nothing is lost —
-            // this only bumps while the list is rendering nothing.
+            // A remount is the revival. Nothing is lost — this only bumps
+            // while the list is rendering nothing.
             key={listKey}
             ref={virtuosoRef}
             data={messagesWithMarkers}
             itemsRendered={(items) => {
               renderedCount.current = items.length;
             }}
+            atBottomStateChange={(bottom) => {
+              atBottom.current = bottom;
+            }}
             firstItemIndex={anchor.firstItemIndex}
-            initialTopMostItemIndex={{ index: "LAST", align: "end" }}
+            // The gate, and the reason a stuck list is stuck: it holds the rows
+            // hidden until the initial scroll lands. A revival mount drops it
+            // — remounting WITH it just reproduces the stuck state, which is
+            // what the first version of this fix did three times and gave up.
+            // Per conversation, not per `listKey`: the key never resets, so a
+            // channel opened after any revival anywhere would lose its anchor.
+            initialTopMostItemIndex={
+              revivedFor === conversation.id
+                ? undefined
+                : { index: "LAST", align: "end" }
+            }
             followOutput="smooth"
             alignToBottom
             components={{
