@@ -173,17 +173,15 @@ export async function sendDirectMessage({
   const others = peers.filter((p) => p !== viewer);
 
   // A note to yourself: no recipient to resolve, and the self-copy IS the
-  // message.
+  // message. Threaded the same way as any other — a reply in Saved messages is
+  // still a reply.
   if (others.length === 0) {
-    const stamped = await WrappedMessageFactory.create([viewer], content)
-      .as(signer)
-      .stamp();
-    return deliverRumor(
-      viewer,
-      signer,
-      new Map(),
-      withRecipients(stamped, [viewer]),
+    const stamped = withRecipients(
+      await WrappedMessageFactory.create([viewer], content).as(signer).stamp(),
+      [viewer],
     );
+    if (replyTo) stamped.tags.push(["e", replyTo.id]);
+    return deliverRumor(viewer, signer, new Map(), stamped);
   }
 
   const { reachable, unreachable } = await resolvePeerRelays(others);

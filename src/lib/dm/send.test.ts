@@ -327,6 +327,23 @@ describe("replies", () => {
     expect(await listDmConversations(ALICE)).toHaveLength(1);
   });
 
+  it("e-tags a reply in Saved messages", async () => {
+    // The note-to-self branch resolves no recipients and returns early, and it
+    // returned before the `e` tag was added — so a reply to yourself sent as an
+    // ordinary message with the thread silently dropped.
+    const { sendDirectMessage } = await import("./send");
+    await sendDirectMessage({
+      viewer: ALICE,
+      signer: alice,
+      peers: [ALICE],
+      content: "re",
+      replyTo: { ...parent(), pubkey: ALICE, tags: [["p", ALICE]] },
+    });
+
+    const [row] = await db.dmRumors.toArray();
+    expect(row.tags).toContainEqual(["e", "a".repeat(64)]);
+  });
+
   it("can reply to a file message", async () => {
     // `.reply()` throws on any parent that is not kind 14, so replying to a
     // kind-15 attachment failed rather than sent.
