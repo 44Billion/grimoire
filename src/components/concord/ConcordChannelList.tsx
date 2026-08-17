@@ -272,6 +272,7 @@ export function ChannelList({
             communityId={communityId}
             selected={ch.idHex === selected}
             unread={unread.get(ch.idHex.toLowerCase())}
+            inCall={inCall.get(ch.idHex.toLowerCase()) ?? 0}
             onSelect={onSelect}
             {...(onMarkRead ? { onMarkRead } : {})}
           />
