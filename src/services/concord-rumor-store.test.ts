@@ -24,6 +24,8 @@ import {
   queryChannelRumors,
   queryPlane,
   readControlSnapshot,
+  readFoldedControl,
+  writeFoldedControl,
   writeChatRumors,
   writeOpened,
 } from "./concord-rumor-store";
@@ -314,5 +316,35 @@ describe("control snapshot membership", () => {
     expect(
       await readControlSnapshot(COMMUNITY, "66".repeat(32)),
     ).toBeUndefined();
+  });
+});
+
+describe("the materialized fold", () => {
+  const emptyFold = () => ({
+    roster: { roles: [], grants: [] },
+    ownerHex: "aa".repeat(32),
+    channels: new Map(),
+    banned: new Set<string>(),
+    bannedAt: new Map(),
+    pins: new Map(),
+    heads: new Map(),
+    incomplete: [] as string[],
+  });
+
+  it("round-trips a fold this build wrote", async () => {
+    await writeFoldedControl(COMMUNITY, 0n, emptyFold());
+    expect(await readFoldedControl(COMMUNITY, 0n)).toBeDefined();
+  });
+
+  it("rejects one written before a field its readers dereference", async () => {
+    // Dexie rehydrates behind an unchecked cast, so a snapshot from an older
+    // build arrives TYPED as current and throws on first read. Rejecting costs
+    // one re-fold from editions already on disk.
+    const { pins: _dropped, ...older } = emptyFold();
+    await db.concordKv.put({
+      key: `concordFold:${COMMUNITY}@0`,
+      value: older,
+    });
+    expect(await readFoldedControl(COMMUNITY, 0n)).toBeUndefined();
   });
 });

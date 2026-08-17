@@ -810,6 +810,7 @@ function isCurrentFold(value: unknown): value is FoldedControl {
   if (!(fold.channels instanceof Map)) return false;
   if (!(fold.heads instanceof Map)) return false;
   if (!(fold.bannedAt instanceof Map)) return false;
+  if (!(fold.pins instanceof Map)) return false;
   if (!(fold.banned instanceof Set)) return false;
   if (!Array.isArray(fold.incomplete)) return false;
   if (!fold.roster || !Array.isArray(fold.roster.roles)) return false;

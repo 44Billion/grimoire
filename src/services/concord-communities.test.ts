@@ -382,6 +382,26 @@ describe("syncCommunities", () => {
     expect(communities[0].idHex).toBe(alpha.community_id);
   });
 
+  it("ignores a kind-33302 event that is not a List fragment", async () => {
+    // Kind 33302 is not grimoire's to police — a real account already carries
+    // one whose `d` is an opaque id, encrypted to nobody here. Treating it as a
+    // fragment makes its failed decrypt a hole in the List, which withholds the
+    // whole mirror write and freezes the member's communities.
+    const alpha = joinMaterial("Alpha");
+    requestEvents.mockResolvedValue([
+      fragment(0, { frags: 1, entries: [entry(alpha)], tombstones: [] }),
+      {
+        ...listEvent({ entries: [], tombstones: [] }, 1_700_000_500, {
+          d: "19cc76d8390951975",
+        }),
+        content: "not encrypted to this key",
+      },
+    ]);
+    const result = await syncCommunities(pubkey, signer);
+    expect(result.status).toBe("ok");
+    expect(result.communities.map((c) => c.name)).toEqual(["Alpha"]);
+  });
+
   it("withholds the whole write when one fragment will not decrypt", async () => {
     // The mirror is replaced wholesale, so a union with a hole in it DELETES
     // the memberships that slot carries. One flaky signer round-trip — routine

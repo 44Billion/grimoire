@@ -128,6 +128,27 @@ function fragmentIndex(event: NostrEvent): string {
 }
 
 /**
+ * Whether an event can be a slot of THIS member's List at all.
+ *
+ * Kind 33302 is not grimoire's to police: other software publishes at it, and a
+ * real account already carries one whose `d` is an opaque id rather than a
+ * fragment index. Such an event is not encrypted to this key, so decrypting it
+ * fails — and a decrypt failure is read as a HOLE in the List, which withholds
+ * the whole mirror write. Recognising the shape first keeps a stranger's event
+ * from freezing a member's memberships, and spares the signer a round-trip it
+ * can only refuse (a bunker prompts for each one).
+ *
+ * §8's `d` is "the fragment index in decimal", so the shape test is exactly
+ * that. An absent identifier passes: it is the empty coordinate a writer that
+ * never fragmented would use.
+ */
+function isListSlot(event: NostrEvent): boolean {
+  if (event.kind === KIND_COMMUNITY_LIST_LEGACY) return true;
+  const d = fragmentIndex(event);
+  return d === "" || (/^\d{1,3}$/.test(d) && Number(d) < MAX_FRAGMENTS);
+}
+
+/**
  * Fetch both generations of the List for `pubkey` from their outbox relays,
  * newest copy per slot.
  *
@@ -147,6 +168,7 @@ async function fetchListEvents(
   const events = await requestEvents(relays, filters);
   const newest = new Map<string, NostrEvent>();
   for (const event of events) {
+    if (!isListSlot(event)) continue;
     const key = `${event.kind}:${fragmentIndex(event)}`;
     const prev = newest.get(key);
     // A relay may serve an older copy of a coordinate alongside a newer one, so
