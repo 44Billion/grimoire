@@ -63,6 +63,7 @@ import {
   useCommunityVoiceCounts,
 } from "@/hooks/useConcordVoice";
 import { DirectMessageList } from "./dm/DirectMessageList";
+import { NewConversationDialog } from "./dm/NewConversationDialog";
 import { DmConsentGate } from "./dm/DmConsentGate";
 import { useDirectMessages } from "@/hooks/useDirectMessages";
 import type { DMIdentifier } from "@/types/chat";
@@ -134,6 +135,7 @@ export function ConcordViewer({
    * back into a channel should find the list where they left it.
    */
   const [dmSectionOpen, setDmSectionOpen] = useState(dmPeer !== undefined);
+  const [composing, setComposing] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   /** Desktop only: the channel column is collapsible, the sheet is not. */
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
@@ -392,6 +394,11 @@ export function ConcordViewer({
   }, [grimoire.windows, updateWindow, windowId]);
 
   const toggleInvites = useCallback(() => {
+    // One thing open at a time: the invites pane takes the whole pane, so a
+    // conversation left selected underneath would come back on the next
+    // render with the sidebar highlighting neither.
+    setSelectedDm(undefined);
+    setDmSectionOpen(false);
     setShowInvites((open) => {
       const next = !open;
       if (windowId) {
@@ -535,10 +542,19 @@ export function ConcordViewer({
     setDmSectionOpen((open) => !open);
   }, []);
 
+  /**
+   * Open a conversation, by peer for a 1:1 or by conversation id for a group.
+   *
+   * One argument for both because the adapter normalises either into the same
+   * id — a group's id IS its participants, so there is nothing else to pass.
+   */
   const handleDmSelect = useCallback(
     (peer: string) => {
       setSelectedDm(peer);
       setShowGuestbook(false);
+      // The invites pane takes the whole pane too, so opening a conversation
+      // has to leave it — the same rule in the other direction.
+      setShowInvites(false);
       setQuery("");
       setJumpTo(undefined);
       if (windowId) {
@@ -791,14 +807,6 @@ export function ConcordViewer({
       {/* The scope control moved to the results heading — it describes what
           was searched, so it belongs beside the count, not under the box where
           it pushed the channel list down on every keystroke. */}
-      {/* Always offered, not only when something is waiting: a link is opened
-          from here, and a panel that appears only when you already have an
-          invite is one you cannot reach to paste one into. */}
-      <InvitesRow
-        count={pendingInviteCount}
-        active={showInvites}
-        onClick={toggleInvites}
-      />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {/* Direct messages is a row like a community is a row: click it to
             select it, and its conversations nest underneath the way a
@@ -846,10 +854,7 @@ export function ConcordViewer({
                   className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                 >
                   <RefreshCw
-                    className={cn(
-                      "size-3",
-                      dms.backfill && "animate-spin",
-                    )}
+                    className={cn("size-3", dms.backfill && "animate-spin")}
                   />
                   <span className="sr-only">Check for older messages</span>
                 </span>
@@ -865,7 +870,6 @@ export function ConcordViewer({
                   onCompose={() => setComposing(true)}
                   {...(selectedDm ? { selected: selectedDm } : {})}
                   {...(dms.backfill ? { backfill: dms.backfill } : {})}
-                  onRescan={() => void dms.rescan()}
                 />
               ) : (
                 <DmConsentGate
@@ -877,6 +881,14 @@ export function ConcordViewer({
             </div>
           )}
         </div>
+        {/* Always offered, not only when something is waiting: a link is
+            opened from here, and a panel that appears only when you already
+            have an invite is one you cannot reach to paste one into. */}
+        <InvitesRow
+          count={pendingInviteCount}
+          active={showInvites}
+          onClick={toggleInvites}
+        />
         {communitiesSlot}
       </div>
     </div>
@@ -908,6 +920,18 @@ export function ConcordViewer({
 
   return (
     <div className="flex h-full">
+      <NewConversationDialog
+        open={composing}
+        onOpenChange={setComposing}
+        {...(account?.pubkey ? { self: account.pubkey } : {})}
+        onCreate={(participants) => {
+          // The conversation id is the participants sorted and joined, which
+          // is exactly what the adapter normalises to — so a group and a 1:1
+          // are opened by the same call.
+          if (participants.length > 0) handleDmSelect(participants.join(":"));
+          setDmSectionOpen(true);
+        }}
+      />
       {isMobile ? (
         <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
           {/* `pt-10` clears the sheet's own close button, which otherwise sits

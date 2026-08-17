@@ -75,17 +75,30 @@ function cachedProfile(pubkey: string) {
   }
 }
 
-/** A conversation id is the participants, sorted and colon-joined. */
-function conversationIdFor(self: string, peer: string): string {
-  return Array.from(new Set([self, peer]))
+/**
+ * A conversation id: the participants, sorted and colon-joined.
+ *
+ * Takes either one pubkey or an already-joined id, because both arrive — a 1:1
+ * is opened by naming someone, a group by its id from the sidebar — and both
+ * have to normalise to the same string or the two would be different
+ * conversations.
+ */
+function conversationIdFor(self: string, peerOrId: string): string {
+  return Array.from(new Set([self, ...peerOrId.split(":").filter(Boolean)]))
     .sort()
     .join(":");
 }
 
-/** The other side of a 1:1 conversation, or the first stranger in a group. */
-function peerOf(conversationId: string, self: string): string {
-  const participants = conversationId.split(":").filter(Boolean);
-  return participants.find((p) => p !== self) ?? self;
+/**
+ * Everyone in a conversation except the viewer.
+ *
+ * Empty for a note to yourself, one for a 1:1, more for a group — and the
+ * whole list matters: the `p` tags ARE the conversation's identity, so sending
+ * to a subset files the message under a different conversation than the one on
+ * screen.
+ */
+function othersIn(conversationId: string, self: string): string[] {
+  return conversationId.split(":").filter((p) => p && p !== self);
 }
 
 /**
@@ -211,26 +224,37 @@ export class Nip17Adapter extends ChatProtocolAdapter {
       );
 
     const self = this.self();
-    const peer = identifier.value;
-    const id = conversationIdFor(self, peer);
+    // A group arrives as its conversation id — the participants, sorted and
+    // colon-joined — because that is what the sidebar holds and what a window
+    // reloads with. A 1:1 arrives as a single pubkey.
+    const participants = conversationIdFor(self, identifier.value)
+      .split(":")
+      .filter(Boolean);
+    const id = participants.join(":");
+    const others = participants.filter((p) => p !== self);
 
-    // Warm both sides' relay lists now, not at send time. Resolution is on a
-    // deadline and a cold read has to reach a relay first, so doing it when the
-    // conversation opens is what makes the first send land.
+    // Warm every participant's relay list now, not at send time. Resolution is
+    // on a deadline and a cold read has to reach a relay first, so doing it
+    // when the conversation opens is what makes the first send land.
     this.warmed.get(id)?.unsubscribe();
-    this.warmed.set(id, warmDmRelays([self, peer]));
+    this.warmed.set(id, warmDmRelays(participants));
 
-    // Both inboxes, for the header's relay dropdown: theirs is where your
-    // message goes, yours is where their reply lands, and a reader wondering
+    // Every inbox, for the header's relay dropdown: theirs is where your
+    // message goes, yours is where their replies land, and a reader wondering
     // whether a message will arrive needs to see both. Resolved with a short
     // deadline — a conversation must open whether or not a relay list does.
-    const [mine, theirs] = await Promise.all([
-      resolveDmRelays(self, 1500),
-      peer === self
-        ? Promise.resolve({ relays: [] as string[], source: "none" as const })
-        : resolveDmRelays(peer, 1500),
-    ]);
-    const relays = Array.from(new Set([...mine.relays, ...theirs.relays]));
+    const resolved = await Promise.all(
+      participants.map(async (pubkey) => ({
+        pubkey,
+        ...(await resolveDmRelays(pubkey, 1500)),
+      })),
+    );
+    const relays = Array.from(new Set(resolved.flatMap((r) => r.relays)));
+    // In a group this is a LIST: one member with no published inbox does not
+    // stop the message reaching the rest, so it is a caveat, not a refusal.
+    const unreachable = resolved
+      .filter((r) => r.source === "none" && r.pubkey !== self)
+      .map((r) => r.pubkey);
 
     return {
       id,
@@ -241,20 +265,26 @@ export class Nip17Adapter extends ChatProtocolAdapter {
       // who happens to share your face. Otherwise: resolved once from whatever
       // profile is cached, since a DM has no name of its own.
       title:
-        peer === self
+        others.length === 0
           ? SAVED_MESSAGES_TITLE
-          : getDisplayName(peer, cachedProfile(peer)),
-      participants: [{ pubkey: self }, { pubkey: peer }],
+          : others.length === 1
+            ? getDisplayName(others[0], cachedProfile(others[0]))
+            : // A group has no name of its own — NIP-17 defines no metadata
+              // for one — so naming it after its members is the honest answer.
+              others.map((p) => getDisplayName(p, cachedProfile(p))).join(", "),
+      participants: participants.map((pubkey) => ({ pubkey })),
       metadata: {
         encrypted: true,
         giftWrapped: true,
         relays,
-        // Named so the header can say WHY a message might not arrive: a peer
+        // Named so the header can say WHY a message might not arrive: someone
         // with no DM inbox and no NIP-65 inbox cannot be written to at all.
-        ...(theirs.source === "none" && peer !== self
+        ...(unreachable.length > 0
           ? {
               description:
-                "This person has published no inbox for direct messages.",
+                unreachable.length === 1
+                  ? "This person has published no inbox for direct messages."
+                  : `${unreachable.length} people here have published no inbox for direct messages.`,
             }
           : {}),
       },
@@ -399,7 +429,7 @@ export class Nip17Adapter extends ChatProtocolAdapter {
     options?: SendMessageOptions,
   ): Promise<void> {
     const self = this.self();
-    const peer = peerOf(conversation.id, self);
+    const peers = othersIn(conversation.id, self);
 
     let replyTo;
     if (options?.replyTo) {
@@ -421,7 +451,7 @@ export class Nip17Adapter extends ChatProtocolAdapter {
     await sendDirectMessage({
       viewer: self,
       signer: this.signer(),
-      peer,
+      peers,
       content,
       ...(replyTo ? { replyTo } : {}),
     });
@@ -444,7 +474,7 @@ export class Nip17Adapter extends ChatProtocolAdapter {
     await sendDirectReaction({
       viewer: self,
       signer: this.signer(),
-      peer: peerOf(conversation.id, self),
+      peers: othersIn(conversation.id, self),
       targetId: messageId,
       emoji,
       ...(customEmoji ? { customEmoji } : {}),

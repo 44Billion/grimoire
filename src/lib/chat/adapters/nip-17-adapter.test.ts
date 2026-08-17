@@ -221,7 +221,7 @@ describe("reactions", () => {
     await sendDirectReaction({
       viewer: ALICE,
       signer: alice,
-      peer: BOB,
+      peers: [BOB],
       targetId: target.id,
       emoji: "🔥",
     });
@@ -250,7 +250,7 @@ describe("reactions", () => {
     await sendDirectReaction({
       viewer: ALICE,
       signer: alice,
-      peer: BOB,
+      peers: [BOB],
       targetId: target.id,
       emoji: "👍",
     });

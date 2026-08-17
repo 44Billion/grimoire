@@ -11,11 +11,9 @@
  * people use it as a notepad rather than as correspondence.
  */
 
-import { useState } from "react";
-import { AtSign, Bookmark, Loader2, Plus, RefreshCw } from "lucide-react";
+import { AtSign, Bookmark, Loader2, Plus } from "lucide-react";
 import { UserName } from "@/components/nostr/UserName";
 import { formatTimestamp, useLocale } from "@/hooks/useLocale";
-import { resolveRecipient } from "@/lib/dm/recipient";
 import { cn } from "@/lib/utils";
 import type { DmConversationSummary } from "@/hooks/useDirectMessages";
 import type { BackfillProgress } from "@/services/dm-inbox";
@@ -24,23 +22,30 @@ export function DirectMessageList({
   conversations,
   selected,
   onSelect,
+  onCompose,
   backfill,
-  onRescan,
 }: {
   conversations: DmConversationSummary[];
   /** The open conversation's peer pubkey, if a DM is what is on screen. */
   selected?: string;
   onSelect: (peer: string) => void;
+  /** Open the dialog that starts one. */
+  onCompose: () => void;
   /** The walk back through the whole history, while one is running. */
   backfill?: BackfillProgress;
-  /** Walk the whole history again, ignoring the finished mark. */
-  onRescan?: () => void;
 }) {
   return (
     <div className="flex flex-col">
       {/* No heading: the row this list hangs under already says what it is,
           exactly as a community's channels need no "Channels" label. */}
-      <NewConversationInput onResolved={onSelect} />
+      <button
+        type="button"
+        onClick={onCompose}
+        className="flex w-full cursor-crosshair items-center gap-1.5 px-2 py-0.5 text-left text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+      >
+        <Plus className="size-3 flex-shrink-0" />
+        <span className="truncate">New conversation</span>
+      </button>
 
       {conversations.length === 0 && !backfill ? (
         <p className="px-2 pb-1 text-xs text-muted-foreground">
@@ -60,91 +65,14 @@ export function DirectMessageList({
       {/* The list grows while this runs — the walk rings the doorbell per page
           — so the line says what is still coming rather than blocking on it.
           Only ever shown on the first complete pass for a relay set. */}
-      {backfill ? (
+      {backfill && (
         <div className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] text-muted-foreground">
           <Loader2 className="size-3 shrink-0 animate-spin" />
           <span className="truncate">
             reading older messages — {backfill.written} so far
           </span>
         </div>
-      ) : (
-        onRescan && (
-          // The walk stops once it has reached the beginning of what a given
-          // relay set holds, and adding a relay re-walks on its own. This is
-          // for everything that is not that: a relay that was down during the
-          // first pass, a signer that was refusing, a hunch.
-          <button
-            type="button"
-            onClick={onRescan}
-            title="Read the whole history again from every relay"
-            className="flex w-full cursor-crosshair items-center gap-1.5 px-2 py-0.5 text-left text-[10px] text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-          >
-            <RefreshCw className="size-3 shrink-0" />
-            <span className="truncate">check for older messages</span>
-          </button>
-        )
       )}
-    </div>
-  );
-}
-
-/**
- * Paste someone in.
- *
- * Inline rather than behind a dialog: starting a conversation is one field and
- * one key, and a modal for that is more ceremony than the act. It sits above
- * the list because that is where the thing you are adding to the list goes,
- * and it is shaped like a row rather than like a search box for the same
- * reason the rows below it are shaped like channels.
- *
- * npub and nprofile only, the same rule the `chat` command follows — bare hex
- * is as plausibly an event id, and opening a private conversation with a
- * stranger because someone pasted the wrong thing is the wrong failure.
- */
-function NewConversationInput({
-  onResolved,
-}: {
-  onResolved: (peer: string) => void;
-}) {
-  const [value, setValue] = useState("");
-  const [rejected, setRejected] = useState(false);
-
-  const submit = () => {
-    const peer = resolveRecipient(value);
-    if (!peer) {
-      setRejected(value.trim().length > 0);
-      return;
-    }
-    setValue("");
-    setRejected(false);
-    onResolved(peer);
-  };
-
-  return (
-    <div
-      className={cn(
-        "flex w-full items-center gap-1.5 px-2 py-0.5 text-sm",
-        rejected && "text-destructive",
-      )}
-    >
-      <Plus className="size-3 flex-shrink-0 text-muted-foreground" />
-      <input
-        value={value}
-        onChange={(e) => {
-          setValue(e.target.value);
-          setRejected(false);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") submit();
-          if (e.key === "Escape") {
-            setValue("");
-            setRejected(false);
-          }
-        }}
-        placeholder="npub1… or nprofile1…"
-        title="Paste an npub or nprofile to start a conversation"
-        className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-      />
     </div>
   );
 }

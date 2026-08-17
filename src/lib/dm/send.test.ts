@@ -14,10 +14,12 @@ import { listDmConversations, queryConversation } from "@/services/dm-store";
 
 import type { DmRelayResolution } from "./relays";
 
-const resolveDmRelays = vi.fn(async (): Promise<DmRelayResolution> => ({
-  relays: ["wss://peer-inbox.example.com/"],
-  source: "dm-relays",
-}));
+const resolveDmRelays = vi.fn(
+  async (_peer: string): Promise<DmRelayResolution> => ({
+    relays: ["wss://peer-inbox.example.com/"],
+    source: "dm-relays",
+  }),
+);
 const ownDmReadRelays = vi.fn(async () => ["wss://my-inbox.example.com/"]);
 vi.mock("./relays", () => ({ resolveDmRelays, ownDmReadRelays }));
 
@@ -35,13 +37,21 @@ const alice = PrivateKeySigner.fromKey(
 const bob = PrivateKeySigner.fromKey(
   "0000000000000000000000000000000000000000000000000000000000000002",
 );
+// A real key, not a repeated nibble: gift-wrapping derives a shared secret, so
+// a recipient that is not a point on the curve throws inside the crypto rather
+// than failing the assertion the test is about.
+const charlie = PrivateKeySigner.fromKey(
+  "0000000000000000000000000000000000000000000000000000000000000003",
+);
 
 let ALICE = "";
 let BOB = "";
+let CHARLIE = "";
 
 beforeEach(async () => {
   ALICE = await alice.getPublicKey();
   BOB = await bob.getPublicKey();
+  CHARLIE = await charlie.getPublicKey();
   vi.clearAllMocks();
   resolveDmRelays.mockResolvedValue({
     relays: ["wss://peer-inbox.example.com/"],
@@ -61,7 +71,7 @@ async function send(content = "hi bob") {
   return sendDirectMessage({
     viewer: ALICE,
     signer: alice,
-    peer: BOB,
+    peers: [BOB],
     content,
   });
 }
@@ -154,7 +164,7 @@ describe("sendDirectMessage", () => {
     await sendDirectMessage({
       viewer: ALICE,
       signer: alice,
-      peer: BOB,
+      peers: [BOB],
       content: `look at ${stranger}`,
     });
 
@@ -170,16 +180,82 @@ describe("sendDirectMessage", () => {
     expect(rows[0].content).toContain("nostr:");
   });
 
-  it("does not build a self-copy of a note to oneself", async () => {
+  it("sends a note to oneself as the self-copy alone", async () => {
+    // There is no recipient to resolve and nobody to be anonymous from: the
+    // self-copy IS the message, and it goes to our own relays where being
+    // authenticated is expected.
     const { sendDirectMessage } = await import("./send");
     await sendDirectMessage({
       viewer: ALICE,
       signer: alice,
-      peer: ALICE,
+      peers: [ALICE],
       content: "reminder",
     });
 
-    expect(publishEventToRelays).not.toHaveBeenCalled();
+    expect(publishGiftWrap).not.toHaveBeenCalled();
+    expect(publishEventToRelays).toHaveBeenCalledTimes(1);
+  });
+
+  it("wraps a group message once per recipient", async () => {
+    const { sendDirectMessage } = await import("./send");
+    await sendDirectMessage({
+      viewer: ALICE,
+      signer: alice,
+      peers: [BOB, CHARLIE],
+      content: "hello both",
+    });
+
+    expect(publishGiftWrap).toHaveBeenCalledTimes(2);
+    const recipients = publishGiftWrap.mock.calls.map(
+      ([wrap]) => wrap.tags.find((t: string[]) => t[0] === "p")?.[1],
+    );
+    expect(new Set(recipients)).toEqual(new Set([BOB, CHARLIE]));
+
+    // Each under its own throwaway key: sharing one would let two relays link
+    // the copies, which is most of what the wrap hides.
+    const ephemeral = publishGiftWrap.mock.calls.map(([wrap]) => wrap.pubkey);
+    expect(new Set(ephemeral).size).toBe(2);
+  });
+
+  it("files a group message under a conversation naming everyone", async () => {
+    const { sendDirectMessage } = await import("./send");
+    await sendDirectMessage({
+      viewer: ALICE,
+      signer: alice,
+      peers: [BOB, CHARLIE],
+      content: "hello both",
+    });
+
+    // The p tags ARE the conversation's identity, so both have to be there —
+    // dropping one files the message somewhere the sender is not looking.
+    const [row] = await db.dmRumors.toArray();
+    const tagged = row.tags.filter((t) => t[0] === "p").map((t) => t[1]);
+    expect(new Set(tagged)).toEqual(new Set([BOB, CHARLIE]));
+    expect(row.conversationId.split(":").sort()).toEqual(
+      [ALICE, BOB, CHARLIE].sort(),
+    );
+  });
+
+  it("still sends to the rest when one member has no inbox", async () => {
+    resolveDmRelays.mockImplementation(async (peer: string) =>
+      peer === CHARLIE
+        ? { relays: [], source: "none" as const }
+        : {
+            relays: ["wss://peer-inbox.example.com/"],
+            source: "dm-relays" as const,
+          },
+    );
+
+    const { sendDirectMessage } = await import("./send");
+    await sendDirectMessage({
+      viewer: ALICE,
+      signer: alice,
+      peers: [BOB, CHARLIE],
+      content: "hello both",
+    });
+
+    // One unreachable member is a caveat, not a failed send — everyone else
+    // has the message and it is already in the sender's own history.
     expect(publishGiftWrap).toHaveBeenCalledTimes(1);
   });
 });
