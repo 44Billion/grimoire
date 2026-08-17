@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { ArrowDown, ArrowUp, Send, Sparkles, Square } from "lucide-react";
 
 import {
@@ -28,11 +36,51 @@ import {
 import type { InferenceMessage, Usage } from "@/types/inference";
 import { useLocale } from "@/hooks/useLocale";
 import { ProviderLogo, providerFromModel } from "./ai/ProviderLogo";
+import { useAddWindow } from "@/core/state";
+import { splitNostrRefs, type NostrRefTarget } from "@/lib/open-nostr-ref";
 
 interface AiViewerProps {
-  /** Prompt from the command line, sent once on mount. */
+  /** Prompt from the command line. Prefilled, not sent. */
   prompt?: string;
   system?: string;
+}
+
+/**
+ * Render markdown text, turning any bech32 nostr entity into a button that
+ * opens the window for it. A model that names an npub or nevent should be as
+ * clickable as a note that does.
+ */
+function LinkedText({
+  children,
+  onOpen,
+}: {
+  children?: ReactNode;
+  onOpen: (target: NostrRefTarget, label: string) => void;
+}) {
+  if (typeof children !== "string") return <>{children}</>;
+
+  const segments = splitNostrRefs(children);
+  if (segments.length === 1 && !segments[0].target) return <>{children}</>;
+
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.target ? (
+          <button
+            className="break-all text-primary underline underline-offset-2 hover:text-primary/80"
+            key={`${index}-${segment.text}`}
+            onClick={() => onOpen(segment.target!, segment.text)}
+            title={segment.text}
+            type="button"
+          >
+            {segment.text.slice(0, 12)}…
+          </button>
+        ) : (
+          <span key={`${index}-plain`}>{segment.text}</span>
+        ),
+      )}
+    </>
+  );
 }
 
 /** A turn as rendered. `pending` marks the assistant turn currently streaming. */
@@ -44,6 +92,22 @@ interface Turn {
   /** From the `done` chunk. The model is the extension's choice, not ours. */
   model?: string;
   usage?: Usage;
+}
+
+/** Apply LinkedText to the string leaves of a markdown element's children. */
+function withLinks(
+  children: ReactNode,
+  onOpen: (target: NostrRefTarget, label: string) => void,
+): ReactNode {
+  if (typeof children === "string") {
+    return <LinkedText onOpen={onOpen}>{children}</LinkedText>;
+  }
+  if (Array.isArray(children)) {
+    return children.map((child, index) => (
+      <Fragment key={index}>{withLinks(child, onOpen)}</Fragment>
+    ));
+  }
+  return children;
 }
 
 /**
@@ -96,6 +160,7 @@ function TurnUsage({
 
 export default function AiViewer({ prompt, system }: AiViewerProps) {
   const { locale } = useLocale();
+  const addWindow = useAddWindow();
   const [turns, setTurns] = useState<Turn[]>([]);
   // The command-line prompt is prefilled, not sent. Windows are restored from
   // localStorage on load, and auto-sending would re-spend on every reload.
@@ -108,6 +173,21 @@ export default function AiViewer({ prompt, system }: AiViewerProps) {
   // the next send, which throws `unavailable` with the same message.
   const available = isInferenceAvailable();
   const features = available ? getInferenceFeatures() : {};
+
+  // Markdown element overrides for MessageResponse. Memoized because a new
+  // object each render would defeat its memo and re-parse the whole reply.
+  const markdownComponents = useMemo(() => {
+    const onOpen = (target: NostrRefTarget, label: string) =>
+      addWindow(target.appId, target.props, `open ${label}`);
+    return {
+      p: ({ children }: { children?: ReactNode }) => (
+        <p>{withLinks(children, onOpen)}</p>
+      ),
+      li: ({ children }: { children?: ReactNode }) => (
+        <li>{withLinks(children, onOpen)}</li>
+      ),
+    };
+  }, [addWindow]);
 
   const send = useCallback(
     async (text: string) => {
@@ -258,8 +338,15 @@ export default function AiViewer({ prompt, system }: AiViewerProps) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <Conversation>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      {/*
+        `min-h-0` is load-bearing: a flex item defaults to min-height:auto, so
+        Conversation would grow past the pane and the window's own overflow-auto
+        would scroll instead. StickToBottom's scroller is height:100% of this
+        element, so an unbounded height means it never scrolls — and never
+        follows the stream.
+      */}
+      <Conversation className="min-h-0">
         <ConversationContent>
           {turns.length === 0 ? (
             <ConversationEmptyState
@@ -277,7 +364,9 @@ export default function AiViewer({ prompt, system }: AiViewerProps) {
                       <ReasoningContent>{turn.reasoning}</ReasoningContent>
                     </Reasoning>
                   )}
-                  <MessageResponse>{turn.content}</MessageResponse>
+                  <MessageResponse components={markdownComponents}>
+                    {turn.content}
+                  </MessageResponse>
                   {turn.role === "assistant" && !turn.pending && (
                     <TurnUsage
                       locale={locale}
