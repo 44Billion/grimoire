@@ -291,6 +291,8 @@ export default function AiViewer({
   const [local, setLocal] = useState<Turn[] | null>(null);
   // Memoized so `send`, which closes over it, is not rebuilt every render.
   const turns: Turn[] = useMemo(() => local ?? stored ?? [], [local, stored]);
+  // The index is what a bare window shows until something is asked in it.
+  const showIndex = isBare && turns.length === 0;
   const setTurns = useCallback(
     (update: (previous: Turn[]) => Turn[]) => {
       setLocal((previous) => update(previous ?? stored ?? []));
@@ -594,12 +596,16 @@ export default function AiViewer({
       <Conversation className="min-h-0">
         {/* The empty state centers itself in `size-full`, so the content box
             has to fill the pane — its default height is its content. */}
-        <ConversationContent className={turns.length === 0 ? "h-full" : ""}>
+        <ConversationContent
+          className={turns.length === 0 && !showIndex ? "h-full" : ""}
+        >
           {/* What the model was actually told, before anything the user typed. */}
-          {disclosedSystem && (
+          {/* Configuration belongs to a conversation, not to the index: the
+              bare page is a list, and nothing has been sent from it yet. */}
+          {!showIndex && disclosedSystem && (
             <SystemPromptDisclosure prompt={disclosedSystem} />
           )}
-          {toolsEnabled && <ToolsDisclosure tools={AI_TOOLS} />}
+          {!showIndex && toolsEnabled && <ToolsDisclosure tools={AI_TOOLS} />}
           {/* The event under discussion, rendered as itself — the question is
               about this, so it belongs in the conversation, not just the prompt. */}
           {targetRef && (
@@ -611,7 +617,7 @@ export default function AiViewer({
           {turns.length === 0 ? (
             // A bare `ai` window shows what Hex already remembers; a grounded
             // one shows openers for the thing it is grounded in.
-            isBare ? (
+            showIndex ? (
               <ConversationIndex currentWindowId={storageId} />
             ) : (
               <ConversationEmptyState>

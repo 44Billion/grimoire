@@ -322,6 +322,7 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
       case "ai":
         content = (
           <AiViewer
+            conversation={window.props.conversation}
             prompt={window.props.prompt}
             system={window.props.system}
             target={window.props.target}
