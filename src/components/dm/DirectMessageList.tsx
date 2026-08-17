@@ -47,19 +47,21 @@ export function DirectMessageList({
         <span className="truncate">New conversation</span>
       </button>
 
-      {conversations.length === 0 && !backfill ? (
+      {conversations.map((conversation) => (
+        <DirectMessageRow
+          key={conversation.conversationId}
+          conversation={conversation}
+          selected={conversation.peer === selected}
+          onSelect={onSelect}
+        />
+      ))}
+
+      {/* Saved messages is always present, so a row COUNT would call an empty
+          list one conversation long. */}
+      {conversations.every((c) => c.isSelf) && !backfill && (
         <p className="px-2 pb-1 text-xs text-muted-foreground">
           No conversations yet.
         </p>
-      ) : (
-        conversations.map((conversation) => (
-          <DirectMessageRow
-            key={conversation.conversationId}
-            conversation={conversation}
-            selected={conversation.peer === selected}
-            onSelect={onSelect}
-          />
-        ))
       )}
 
       {/* The list grows while this runs — the walk rings the doorbell per page

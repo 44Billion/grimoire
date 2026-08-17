@@ -140,6 +140,23 @@ export function useDirectMessages(
           };
         }),
       );
+      // Saved messages always exists, even empty. It is a place rather than a
+      // correspondence — somewhere to put a link before you lose it — and a
+      // notepad you can only reach after already writing in it is one nobody
+      // discovers. Every other row appears because a message arrived; this one
+      // appears because the account does.
+      if (!conversations.some((c) => c.isSelf))
+        conversations.push({
+          viewer: pubkey,
+          conversationId: pubkey,
+          participants: [pubkey],
+          lastAt: 0,
+          peer: pubkey,
+          isSelf: true,
+          lastRead: 0,
+          unread: false,
+        });
+
       // Saved messages first, then by recency. The store already sorted by
       // `lastAt`, so this only lifts the one row out.
       conversations.sort((a, b) => Number(b.isSelf) - Number(a.isSelf));
