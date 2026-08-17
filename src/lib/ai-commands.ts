@@ -30,6 +30,12 @@ export interface ProposedCommand {
   /** The line as written, shown on the chip. */
   command: string;
   appId: AppId;
+  /** Command name, for rendering it the way the palette does. */
+  name: string;
+  /** Arguments as written, i.e. the line minus the name. */
+  args: string;
+  /** First sentence of the man page, as the palette shows. */
+  description?: string;
   /** Set when the command may not be run automatically. */
   refusal?: string;
 }
@@ -49,6 +55,11 @@ export function proposeCommand(line: string): ProposedCommand | undefined {
   return {
     command,
     appId: entry.appId,
+    name: entry.name,
+    args: command.slice(parsed.commandName.length).trim(),
+    ...(entry.description
+      ? { description: `${entry.description.split(".")[0]}.` }
+      : {}),
     ...(PROPOSAL_DENIED.has(entry.appId)
       ? {
           refusal: `${parsed.commandName} acts on your behalf, so it only opens when you run it yourself.`,

@@ -88,6 +88,29 @@ export function getInferenceFeatures(): InferenceFeatures {
   return lookup()?.getFeatures?.() ?? {};
 }
 
+/**
+ * Parse a tool call's arguments. Empty means no arguments, not an error —
+ * providers send `""` for a zero-argument call.
+ */
+export function parseToolArguments(json: string | undefined): unknown {
+  if (!json) return {};
+  try {
+    return JSON.parse(json);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Serialize a tool result for a `role: "tool"` message. */
+export function serializeToolResult(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value) ?? "null";
+  } catch {
+    return JSON.stringify({ error: "Result was not serializable." });
+  }
+}
+
 /** Drain a stream to its single `done` chunk, ignoring deltas. */
 export async function complete(request: InferenceRequest): Promise<DoneChunk> {
   let done: DoneChunk | undefined;

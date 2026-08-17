@@ -26,7 +26,18 @@ export type MockInferenceBehaviour =
    */
   | { kind: "error"; code: InferenceErrorCode; message?: string }
   /** Never yields anything after `accepted`; only an abort ends it. */
-  | { kind: "hang" };
+  | { kind: "hang" }
+  /**
+   * Answer with tool calls on each listed round, then with text. Lets the
+   * page-side tool loop be exercised without an injector that advertises
+   * toolCalling — no shipped one does yet.
+   */
+  | {
+      kind: "tool-calls";
+      /** One entry per round; an empty array ends the loop with `text`. */
+      rounds: Array<Array<{ name: string; arguments?: string }>>;
+      text?: string;
+    };
 
 export interface MockInference extends Inference {
   /** Requests received, for asserting the caller isn't re-requesting. */
@@ -42,6 +53,7 @@ export function createMockInference(
   features: InferenceFeatures = {},
 ): MockInference {
   const requests: InferenceRequest[] = [];
+  let round = 0;
 
   return {
     requests,
@@ -52,6 +64,39 @@ export function createMockInference(
         async *[Symbol.asyncIterator]() {
           throwIfAborted(request);
           yield { type: "accepted" };
+
+          if (behaviour.kind === "tool-calls") {
+            const calls = behaviour.rounds[round] ?? [];
+            round++;
+            if (calls.length > 0) {
+              yield {
+                type: "done",
+                model: "mock-model",
+                message: {
+                  role: "assistant",
+                  content: null,
+                  toolCalls: calls.map((call, index) => ({
+                    id: `call-${round}-${index}`,
+                    type: "function",
+                    function: {
+                      name: call.name,
+                      arguments: call.arguments ?? "{}",
+                    },
+                  })),
+                },
+              };
+              return;
+            }
+            const text = behaviour.text ?? "done";
+            yield { type: "delta", content: text };
+            yield {
+              type: "done",
+              model: "mock-model",
+              message: { role: "assistant", content: text },
+              usage: { inputTokens: 1, outputTokens: 1 },
+            };
+            return;
+          }
 
           if (behaviour.kind === "hang") {
             await new Promise<void>((_resolve, reject) => {

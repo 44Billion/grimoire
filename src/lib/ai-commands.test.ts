@@ -3,11 +3,15 @@ import { describe, expect, it } from "vitest";
 import { proposeCommand, proposeCommands } from "./ai-commands";
 
 describe("proposeCommand", () => {
-  it("recognises a real command", () => {
-    expect(proposeCommand("nip 01")).toEqual({
+  it("recognises a real command, and carries what the palette shows", () => {
+    expect(proposeCommand("nip 01")).toMatchObject({
       command: "nip 01",
       appId: "nip",
+      name: "nip",
+      args: "01",
     });
+    // The description is the man page's first sentence, as in the palette.
+    expect(proposeCommand("nip 01")?.description).toMatch(/\.$/);
   });
 
   it("ignores a command grimoire does not have", () => {

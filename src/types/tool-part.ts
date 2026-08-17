@@ -10,6 +10,15 @@
  * (consent belongs to the extension's permission prompt).
  */
 
+/** One executed tool call, as the loop reports it and the UI renders it. */
+export interface ToolRun {
+  name: string;
+  input: unknown;
+  output?: unknown;
+  errorText?: string;
+  state: ToolCallState;
+}
+
 export type ToolCallState =
   | "input-streaming"
   | "input-available"

@@ -34,6 +34,7 @@ import {
   getInferenceFeatures,
   isInferenceAvailable,
 } from "@/services/inference";
+import { runToolLoop } from "@/services/tool-loop";
 import type { InferenceMessage, Usage } from "@/types/inference";
 import { useLocale } from "@/hooks/useLocale";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -50,7 +51,11 @@ import {
 import { Suggestion, Suggestions } from "./ai-elements/suggestion";
 import { SystemPromptDisclosure } from "./ai/SystemPromptDisclosure";
 import { CommandChips } from "./ai/CommandChips";
-import { COMMAND_FENCE } from "@/lib/ai-commands";
+import { COMMAND_FENCE, resolveCommand } from "@/lib/ai-commands";
+import { AI_TOOLS, createToolExecutors, refuseIfNeeded } from "@/lib/ai-tools";
+import { ToolRuns } from "./ai/ToolRuns";
+import type { ToolRun } from "@/types/tool-part";
+import { useAccount } from "@/hooks/useAccount";
 import { ProviderLogo, providerFromModel } from "./ai/ProviderLogo";
 import { useAddWindow } from "@/core/state";
 import {
@@ -147,6 +152,7 @@ interface Turn {
   /** From the `done` chunk. The model is the extension's choice, not ours. */
   model?: string;
   usage?: Usage;
+  toolRuns?: ToolRun[];
 }
 
 /**
@@ -245,6 +251,7 @@ export default function AiViewer({
 }: AiViewerProps) {
   const { locale } = useLocale();
   const addWindow = useAddWindow();
+  const { pubkey } = useAccount();
 
   // The target's own data — event JSON, kind registry entry, cached NIP text —
   // becomes the system prompt. Resolved through a live query so it picks up an
@@ -287,6 +294,33 @@ export default function AiViewer({
   // Before the first send, mentions are unknown, so show the grounding that is
   // already decided. After, show exactly what went out.
   const disclosedSystem = sentSystem ?? system ?? context?.system;
+
+  // Tools are offered only when the injector advertises them. Sending `tools`
+  // otherwise is invalid_request, and a chat-only grant does not cover them.
+  const toolsEnabled = features.toolCalling === true;
+
+  // `open_window` needs the window state, so it is built here; the read-only
+  // executors are pure and live in the lib.
+  const executors = useMemo(
+    () =>
+      createToolExecutors(async (args: unknown) => {
+        const command = (args as { command?: unknown })?.command;
+        if (typeof command !== "string") {
+          return { error: "command must be a string." };
+        }
+        const refusal = refuseIfNeeded(command);
+        if (refusal) return { error: refusal };
+        const resolved = await resolveCommand(command, pubkey);
+        addWindow(
+          resolved.appId,
+          resolved.props,
+          resolved.commandString,
+          resolved.customTitle,
+        );
+        return { opened: command, appId: resolved.appId };
+      }),
+    [addWindow, pubkey],
+  );
 
   // Markdown element overrides for MessageResponse. Memoized because a new
   // object each render would defeat its memo and re-parse the whole reply.
@@ -385,43 +419,35 @@ export default function AiViewer({
         queued = true;
         requestAnimationFrame(flush);
       };
+      // Tool state changes are rare and worth showing immediately, so they
+      // bypass the frame-batching that deltas need.
+      const flushToolRuns = (runs: ToolRun[]) => {
+        setTurns((previous) =>
+          previous.map((turn, index) =>
+            index === previous.length - 1 && turn.pending
+              ? { ...turn, toolRuns: runs.map((run) => ({ ...run })) }
+              : turn,
+          ),
+        );
+      };
 
       try {
-        for await (const chunk of getInference().request({
-          method: "chat",
+        const loop = await runToolLoop({
+          executors,
           messages: history,
+          onDelta: schedule,
+          onReasoningDelta: schedule,
+          onToolRuns: flushToolRuns,
+          request: getInference().request.bind(getInference()),
           signal: controller.signal,
-          // Unadvertised option keys must be ignored, not rejected, so this is
-          // safe to send unconditionally.
-          options: { reasoningEffort: "auto" },
-        })) {
-          switch (chunk.type) {
-            case "delta":
-              content += chunk.content;
-              schedule();
-              break;
-            case "reasoning_delta":
-              reasoning += chunk.content;
-              schedule();
-              break;
-            case "done":
-              model = chunk.model;
-              usage = chunk.usage;
-              content =
-                chunk.message.role === "assistant"
-                  ? (chunk.message.content ?? content)
-                  : content;
-              if (
-                chunk.message.role === "assistant" &&
-                chunk.message.reasoning
-              ) {
-                reasoning = chunk.message.reasoning;
-              }
-              break;
-            default:
-              break;
-          }
-        }
+          ...(toolsEnabled ? { tools: AI_TOOLS } : {}),
+        });
+        content = loop.content;
+        reasoning = loop.reasoning ?? "";
+        model = loop.model;
+        usage = loop.usage;
+        const toolRuns = loop.toolRuns;
+
         // Rebuild from the turns we started with so earlier model and usage
         // survive; the placeholder is replaced, not patched.
         const settled: Turn[] = [
@@ -433,6 +459,7 @@ export default function AiViewer({
             ...(reasoning ? { reasoning } : {}),
             ...(model ? { model } : {}),
             ...(usage ? { usage } : {}),
+            ...(toolRuns.length ? { toolRuns } : {}),
           },
         ];
         setLocal(settled);
@@ -548,6 +575,7 @@ export default function AiViewer({
                       <ReasoningContent>{turn.reasoning}</ReasoningContent>
                     </Reasoning>
                   )}
+                  {turn.toolRuns && <ToolRuns runs={turn.toolRuns} />}
                   <MessageResponse components={markdownComponents}>
                     {turn.content}
                   </MessageResponse>
