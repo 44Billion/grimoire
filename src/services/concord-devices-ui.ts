@@ -8,6 +8,7 @@
  */
 
 export {
+  denoiseEnabled,
   listDevices,
   preferredCameraId,
   preferredMicId,
@@ -16,6 +17,7 @@ export {
 } from "@/services/concord-devices";
 
 import {
+  setDenoiseEnabled,
   setPreferredCameraId,
   setPreferredMicId,
 } from "@/services/concord-devices";
@@ -38,4 +40,12 @@ export async function chooseCaptureDevice(
     await import("@/services/concord-call");
   if (!activeRoom()) return;
   await switchCaptureDevice(kind, deviceId);
+}
+
+/** Remember the noise-suppression choice, and apply it to a call in progress. */
+export async function setDenoise(on: boolean): Promise<void> {
+  setDenoiseEnabled(on);
+  const { activeRoom, applyDenoise } = await import("@/services/concord-call");
+  if (!activeRoom()) return;
+  await applyDenoise();
 }

@@ -14,6 +14,7 @@
 const MIC_KEY = "concord.voice.mic";
 const CAMERA_KEY = "concord.voice.camera";
 const VOLUME_KEY = "concord.voice.volume";
+const DENOISE_KEY = "concord.voice.denoise";
 
 function read(key: string): string | undefined {
   try {
@@ -40,6 +41,21 @@ export function preferredMicId(): string | undefined {
 /** The chosen camera's deviceId, if one was chosen. */
 export function preferredCameraId(): string | undefined {
   return read(CAMERA_KEY);
+}
+
+/**
+ * Whether to run noise suppression on our own microphone.
+ *
+ * Defaults ON. It runs before encryption, on the raw capture, so nobody else
+ * can tell it is there — which makes it a plain quality setting rather than
+ * anything the protocol has an opinion about.
+ */
+export function denoiseEnabled(): boolean {
+  return read(DENOISE_KEY) !== "0";
+}
+
+export function setDenoiseEnabled(on: boolean): void {
+  write(DENOISE_KEY, on ? "1" : "0");
 }
 
 export function setPreferredMicId(deviceId?: string): void {

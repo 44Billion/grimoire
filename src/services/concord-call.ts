@@ -67,12 +67,14 @@ import {
 } from "@/services/concord-presence";
 import { preferredBrokers } from "@/services/concord-brokers";
 import {
+  denoiseEnabled,
   preferredCameraId,
   preferredMicId,
   setPreferredCameraId,
   setPreferredMicId,
   volumeFor,
 } from "@/services/concord-devices";
+import { syncRnnoise } from "@/services/concord-rnnoise";
 
 /** How long a reaction floats before it is aged out. */
 const REACTION_TTL_MS = 4_000;
@@ -577,8 +579,12 @@ async function setPublishing(
   if (!call) return;
   const local = call.room.localParticipant;
   try {
-    if (source === "mic") await local.setMicrophoneEnabled(on);
-    else if (source === "camera") await local.setCameraEnabled(on);
+    if (source === "mic") {
+      await local.setMicrophoneEnabled(on);
+      // The processor attaches to the TRACK, which only exists once the mic is
+      // publishing — so this belongs here rather than in the room options.
+      if (on) await applyDenoise();
+    } else if (source === "camera") await local.setCameraEnabled(on);
     // The screen's own audio rides with it when the member shares it; it is
     // published as a separate track and mixed by the receiver like any other.
     else await local.setScreenShareEnabled(on, { audio: true });
@@ -590,6 +596,19 @@ async function setPublishing(
     return;
   }
   patch(readPublishing(call));
+}
+
+/**
+ * Match the published microphone to the noise-suppression preference.
+ *
+ * Never throws: a worklet that will not load costs the suppression, not the
+ * call, and the raw track keeps publishing.
+ */
+export async function applyDenoise(): Promise<void> {
+  const track = active?.room.localParticipant.getTrackPublication(
+    Track.Source.Microphone,
+  )?.audioTrack;
+  await syncRnnoise(track, denoiseEnabled()).catch(() => undefined);
 }
 
 function readPublishing(call: ActiveCall): Partial<CallState> {

@@ -25,11 +25,15 @@ import {
   preferredBroker,
   setPreferredBroker,
 } from "@/services/concord-brokers";
+import { Switch } from "@/components/ui/switch";
+import { rnnoiseSupported } from "@/lib/concord/rnnoise-support";
 import {
   listDevices,
   preferredCameraId,
   preferredMicId,
   chooseCaptureDevice,
+  denoiseEnabled,
+  setDenoise,
 } from "@/services/concord-devices-ui";
 
 const SYSTEM = "__system__";
@@ -40,6 +44,8 @@ export function VoiceSettingsSection() {
   const [mic, setMic] = useState(preferredMicId() ?? SYSTEM);
   const [camera, setCamera] = useState(preferredCameraId() ?? SYSTEM);
   const [broker, setBroker] = useState(preferredBroker() ?? "");
+  const [denoise, setDenoiseOn] = useState(denoiseEnabled());
+  const denoiseAvailable = rnnoiseSupported();
   const [brokerError, setBrokerError] = useState<string>();
 
   useEffect(() => {
@@ -111,6 +117,25 @@ export function VoiceSettingsSection() {
               );
             }}
           />
+        </div>
+      </div>
+
+      <div>
+        <h3 className="mb-1 text-sm font-medium">Noise suppression</h3>
+        <div className="flex items-start gap-3">
+          <Switch
+            checked={denoise && denoiseAvailable}
+            disabled={!denoiseAvailable}
+            onCheckedChange={(on) => {
+              setDenoiseOn(on);
+              void setDenoise(on);
+            }}
+          />
+          <p className="text-xs text-muted-foreground">
+            {denoiseAvailable
+              ? "Strips background noise from your microphone before it is sent — a keyboard, a fan, a room. It runs here, on the raw capture and before encryption, so nobody else can tell it is on."
+              : "Unavailable in this browser: it needs an AudioWorklet and permission to compile WebAssembly."}
+          </p>
         </div>
       </div>
 
