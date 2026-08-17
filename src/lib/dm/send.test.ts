@@ -259,3 +259,86 @@ describe("sendDirectMessage", () => {
     expect(publishGiftWrap).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("replies", () => {
+  /** A parent as it comes back out of the store. */
+  function parent(kind = 14) {
+    return {
+      id: "a".repeat(64),
+      kind,
+      pubkey: BOB,
+      created_at: 1,
+      content: "the parent",
+      tags: [["p", ALICE]],
+    };
+  }
+
+  it("e-tags the message being replied to", async () => {
+    const { sendDirectMessage } = await import("./send");
+    await sendDirectMessage({
+      viewer: ALICE,
+      signer: alice,
+      peers: [BOB],
+      content: "re",
+      replyTo: parent(),
+    });
+
+    const [row] = await db.dmRumors.toArray();
+    expect(row.tags).toContainEqual(["e", "a".repeat(64)]);
+  });
+
+  it("keeps every recipient when replying in a group", async () => {
+    // applesauce's `WrappedMessageFactory.reply` p-tags exactly ONE recipient,
+    // so a reply carried a different participant set than the messages around
+    // it — and the participant set IS the conversation, so the reply landed in
+    // a different one.
+    const { sendDirectMessage } = await import("./send");
+    await sendDirectMessage({
+      viewer: ALICE,
+      signer: alice,
+      peers: [BOB, CHARLIE],
+      content: "re",
+      replyTo: parent(),
+    });
+
+    const [row] = await db.dmRumors.toArray();
+    const tagged = row.tags.filter((t) => t[0] === "p").map((t) => t[1]);
+    expect(new Set(tagged)).toEqual(new Set([BOB, CHARLIE]));
+  });
+
+  it("files a group reply in the same conversation as the parent", async () => {
+    const { sendDirectMessage } = await import("./send");
+    await sendDirectMessage({
+      viewer: ALICE,
+      signer: alice,
+      peers: [BOB, CHARLIE],
+      content: "first",
+    });
+    await sendDirectMessage({
+      viewer: ALICE,
+      signer: alice,
+      peers: [BOB, CHARLIE],
+      content: "re",
+      replyTo: parent(),
+    });
+
+    // Two messages, one conversation — not a reply stranded in a 1:1 with
+    // whoever happened to be first in the list.
+    expect(await listDmConversations(ALICE)).toHaveLength(1);
+  });
+
+  it("can reply to a file message", async () => {
+    // `.reply()` throws on any parent that is not kind 14, so replying to a
+    // kind-15 attachment failed rather than sent.
+    const { sendDirectMessage } = await import("./send");
+    await expect(
+      sendDirectMessage({
+        viewer: ALICE,
+        signer: alice,
+        peers: [BOB],
+        content: "nice picture",
+        replyTo: parent(15),
+      }),
+    ).resolves.toBeDefined();
+  });
+});

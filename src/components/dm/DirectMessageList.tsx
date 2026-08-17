@@ -1,7 +1,7 @@
 /**
  * The private conversations, above or below the communities in the sidebar.
  *
- * Rows are deliberately thin: a name, a time and a dot.
+ * Rows are deliberately thin: a name and, when there is one, a count.
  * Everything that would need a relay to render — an avatar, a NIP-05 badge —
  * is left to `UserName`, which resolves reactively and caches, so a list of
  * thirty correspondents does not fan out thirty profile fetches from here.
@@ -13,7 +13,6 @@
 
 import { AtSign, Bookmark, Loader2, Plus } from "lucide-react";
 import { UserName } from "@/components/nostr/UserName";
-import { formatTimestamp, useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 import type { DmConversationSummary } from "@/hooks/useDirectMessages";
 import type { BackfillProgress } from "@/services/dm-inbox";
@@ -90,7 +89,6 @@ function DirectMessageRow({
   onSelect: (peer: string) => void;
 }) {
   const Icon = conversation.isSelf ? Bookmark : AtSign;
-  const { locale } = useLocale();
 
   // Deliberately the same row as a Concord channel: `py-0.5`, a `size-3` icon,
   // one `ml-auto` group on the right. They sit in the same column under
@@ -124,22 +122,17 @@ function DirectMessageRow({
       {/* ONE `ml-auto`, on the group — the same shape the channel row uses,
           and for the same reason: two auto margins split the free space and
           park the first item in the middle of the row. */}
-      <span className="ml-auto flex shrink-0 items-center gap-1">
-        {conversation.lastAt > 0 && (
-          <span className="text-[10px] tabular-nums text-muted-foreground">
-            {formatTimestamp(conversation.lastAt, "relative", locale)}
-          </span>
-        )}
-        {/* A count, like a channel's — "3" and "something" are different
-            promises and there is room for the number. */}
-        {conversation.unreadCount > 0 && (
-          <span className="rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">
-            {conversation.unreadCount >= DM_UNREAD_CAP
-              ? `${DM_UNREAD_CAP}+`
-              : conversation.unreadCount}
-          </span>
-        )}
-      </span>
+      {/* A count when there is one, and nothing otherwise — the same right-hand
+          side a channel row has. The relative time was there on every row
+          whether or not it mattered, which made the rows that DID matter
+          harder to find; recency is already what the list is sorted by. */}
+      {conversation.unreadCount > 0 && (
+        <span className="ml-auto shrink-0 rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">
+          {conversation.unreadCount >= DM_UNREAD_CAP
+            ? `${DM_UNREAD_CAP}+`
+            : conversation.unreadCount}
+        </span>
+      )}
     </button>
   );
 }

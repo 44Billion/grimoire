@@ -191,23 +191,22 @@ export async function sendDirectMessage({
   // inbox is a fact to surface, not a reason to refuse the whole message.
   if (reachable.size === 0) throw new NoDmInboxError(unreachable[0]);
 
-  const stamped = await (
-    replyTo
-      ? WrappedMessageFactory.reply(replyTo, others[0], content)
-      : WrappedMessageFactory.create(others, content)
-  )
-    .as(signer)
-    .stamp();
+  // NOT `WrappedMessageFactory.reply`. It p-tags exactly ONE recipient, so a
+  // reply in a group would carry a different participant set than the messages
+  // around it — a different conversation, by the only definition NIP-17 has.
+  // And it throws outright on a kind-15 parent, so replying to a file message
+  // fails rather than sends. `withRecipients` fixes the first; the `e` tag is
+  // added here rather than through `.replyTo()` for the second.
+  const stamped = withRecipients(
+    await WrappedMessageFactory.create(others, content).as(signer).stamp(),
+    others,
+  );
+  if (replyTo) stamped.tags.push(["e", replyTo.id]);
 
   // Every participant, including the unreachable ones: the p tags are the
   // conversation's identity, so dropping someone would file the message under
   // a different conversation than the one the sender is looking at.
-  return deliverRumor(
-    viewer,
-    signer,
-    reachable,
-    withRecipients(stamped, others),
-  );
+  return deliverRumor(viewer, signer, reachable, stamped);
 }
 
 /**
