@@ -46,39 +46,73 @@ export function NewConversationDialog({
   onCreate: (participants: string[]) => void;
   self?: string;
 }) {
+  // The form is a CHILD, mounted only while the dialog is open, so closing it
+  // resets every field by unmounting. The alternative — an effect that clears
+  // the state when `open` goes false — writes state from an effect for no
+  // reason, and left a half-assembled conversation alive in a closed dialog.
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>New conversation</DialogTitle>
+          <DialogDescription>
+            Messages are gift-wrapped: the relay that holds one cannot tell who
+            sent it. Add more than one person for a group.
+          </DialogDescription>
+        </DialogHeader>
+        {open && (
+          <NewConversationForm
+            onOpenChange={onOpenChange}
+            onCreate={onCreate}
+            {...(self ? { self } : {})}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function NewConversationForm({
+  onOpenChange,
+  onCreate,
+  self,
+}: {
+  onOpenChange: (open: boolean) => void;
+  onCreate: (participants: string[]) => void;
+  self?: string;
+}) {
   const { searchProfiles } = useProfileSearch();
   const [query, setQuery] = useState("");
   const [chosen, setChosen] = useState<string[]>([]);
-  const [suggestions, setSuggestions] = useState<ProfileSearchResult[]>([]);
+  const [matches, setMatches] = useState<ProfileSearchResult[]>([]);
   const [resolving, setResolving] = useState(false);
   const [error, setError] = useState<string>();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Reset on close, not on open: an open dialog that clears itself under the
-  // reader is worse than one that remembers a half-typed name.
-  useEffect(() => {
-    if (open) return;
-    setQuery("");
-    setChosen([]);
-    setSuggestions([]);
-    setError(undefined);
-  }, [open]);
-
   const chosenSet = useMemo(() => new Set(chosen), [chosen]);
+
+  /**
+   * What the field is actually asking for right now.
+   *
+   * DERIVED rather than cleared: a query too short to search, or one that is
+   * plainly an npub, simply has no suggestions — and computing that beats an
+   * effect that writes an empty array into state on every keystroke that fails
+   * the test.
+   */
+  const searching =
+    query.trim().length >= 2 && !looksLikeRecipient(query.trim());
+  const suggestions = searching ? matches : [];
 
   useEffect(() => {
     const value = query.trim();
-    if (value.length < 2 || looksLikeRecipient(value)) {
-      setSuggestions([]);
-      return;
-    }
+    if (value.length < 2 || looksLikeRecipient(value)) return;
 
     let cancelled = false;
     // The profile index is local, so this is a filter rather than a fetch —
     // no debounce earns its complexity here.
     void searchProfiles(value).then((results) => {
       if (cancelled) return;
-      setSuggestions(
+      setMatches(
         results
           .filter((r) => r.pubkey !== self && !chosenSet.has(r.pubkey))
           .slice(0, MAX_SUGGESTIONS),
@@ -91,8 +125,8 @@ export function NewConversationDialog({
 
   const add = (pubkey: string) => {
     setChosen((prev) => (prev.includes(pubkey) ? prev : [...prev, pubkey]));
+    // Clearing the query clears the suggestions with it — they are derived.
     setQuery("");
-    setSuggestions([]);
     setError(undefined);
     inputRef.current?.focus();
   };
@@ -125,100 +159,90 @@ export function NewConversationDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>New conversation</DialogTitle>
-          <DialogDescription>
-            Messages are gift-wrapped: the relay that holds one cannot tell who
-            sent it. Add more than one person for a group.
-          </DialogDescription>
-        </DialogHeader>
-
-        {chosen.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {chosen.map((pubkey) => (
-              <span
-                key={pubkey}
-                className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs"
-              >
-                <UserName pubkey={pubkey} className="pointer-events-none" />
-                <button
-                  type="button"
-                  onClick={() => remove(pubkey)}
-                  title="Remove"
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <X className="size-3" />
-                  <span className="sr-only">Remove</span>
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-
-        <Input
-          ref={inputRef}
-          autoFocus
-          value={query}
-          placeholder="Name, npub1…, nprofile1…, or name@domain"
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setError(undefined);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void commitTyped();
-            }
-            // Backspace on an empty field takes back the last chip — the
-            // gesture every recipient field has.
-            if (e.key === "Backspace" && !query && chosen.length > 0)
-              remove(chosen[chosen.length - 1]);
-          }}
-        />
-
-        {resolving && (
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loader2 className="size-3 animate-spin" />
-            resolving…
-          </p>
-        )}
-        {error && <p className="text-xs text-destructive">{error}</p>}
-
-        {suggestions.length > 0 && (
-          <div className="flex flex-col rounded border">
-            {suggestions.map((result) => (
+    <>
+      {chosen.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {chosen.map((pubkey) => (
+            <span
+              key={pubkey}
+              className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs"
+            >
+              <UserName pubkey={pubkey} className="pointer-events-none" />
               <button
-                key={result.pubkey}
                 type="button"
-                onClick={() => add(result.pubkey)}
-                className="flex cursor-crosshair items-center gap-2 px-2 py-1 text-left text-sm hover:bg-muted/50"
+                onClick={() => remove(pubkey)}
+                title="Remove"
+                className="text-muted-foreground hover:text-foreground"
               >
-                <span className="truncate">{result.displayName}</span>
-                {result.nip05 && (
-                  <span className="truncate text-xs text-muted-foreground">
-                    {result.nip05}
-                  </span>
-                )}
+                <X className="size-3" />
+                <span className="sr-only">Remove</span>
               </button>
-            ))}
-          </div>
-        )}
+            </span>
+          ))}
+        </div>
+      )}
 
-        <DialogFooter>
-          <Button
-            size="sm"
-            disabled={chosen.length === 0}
-            onClick={() => {
-              onOpenChange(false);
-              onCreate(chosen);
-            }}
-          >
-            {chosen.length > 1 ? "Create group" : "Create"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <Input
+        ref={inputRef}
+        autoFocus
+        value={query}
+        placeholder="Name, npub1…, nprofile1…, or name@domain"
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setError(undefined);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void commitTyped();
+          }
+          // Backspace on an empty field takes back the last chip — the
+          // gesture every recipient field has.
+          if (e.key === "Backspace" && !query && chosen.length > 0)
+            remove(chosen[chosen.length - 1]);
+        }}
+      />
+
+      {resolving && (
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Loader2 className="size-3 animate-spin" />
+          resolving…
+        </p>
+      )}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+
+      {suggestions.length > 0 && (
+        <div className="flex flex-col rounded border">
+          {suggestions.map((result) => (
+            <button
+              key={result.pubkey}
+              type="button"
+              onClick={() => add(result.pubkey)}
+              className="flex cursor-crosshair items-center gap-2 px-2 py-1 text-left text-sm hover:bg-muted/50"
+            >
+              <span className="truncate">{result.displayName}</span>
+              {result.nip05 && (
+                <span className="truncate text-xs text-muted-foreground">
+                  {result.nip05}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <DialogFooter>
+        <Button
+          size="sm"
+          disabled={chosen.length === 0}
+          onClick={() => {
+            onOpenChange(false);
+            onCreate(chosen);
+          }}
+        >
+          {chosen.length > 1 ? "Create group" : "Create"}
+        </Button>
+      </DialogFooter>
+    </>
   );
 }
