@@ -117,15 +117,22 @@ export function ZapComposer({
   const [showLogin, setShowLogin] = useState(false);
   const [paymentTimedOut, setPaymentTimedOut] = useState(false);
   const [zapAnonymously, setZapAnonymously] = useState(false);
-  /** Private mode: a settled payment whose proof the wallet never surfaced. */
-  const [needsPreimage, setNeedsPreimage] = useState(false);
   const [pastedPreimage, setPastedPreimage] = useState("");
 
   const editorRef = useRef<MentionEditorHandle>(null);
   const { searchProfiles } = useProfileSearch();
   const { searchEmojis } = useEmojiSearch();
 
-  const { zap, payPending, status, invoice, recordPreimage } = useZapPayment({
+  const {
+    zap,
+    payPending,
+    status,
+    invoice,
+    // A settled payment still missing its proof. Owned by the hook, because the
+    // background recovery can seal it minutes after this component gave up.
+    awaitingProof,
+    recordPreimage,
+  } = useZapPayment({
     recipientPubkey,
     lnurlData,
     ...(recipientProfile?.lud16
@@ -249,7 +256,6 @@ export function ZapComposer({
 
   /** Report a settled-but-unproven private payment as the success it is. */
   const reportUnproven = () => {
-    setNeedsPreimage(true);
     setIsPaid(true);
     toast.success(`⚡ Sent ${formatAmount(amount)} sats`, {
       description: isPrivate
@@ -351,8 +357,11 @@ export function ZapComposer({
   const handlePastedPreimage = async () => {
     try {
       await recordPreimage(pastedPreimage);
-      setNeedsPreimage(false);
       setPastedPreimage("");
+      // A recorded zap is a finished one: leave the QR behind rather than
+      // leaving live pay buttons under a payment that already settled.
+      setShowQrDialog(false);
+      setIsPaid(true);
       toast.success("⚡ Zap recorded");
     } catch (error) {
       toast.error(
@@ -375,7 +384,7 @@ export function ZapComposer({
   };
 
   /** The paste-the-proof affordance, private mode only. */
-  const preimageField = needsPreimage && isPrivate && (
+  const preimageField = awaitingProof && isPrivate && (
     <div className="space-y-2 border border-dashed rounded-md p-3">
       <Label>Payment preimage</Label>
       <p className="text-xs text-muted-foreground">
@@ -595,9 +604,11 @@ export function ZapComposer({
         </Button>
       ) : (
         <Button
-          onClick={() =>
-            isPaid && !needsPreimage ? onDone?.() : handleZap(canPayWithWallet)
-          }
+          // Once anything has settled this button only closes. An "unproven"
+          // zap is a PAID zap missing its proof: offering to pay again here
+          // would fetch a second invoice and take the sats twice. Recording it
+          // is the preimage field's job, or the background recovery's.
+          onClick={() => (isPaid ? onDone?.() : handleZap(canPayWithWallet))}
           disabled={
             !hasLightningAddress ||
             isProcessing ||
@@ -611,7 +622,7 @@ export function ZapComposer({
               <Loader2 className="size-4 mr-2 animate-spin" />
               {isPayingWithWallet ? "Paying with wallet..." : "Processing..."}
             </>
-          ) : isPaid && !needsPreimage ? (
+          ) : isPaid ? (
             <>
               <CheckCircle2 className="size-4 mr-2" />
               Done

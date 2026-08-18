@@ -134,12 +134,21 @@ export function useZapPayment(opts: UseZapPaymentOptions) {
 
   const [status, setStatus] = useState<ZapStatus>("idle");
   const [invoice, setInvoice] = useState<string>("");
+  /**
+   * A settled payment still missing the proof its announcement needs.
+   *
+   * Owned here rather than by the caller, because the background recovery below
+   * can seal it minutes later — a copy in the UI would stay stuck on "still
+   * needs a preimage" after it no longer does.
+   */
+  const [awaitingProof, setAwaitingProof] = useState(false);
   /** Live across renders so a late preimage can still be sealed. */
   const pending = useRef<{ bolt11: string; payment: ZapPayment } | null>(null);
 
   const reset = useCallback(() => {
     setStatus("idle");
     setInvoice("");
+    setAwaitingProof(false);
     pending.current = null;
   }, []);
 
@@ -214,6 +223,7 @@ export function useZapPayment(opts: UseZapPaymentOptions) {
       }
       await onSettled({ ...held.payment, preimage: normalized });
       pending.current = null;
+      setAwaitingProof(false);
       setStatus("paid");
     },
     [onSettled],
@@ -258,6 +268,7 @@ export function useZapPayment(opts: UseZapPaymentOptions) {
         // The sats moved; this wallet just has not surfaced the proof yet. Keep
         // asking in the background and seal it late if it turns up — the zap row
         // simply appears once it does.
+        setAwaitingProof(true);
         void recover(bolt11, {
           attempts: Math.max(
             1,
@@ -405,5 +416,13 @@ export function useZapPayment(opts: UseZapPaymentOptions) {
     ],
   );
 
-  return { zap, payPending, status, invoice, recordPreimage, reset };
+  return {
+    zap,
+    payPending,
+    status,
+    invoice,
+    awaitingProof,
+    recordPreimage,
+    reset,
+  };
 }
