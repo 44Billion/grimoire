@@ -198,7 +198,10 @@ export const TOOL_REGISTRY: ToolDefinition[] = [
         },
         search: {
           type: "string",
-          description: "NIP-50 full-text query. Only some relays implement it.",
+          description:
+            "NIP-50 full-text query. Sent to the user's own search relays, " +
+            "which is the only place it means anything — most relays ignore " +
+            "the field and answer with their newest events instead.",
         },
         tags: {
           type: "object",

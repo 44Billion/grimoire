@@ -1,6 +1,7 @@
 import { firstValueFrom, take, timeout } from "rxjs";
 
 import { getTagValues, resolveFilterAliases } from "./nostr-utils";
+import { isValidRelayURL } from "./relay-url";
 
 import accountManager from "@/services/accounts";
 import eventStore from "@/services/event-store";
@@ -21,6 +22,15 @@ export const MAX_QUERY_LIMIT = 500;
 const DEFAULT_LIMIT = 5;
 /** How long to wait for a contact list before giving up on `$contacts`. */
 const CONTACTS_TIMEOUT = 6_000;
+/**
+ * Where a NIP-50 search goes when the user has no search relay list.
+ *
+ * The one hardcoded relay in this file, and only as a last resort: search cannot
+ * be routed by the outbox model — it needs a relay that actually implements
+ * NIP-50, and there is no way to discover one from the user's own lists when they
+ * have not named any.
+ */
+const SEARCH_RELAY_FALLBACK = "wss://search.nos.today/";
 
 const HEX64 = /^[0-9a-f]{64}$/i;
 const SINGLE_LETTER = /^[a-zA-Z]$/;
@@ -100,14 +110,53 @@ export function sanitizeFilter(args: unknown): SanitizedFilter {
     MAX_QUERY_LIMIT,
   );
 
-  const relays =
+  const named =
     Array.isArray(input.relays) &&
     input.relays.length > 0 &&
     input.relays.every((relay): relay is string => typeof relay === "string")
       ? input.relays
-      : AGGREGATOR_RELAYS;
+      : undefined;
 
-  return { filter, relays };
+  return { filter, relays: named ?? defaultRelays(filter) };
+}
+
+/**
+ * Where a filter goes when the model named no relay — which is almost always,
+ * since it is told not to.
+ *
+ * A `search` filter is a different network: NIP-50 is optional, most relays
+ * ignore the field entirely and answer with their newest events instead, so a
+ * search sent to the general set comes back looking like a working query with
+ * irrelevant results. The user's own search relay list (NIP-51 kind 10007) is the
+ * right answer; `SEARCH_RELAY_FALLBACK` is for an account that has never set one.
+ */
+function defaultRelays(filter: NostrFilter): string[] {
+  if (typeof filter.search !== "string") return AGGREGATOR_RELAYS;
+  const configured = searchRelays();
+  return configured.length > 0 ? configured : [SEARCH_RELAY_FALLBACK];
+}
+
+/**
+ * The active account's search relays, from the list the settings panel edits.
+ *
+ * Read from the EventStore, which `useAccountSync` keeps filled with kind 10007
+ * among the other relay lists — so this is a lookup, not a fetch.
+ */
+function searchRelays(): string[] {
+  const pubkey = accountManager.active?.pubkey;
+  if (!pubkey) return [];
+  try {
+    const event = eventStore.getReplaceable(10007, pubkey);
+    if (!event) return [];
+    // Raw tag values, checked here. The list parsers normalise first — they
+    // prepend a scheme, turning `https://x/rss` into `wss://https/x/rss`, which
+    // then passes a URL check and is useless as a relay. A `relay` tag holds
+    // whatever someone's client wrote, so it is read as written and rejected as
+    // written.
+    return getTagValues(event, "relay").filter(isValidRelayURL);
+  } catch {
+    return [];
+  }
 }
 
 /** Hex-only list, silently dropping npubs and note ids the model guessed at. */

@@ -311,6 +311,60 @@ describe("nostr.req", () => {
     );
   });
 
+  it("sends a search to the user's own search relays", async () => {
+    // NIP-50 is optional: the general set ignores `search` and answers with its
+    // newest events, which looks like a working query and is not one.
+    accounts.active = { pubkey: "e".repeat(64) };
+    getReplaceable.mockImplementation((kind: number) =>
+      kind === 10_007
+        ? {
+            kind: 10_007,
+            tags: [
+              ["relay", "wss://search.mine.example/"],
+              // Whatever someone's client wrote: a `relay` tag is not checked
+              // anywhere upstream. A bare hostname would be legitimate (a
+              // localhost relay is), so this is something that cannot be one.
+              ["relay", ""],
+              ["relay", "https://not-a-relay.example/rss"],
+            ],
+          }
+        : undefined,
+    );
+
+    await call("nostr.req", { kinds: [1], search: "purple" });
+    expect(requestEvents).toHaveBeenCalledWith(
+      ["wss://search.mine.example/"],
+      [{ kinds: [1], search: "purple", limit: 5 }],
+    );
+  });
+
+  it("falls back to a search relay when the user has no list", async () => {
+    accounts.active = { pubkey: "e".repeat(64) };
+    getReplaceable.mockReturnValue(undefined);
+    await call("nostr.req", { kinds: [1], search: "purple" });
+    expect(requestEvents.mock.calls[0][0]).toEqual(["wss://search.nos.today/"]);
+  });
+
+  it("leaves a non-search query on the general set", async () => {
+    accounts.active = { pubkey: "e".repeat(64) };
+    getReplaceable.mockImplementation((kind: number) =>
+      kind === 10_007
+        ? { kind: 10_007, tags: [["relay", "wss://search.mine.example/"]] }
+        : undefined,
+    );
+    await call("nostr.req", { kinds: [1] });
+    expect(requestEvents.mock.calls[0][0]).toEqual(["wss://default.example"]);
+  });
+
+  it("still honours a relay the user named through the model", async () => {
+    await call("nostr.req", {
+      kinds: [1],
+      search: "purple",
+      relays: ["wss://named.example"],
+    });
+    expect(requestEvents.mock.calls[0][0]).toEqual(["wss://named.example"]);
+  });
+
   it("defaults to a peek when the model names no limit", async () => {
     await call("nostr.req", { kinds: [1] });
     expect(requestEvents).toHaveBeenCalledWith(
@@ -338,20 +392,19 @@ describe("nostr.req", () => {
       search: "  purple  ",
       tags: { t: ["nostr"], "#e": ["f".repeat(64)] },
     });
-    expect(requestEvents).toHaveBeenCalledWith(
-      ["wss://default.example"],
-      [
-        {
-          ids: ["d".repeat(64)],
-          since: 1_700_000_000,
-          until: 1_800_000_000,
-          search: "purple",
-          "#t": ["nostr"],
-          "#e": ["f".repeat(64)],
-          limit: 5,
-        },
-      ],
-    );
+    // Relays are asserted by the search-routing tests below; this one is about
+    // the filter, which carries `search` and so does not go to the general set.
+    expect(requestEvents).toHaveBeenCalledWith(expect.any(Array), [
+      {
+        ids: ["d".repeat(64)],
+        since: 1_700_000_000,
+        until: 1_800_000_000,
+        search: "purple",
+        "#t": ["nostr"],
+        "#e": ["f".repeat(64)],
+        limit: 5,
+      },
+    ]);
   });
 
   it("rejects a tag that is not single-letter, because relays do not index it", async () => {
