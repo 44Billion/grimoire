@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveFilterAliases } from "./nostr-utils";
+import { isAutomatedProfile, resolveFilterAliases } from "./nostr-utils";
 import type { NostrFilter } from "@/types/nostr";
 
 describe("resolveFilterAliases", () => {
@@ -416,5 +416,22 @@ describe("resolveFilterAliases", () => {
       expect(result["#P"]).toContain(contacts[0]);
       expect(result["#P"]).toContain(contacts[1]);
     });
+  });
+});
+
+describe("isAutomatedProfile", () => {
+  it("reads NIP-24's boolean flag", () => {
+    expect(isAutomatedProfile({ bot: true })).toBe(true);
+    expect(isAutomatedProfile({ bot: false })).toBe(false);
+  });
+
+  it("reads the string form clients publish by hand", () => {
+    expect(isAutomatedProfile({ bot: "true" } as never)).toBe(true);
+    expect(isAutomatedProfile({ bot: "false" } as never)).toBe(false);
+  });
+
+  it("says nothing about a profile that has not loaded", () => {
+    expect(isAutomatedProfile(undefined)).toBe(false);
+    expect(isAutomatedProfile({})).toBe(false);
   });
 });

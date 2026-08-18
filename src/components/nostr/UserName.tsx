@@ -1,9 +1,9 @@
 import { useProfile } from "@/hooks/useProfile";
-import { getDisplayName } from "@/lib/nostr-utils";
+import { getDisplayName, isAutomatedProfile } from "@/lib/nostr-utils";
 import { cn } from "@/lib/utils";
 import { useGrimoire } from "@/core/state";
 import { isGrimoireMember } from "@/lib/grimoire-members";
-import { BadgeCheck, Flame } from "lucide-react";
+import { BadgeCheck, Bot, Flame } from "lucide-react";
 import { useIsSupporter } from "@/hooks/useIsSupporter";
 import { EmojiText } from "./EmojiText";
 
@@ -49,6 +49,7 @@ export function UserName({
   const isGrimoire = isGrimoireMember(pubkey);
   const { isSupporter, isPremiumSupporter } = useIsSupporter(pubkey);
   const displayName = getDisplayName(pubkey, profile);
+  const isBot = isAutomatedProfile(profile);
 
   // Check if this is the logged-in user
   const isActiveAccount = state.activeAccount?.pubkey === pubkey;
@@ -91,6 +92,14 @@ export function UserName({
             "inline-block w-[1em] h-[1em]",
             isActiveAccount ? "text-amber-500" : "text-fuchsia-500",
           )}
+        />
+      )}
+      {isBot && (
+        // NIP-24's own `bot` flag. A quiet icon rather than a badge: the account
+        // is saying it is automated, which is not a thing being vouched for.
+        <Bot
+          aria-label="Automated account"
+          className="inline-block w-[0.85em] h-[0.85em] shrink-0 text-muted-foreground"
         />
       )}
       {!isGrimoire && isSupporter && (
