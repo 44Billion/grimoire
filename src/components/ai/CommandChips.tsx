@@ -52,7 +52,9 @@ export function CommandChips({ block }: { block: string }) {
           type="button"
         >
           <div className="command-item-content">
-            <div className="command-item-name">
+            {/* `min-w-0` and a truncating argument: a command carrying an
+                nevent is 120 characters, and it pushed the row past the pane. */}
+            <div className="command-item-name min-w-0">
               {command.refusal ? (
                 <AlertTriangle className="size-3 shrink-0 text-muted-foreground" />
               ) : (
@@ -60,7 +62,9 @@ export function CommandChips({ block }: { block: string }) {
               )}
               <span className="command-name">{command.name}</span>
               {command.args && (
-                <span className="command-args">{command.args}</span>
+                <span className="command-args min-w-0 truncate">
+                  {command.args}
+                </span>
               )}
             </div>
             <div className="command-item-description">

@@ -80,6 +80,14 @@ const BASE_SYSTEM = [
     " as dead text. Same for relay URLs, pubkeys and event ids.",
   "Never state a spec detail as fact when its text is not in front of you; say" +
     " you are answering from memory instead.",
+  // Spells and spellbooks are grimoire's own vocabulary; a model that has never
+  // seen the app guesses they are something magical rather than a saved query.
+  "A spell is a saved `req`: a filter someone kept, with an optional alias that" +
+    " runs it from the palette like a command of its own, published as kind 777" +
+    " when shared. `spells` browses them. A spellbook is a saved workspace — the" +
+    " whole window layout, published as kind 30777 — and `spellbooks` browses" +
+    " those. Neither is a script, and a spellbook is not a collection of" +
+    " spells: a spell is one query, a spellbook is an arrangement of windows.",
   `Commands available:\n${commandCatalogue()}`,
 ].join("\n\n");
 
@@ -100,15 +108,20 @@ const PROPOSAL_RULES =
 const TOOLS_SYSTEM = [
   "You have tools, and they beat recall. `lookup_spec` returns a NIP's text, a" +
     " kind's definition, or a command's manual page with its flags described." +
-    " `query_nostr` runs a REQ and hands you the events. `resolve` turns a" +
-    " bech32 entity into the person or event it names. `open_window` runs a" +
-    " read-only command. Read before you write: a command you are unsure of has" +
-    " a manual page, and a question about the network has events behind it.",
+    " `list_spells` returns the user's saved spells. `query_nostr` runs a REQ" +
+    " and hands you the events. `resolve` turns a bech32 entity into the person" +
+    " or event it names. `open_window` runs a read-only command. Read before you" +
+    " write: a command you are unsure of has a manual page, and a question" +
+    " about the network has events behind it.",
   // A model cannot decode bech32 by looking at it, so without this it either
   // repeats the entity back or guesses at who it is.
   "An `npub`, `nprofile`, `note`, `nevent` or `naddr` is opaque until you" +
     " `resolve` it. Never guess at what one contains, and never answer about a" +
     " person or an event you have only seen as bech32.",
+  "`list_spells` gives each spell's `req` command, so you can open it as a" +
+    " window with `open_window` or run the same filter yourself with" +
+    " `query_nostr` and answer from the events. Never guess at what a spell" +
+    " runs, and never invent an alias the list did not contain.",
   "`query_nostr` takes a whole NIP-01 filter — ids, authors, kinds, since," +
     " until, search, and single-letter tags — so narrow the query instead of" +
     " fetching kind 1 and sorting it in your head. `$me` and `$contacts` work in" +

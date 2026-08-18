@@ -9,6 +9,7 @@ import {
   BookOpenIcon,
   BracesIcon,
   FileTextIcon,
+  WandSparklesIcon,
   WrenchIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -67,6 +68,45 @@ function resolvedOf(
     return { id: output.event.id };
   }
   return undefined;
+}
+
+/**
+ * The spells a `list_spells` call read, by alias.
+ *
+ * A spell's command is a `req`, and the row shows it as one: the command chips
+ * run it, which is the same thing the user would do with the answer.
+ */
+function spellsOf(
+  run: ToolRun,
+): { names: string[]; commands: string[] } | undefined {
+  if (run.name !== "list_spells" || run.state !== "output-available") {
+    return undefined;
+  }
+  const output = run.output as
+    | {
+        spells?: { alias?: unknown; name?: unknown; command?: unknown }[];
+        alias?: unknown;
+        name?: unknown;
+        command?: unknown;
+        error?: unknown;
+      }
+    | undefined;
+  if (!output || typeof output.error === "string") return undefined;
+
+  const rows = output.spells ?? [output];
+  const names = rows
+    .map((row) =>
+      typeof row.alias === "string"
+        ? row.alias
+        : typeof row.name === "string"
+          ? row.name
+          : undefined,
+    )
+    .filter((name): name is string => name !== undefined);
+  const commands = rows
+    .map((row) => (typeof row.command === "string" ? row.command : undefined))
+    .filter((command): command is string => command !== undefined);
+  return { names, commands };
 }
 
 interface Lookup {
@@ -319,6 +359,34 @@ export function ToolRuns({ runs }: { runs: ToolRun[] }) {
                     }
                   : { eventPointer: { id: resolved.id } })}
               />
+            </div>
+          );
+        }
+
+        // What was saved, as the commands they are: a spell is a `req` someone
+        // kept, and a row that runs it says more than its alias does.
+        const spells = spellsOf(run);
+        if (spells) {
+          return (
+            // Heading, then the commands as rows — same shape as a proposal,
+            // and no second border boxing them in.
+            <div className="my-2" key={`${run.name}-${index}`}>
+              <ToolHeading
+                className="rounded border border-border"
+                icon={WandSparklesIcon}
+                name={run.name}
+              >
+                {spells.names.length > 0 ? (
+                  <span className="font-mono text-foreground">
+                    {spells.names.join(", ")}
+                  </span>
+                ) : (
+                  <span className="italic">nothing saved</span>
+                )}
+              </ToolHeading>
+              {spells.commands.length > 0 && (
+                <CommandChips block={spells.commands.join("\n")} />
+              )}
             </div>
           );
         }

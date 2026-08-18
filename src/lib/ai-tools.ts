@@ -6,6 +6,7 @@ import { resolveEntity } from "./resolve-entity";
 import { requestEvents } from "./relay-subscription";
 
 import { getKindInfo } from "@/constants/kinds";
+import db, { type LocalSpell } from "@/services/db";
 import { manPages } from "@/types/man";
 import { getNipText } from "@/services/nip-text";
 import type { InferenceTool } from "@/types/inference";
@@ -50,6 +51,16 @@ export const AI_TOOLS: InferenceTool[] = [
           kind: {
             type: "number",
             description: "Event kind number.",
+          },
+          spells: {
+            type: "boolean",
+            description:
+              "List the user's saved spells: alias, name and the command each " +
+              "one runs.",
+          },
+          spell: {
+            type: "string",
+            description: "One spell by alias or name, for its command.",
           },
           command: {
             type: "string",
@@ -135,6 +146,24 @@ export const AI_TOOLS: InferenceTool[] = [
   {
     type: "function",
     function: {
+      name: "list_spells",
+      description:
+        "The user's saved spells: each one's alias, name and the `req` command " +
+        "it runs. Read-only — nothing here saves, publishes or deletes a spell.",
+      parameters: {
+        type: "object",
+        properties: {
+          alias: {
+            type: "string",
+            description: "One spell by alias or name. Omit for all of them.",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "resolve",
       description:
         "Turn a bech32 entity into what it names: a person's profile for an " +
@@ -186,6 +215,7 @@ export type ToolExecutor = (args: unknown) => Promise<unknown>;
 export function createToolExecutors(openWindow: ToolExecutor) {
   return {
     lookup_spec: lookupSpec,
+    list_spells: listSpellsTool,
     query_nostr: queryNostr,
     resolve: resolveTool,
     open_window: openWindow,
@@ -262,6 +292,75 @@ function manPage(name: string): unknown {
     ...(page.options?.length ? { options: page.options } : {}),
     ...(page.examples?.length ? { examples: page.examples } : {}),
     ...(page.seeAlso?.length ? { seeAlso: page.seeAlso } : {}),
+  };
+}
+
+async function listSpellsTool(args: unknown): Promise<unknown> {
+  const alias = (args as { alias?: unknown })?.alias;
+  return typeof alias === "string" && alias.trim()
+    ? findSpell(alias)
+    : listSpells();
+}
+
+/** How many spells one answer carries; a saved-query list is not a database. */
+const MAX_SPELLS = 40;
+
+/**
+ * The user's saved spells, as alias and command.
+ *
+ * A spell is a `req` someone kept, so its command is the interesting part: Hex
+ * can open it as a window or run the same filter itself. Local rows only —
+ * these are the user's own, and nothing here publishes or deletes one.
+ */
+async function listSpells(): Promise<unknown> {
+  try {
+    const rows = await db.spells.toArray();
+    const live = rows.filter((row) => row.deletedAt === undefined);
+    return {
+      count: live.length,
+      spells: live.slice(0, MAX_SPELLS).map(describeSpell),
+      ...(live.length > MAX_SPELLS
+        ? { note: `Only the first ${MAX_SPELLS} are listed.` }
+        : {}),
+    };
+  } catch {
+    return { error: "Could not read the local spell store." };
+  }
+}
+
+async function findSpell(query: string): Promise<unknown> {
+  const wanted = query
+    .trim()
+    .toLowerCase()
+    .replace(/^spell:/, "");
+  try {
+    const rows = await db.spells.toArray();
+    const found = rows
+      .filter((row) => row.deletedAt === undefined)
+      .find(
+        (row) =>
+          row.alias?.toLowerCase() === wanted ||
+          row.name?.toLowerCase() === wanted,
+      );
+    return (
+      (found && describeSpell(found)) ?? {
+        query: wanted,
+        error:
+          "No spell with that alias or name. Ask for spells: true to see them.",
+      }
+    );
+  } catch {
+    return { error: "Could not read the local spell store." };
+  }
+}
+
+function describeSpell(row: LocalSpell): unknown {
+  return {
+    ...(row.alias ? { alias: row.alias } : {}),
+    ...(row.name ? { name: row.name } : {}),
+    ...(row.description ? { description: row.description } : {}),
+    command: row.command,
+    published: row.isPublished,
   };
 }
 

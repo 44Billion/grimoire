@@ -44,7 +44,7 @@ import type { InferenceMessage, Usage } from "@/types/inference";
 import { formatTimestamp, useLocale } from "@/hooks/useLocale";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
-  loadConversation,
+  loadStoredConversation,
   saveConversation,
 } from "@/services/ai-conversations";
 import {
@@ -349,17 +349,26 @@ export default function AiViewer({
   // event or NIP that arrives after the window opens.
   // Always a context: without a target it is Hex's own instructions plus the
   // command catalogue, which every window needs.
-  const context = useLiveQuery(
-    () => buildAiContext(target),
-    [target?.type, target?.value],
-  );
-
   // Turns live in Dexie so a reload restores them with the window. `stored`
   // seeds the first render; after that local state owns them, so a streaming
   // reply is never fighting a query result.
-  const stored = useLiveQuery(
-    () => (storageId ? loadConversation(storageId) : Promise.resolve([])),
+  const row = useLiveQuery(
+    () =>
+      storageId
+        ? loadStoredConversation(storageId)
+        : Promise.resolve({ turns: [] as Turn[] }),
     [storageId],
+  );
+  const stored = row?.turns;
+
+  // What this window is about: the command's own target, or the one the stored
+  // conversation was started with. Reopening from the index passes only an id,
+  // so without the stored half a conversation about an event came back with no
+  // event in it and no grounding in its prompt.
+  const subject: AiTarget | undefined = target ?? row?.target;
+  const context = useLiveQuery(
+    () => buildAiContext(subject),
+    [subject?.type, subject?.value],
   );
   const [local, setLocal] = useState<Turn[] | null>(null);
   // Memoized so `send`, which closes over it, is not rebuilt every render.
@@ -399,7 +408,7 @@ export default function AiViewer({
 
   // A window grounded on an event previews it, so the conversation shows what
   // it is about rather than only naming it in a hidden prompt.
-  const targetValue = target?.type === "event" ? target.value : undefined;
+  const targetValue = subject?.type === "event" ? subject.value : undefined;
   const targetRef = useMemo(() => {
     if (!targetValue) return undefined;
     const ref = nostrRefTarget(targetValue);
@@ -659,7 +668,9 @@ export default function AiViewer({
         setLocal(settled);
         // Save once the turn is settled, never mid-stream — a partial reply is
         // not worth a write per frame.
-        if (storageId) void saveConversation(storageId, settled);
+        // The subject travels with the turns: an index row reopens knowing what
+        // it was about.
+        if (storageId) void saveConversation(storageId, settled, subject);
       } catch (caught) {
         // A turn the window itself cancelled is not an error worth reporting:
         // the request went away because this pane did, and in dev a Fast
@@ -684,6 +695,7 @@ export default function AiViewer({
       context?.system,
       executors,
       setTurns,
+      subject,
       system,
       toolsEnabled,
       turns,
@@ -893,8 +905,11 @@ export default function AiViewer({
                 {/* Openers, tailored to whatever this window is grounded in.
                     Clicking sends; nothing fires on its own. */}
                 <Suggestions className="justify-center pt-2">
-                  {(context?.suggestions ?? GENERAL_SUGGESTIONS).map(
-                    (suggestion) => (
+                  {/* Three: openers are a nudge, and five of them read as a
+                      menu the user has to work through. */}
+                  {(context?.suggestions ?? GENERAL_SUGGESTIONS)
+                    .slice(0, 3)
+                    .map((suggestion) => (
                       <Suggestion
                         key={suggestion}
                         onClick={(text) => {
@@ -903,8 +918,7 @@ export default function AiViewer({
                         }}
                         suggestion={suggestion}
                       />
-                    ),
-                  )}
+                    ))}
                 </Suggestions>
               </ConversationEmptyState>
             )

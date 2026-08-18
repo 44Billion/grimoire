@@ -26,6 +26,19 @@ const accounts: { active?: { pubkey: string } } = {};
 const getReplaceable = vi.fn();
 
 vi.mock("@/services/accounts", () => ({ default: accounts }));
+const spellsToArray = vi.fn();
+
+vi.mock("@/services/db", () => ({
+  default: { spells: { toArray: () => spellsToArray() } },
+  // The command catalogue pulls in the man pages, which reach the relay
+  // singletons; they need this at module init.
+  relayLivenessStorage: {
+    getItem: () => Promise.resolve(null),
+    setItem: () => Promise.resolve(),
+    removeItem: () => Promise.resolve(),
+  },
+}));
+
 vi.mock("@/services/event-store", () => ({
   default: {
     getReplaceable: (...args: unknown[]) => getReplaceable(...args),
@@ -59,6 +72,8 @@ beforeEach(() => {
   openWindow.mockReset();
   getReplaceable.mockReset();
   getEvent.mockReset();
+  spellsToArray.mockReset();
+  spellsToArray.mockResolvedValue([]);
   addressLoader.mockReset();
   eventLoader.mockReset();
   accounts.active = undefined;
@@ -71,6 +86,7 @@ describe("the tool surface", () => {
     expect(AI_TOOLS.map((tool) => tool.function.name)).toEqual([
       "lookup_spec",
       "query_nostr",
+      "list_spells",
       "resolve",
       "open_window",
     ]);
@@ -368,5 +384,64 @@ describe("resolve", () => {
     expect(
       await executors.resolve({ entity: nip19.neventEncode({ id }) }),
     ).toMatchObject({ error: expect.stringContaining("no relay returned it") });
+  });
+});
+
+describe("spells", () => {
+  const SPELLS = [
+    {
+      id: "1",
+      alias: "btc",
+      name: "Bitcoin talk",
+      command: "req -k 1 -t bitcoin -l 50",
+      createdAt: 1,
+      isPublished: true,
+    },
+    {
+      id: "2",
+      name: "Old one",
+      command: "req -k 1 -l 5",
+      createdAt: 2,
+      isPublished: false,
+      deletedAt: 3,
+    },
+  ];
+
+  it("lists the saved ones, minus what was deleted", async () => {
+    spellsToArray.mockResolvedValue(SPELLS);
+    const result = (await executors.list_spells({})) as {
+      count?: number;
+      spells: { alias?: string }[];
+    };
+    expect(result.spells).toEqual([
+      {
+        alias: "btc",
+        name: "Bitcoin talk",
+        command: "req -k 1 -t bitcoin -l 50",
+        published: true,
+      },
+    ]);
+  });
+
+  it("finds one by alias, so its filter can be run rather than guessed", async () => {
+    spellsToArray.mockResolvedValue(SPELLS);
+    const result = (await executors.list_spells({ alias: "BTC" })) as {
+      command: string;
+    };
+    expect(result.command).toBe("req -k 1 -t bitcoin -l 50");
+  });
+
+  it("says an unknown alias is unknown rather than inventing a command", async () => {
+    spellsToArray.mockResolvedValue(SPELLS);
+    const result = (await executors.list_spells({ alias: "nope" })) as {
+      error: string;
+    };
+    expect(result.error).toContain("No spell");
+  });
+
+  it("survives an unreadable store", async () => {
+    spellsToArray.mockRejectedValue(new Error("dexie is upset"));
+    const result = (await executors.list_spells({})) as { error: string };
+    expect(result.error).toContain("Could not read");
   });
 });

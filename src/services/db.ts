@@ -486,6 +486,13 @@ export const OUTBOX_NEVER = Number.MAX_SAFE_INTEGER;
  */
 export interface AiConversation {
   windowId: string; // Primary key
+  /**
+   * What the conversation is grounded in, as `ai` took it: an event, a profile,
+   * a kind or a NIP. Stored because reopening from the index passes only the
+   * conversation id, and without this the subject vanished from a window that
+   * had been asking about it.
+   */
+  target?: { type: "event" | "kind" | "nip"; value: string };
   turns: Array<{
     role: "user" | "assistant";
     content: string;

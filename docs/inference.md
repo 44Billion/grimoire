@@ -85,6 +85,12 @@ and a fresh prompt every time it grows.
   page, from grimoire's own registry and cache. The command name is an enum of
   the commands Hex may also propose; `post`, `zap` and `wallet` are absent from
   both.
+- **`list_spells`** — the user's saved spells, as alias plus the `req` each one
+  runs, so Hex can open one with `open_window` or run its filter through
+  `query_nostr` rather than guessing what a spell does. Local rows only; nothing
+  here saves, publishes or deletes. Its own tool rather than a parameter on
+  `lookup_spec`, which is documentation — and not in the system prompt, which
+  would pay for the list on every turn to use it on few.
 - **`query_nostr`** — a full NIP-01 filter (`ids`, `authors`, `kinds`, `since`,
   `until`, `search`, single-letter tags via a `tags` object), `$me` and
   `$contacts` expanded page-side. Returns at most 20 events with content

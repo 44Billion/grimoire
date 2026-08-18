@@ -22,7 +22,9 @@ import {
 function ConversationTitle({ title }: { title: string }) {
   return (
     <RichText
-      className="truncate"
+      // One line, whatever the mentions render as: `truncate` alone does not
+      // clamp a paragraph the renderer produced.
+      className="line-clamp-1 [&_*]:inline [&_p]:m-0 [&_p]:inline"
       content={title}
       // A row is one line: no media, and an event reference stays a link rather
       // than becoming the embed a reply gets.
@@ -75,11 +77,13 @@ export function ConversationIndex({
 
       {others.map((row) => (
         <div
-          className="group flex items-baseline gap-2 px-3 py-1 hover:bg-muted/40"
+          // `items-center`, not baseline: an icon-only button has no text
+          // baseline to sit on, so the row's controls drifted apart.
+          className="group flex items-center gap-2 px-3 py-1 hover:bg-muted/40"
           key={row.windowId}
         >
           <button
-            className="min-w-0 flex-1 truncate text-left text-sm"
+            className="min-w-0 flex-1 cursor-crosshair truncate text-left text-sm"
             onClick={() =>
               // Opens in its own window, adopting the stored conversation.
               addWindow(
@@ -105,12 +109,12 @@ export function ConversationIndex({
           </span>
           <button
             aria-label="Delete conversation"
-            className="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+            className="shrink-0 cursor-crosshair text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
             onClick={() => void deleteConversation(row.windowId)}
             title="Delete conversation"
             type="button"
           >
-            <Trash2 className="size-3" />
+            <Trash2 className="size-4" />
           </button>
         </div>
       ))}
