@@ -60,6 +60,7 @@ const {
   topUpDmInbox,
   pageDmInboxBefore,
   restartDmInbox,
+  stopDmInbox,
   resetDmPipelines,
   TEARDOWN_GRACE_MS,
 } = await import("./dm-pipeline");
@@ -322,10 +323,63 @@ describe("dm pipeline", () => {
       release();
     });
 
+    it("restarts even while the reference count is momentarily zero", async () => {
+      // The hook releases and rejoins around every list refresh, so refs is 0
+      // on any ordinary tick. A Rescan landing in that window used to no-op
+      // while `started` stayed true — the walk state cleared on disk and
+      // nothing ever walked it again, for as long as a pane stayed open.
+      vi.useFakeTimers();
+      const release = joinDmInbox(VIEWER, signer);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mocks.watchDmInbox).toHaveBeenCalledTimes(1);
+
+      release(); // refs 0, inside the teardown grace
+      restartDmInbox(VIEWER);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mocks.watchDmInbox).toHaveBeenCalledTimes(2);
+
+      // And the pane coming back keeps the restarted walk alive.
+      const rejoin = joinDmInbox(VIEWER, signer);
+      await vi.advanceTimersByTimeAsync(TEARDOWN_GRACE_MS + 1);
+      expect(mocks.stopWatching).toHaveBeenCalledTimes(1); // only the restart's
+      rejoin();
+    });
+
     it("does nothing when nothing is watching", async () => {
       restartDmInbox(VIEWER);
       await settle();
       expect(mocks.watchDmInbox).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("signing out", () => {
+    it("stops NOW, not after the grace period", async () => {
+      // Logout erases the decrypted mail from Dexie. A watch left standing for
+      // its grace period decrypts the next arriving wrap and writes the
+      // plaintext straight back into the table that was just emptied — so an
+      // account ceasing to exist is not a reference going away.
+      vi.useFakeTimers();
+      const release = joinDmInbox(VIEWER, signer);
+      await vi.advanceTimersByTimeAsync(0);
+      await settle();
+
+      stopDmInbox(VIEWER);
+      expect(mocks.stopWatching).toHaveBeenCalledTimes(1);
+
+      // The pane unmounting afterwards is harmless, and must not tear down a
+      // pipeline a later sign-in started.
+      release();
+      const later = joinDmInbox(VIEWER, signer);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mocks.watchDmInbox).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(TEARDOWN_GRACE_MS + 1);
+      expect(mocks.stopWatching).toHaveBeenCalledTimes(1);
+      later();
+    });
+
+    it("is a no-op for an account that was never watched", () => {
+      stopDmInbox(VIEWER);
+      expect(mocks.stopWatching).not.toHaveBeenCalled();
     });
   });
 });

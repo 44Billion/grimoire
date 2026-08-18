@@ -199,6 +199,28 @@ export function joinDmInbox(viewer: string, signer: InboxSigner): () => void {
   };
 }
 
+/**
+ * Take this account's pipeline down NOW, however many panes still hold it.
+ *
+ * The grace period below is right for a pane remounting and wrong for an
+ * account ceasing to exist: logout wipes the decrypted mail out of Dexie, and
+ * a watch left running for another ten seconds happily decrypts the next
+ * arriving wrap and writes the plaintext straight back into the tables that
+ * were just erased. Signing out is not a reference going away — it is the end
+ * of the thing the references were for.
+ */
+export function stopDmInbox(viewer: string): void {
+  const run = runs.get(viewer);
+  if (!run) return;
+  if (run.teardown !== undefined) clearTimeout(run.teardown);
+  run.teardown = undefined;
+  // A pane still holding this run will release into a dead object, which is
+  // harmless: `stop` has already dropped it from the map, so its teardown
+  // cannot delete a pipeline a later sign-in started.
+  run.refs = 0;
+  stop(viewer, run);
+}
+
 function stop(viewer: string, run: Run): void {
   if (run.reopen !== undefined) clearTimeout(run.reopen);
   run.reopen = undefined;
@@ -316,8 +338,14 @@ export function pageDmInboxBefore(
  * nothing is watching, because there is then nothing to restart.
  */
 export function restartDmInbox(viewer: string): void {
+  // Deliberately NOT gated on `refs > 0`. The hook releases and rejoins around
+  // every list refresh, so the reference count is momentarily zero on any
+  // ordinary tick — and a Rescan that landed in that window used to no-op
+  // while `started` stayed true, which meant the walk state was cleared on disk
+  // and nothing ever walked it again. A run inside its teardown grace is still
+  // a run; the rejoin that follows clears the timer.
   const run = runs.get(viewer);
-  if (!run || run.refs === 0) return;
+  if (!run) return;
 
   if (run.reopen !== undefined) clearTimeout(run.reopen);
   run.reopen = undefined;

@@ -52,6 +52,7 @@ import {
 import { MONTHLY_GOAL_SATS } from "@/services/supporters";
 import { clearCommunities } from "@/services/concord-communities";
 import { clearDirectMessages } from "@/services/dm-store";
+import { stopDmInbox } from "@/services/dm-pipeline";
 
 function UserAvatar({ pubkey }: { pubkey: string }) {
   const profile = useProfile(pubkey);
@@ -154,18 +155,31 @@ export default function UserMenu() {
 
   async function logout() {
     if (!account) return;
+    const { pubkey } = account;
+
+    // Stop the readers BEFORE erasing what they write into, and in that order.
+    //
+    // Removing the account first is what stops new work starting: every reader
+    // hangs off the active account, so once it is gone nothing re-arms. The
+    // inbox pipeline is then stopped by hand, because it outlives its last
+    // reference on purpose (`dm-pipeline.ts`) — a standing gift-wrap
+    // subscription left running for its grace period decrypts the next
+    // arriving wrap and writes the plaintext straight back into the table the
+    // wipe below has just emptied.
+    accounts.removeAccount(account);
+    stopDmInbox(pubkey);
+
     // The Concord vault holds this account's decrypted community roots and
     // channel keys — removing the account has to take them too.
-    await clearCommunities(account.pubkey).catch((error) => {
+    await clearCommunities(pubkey).catch((error) => {
       console.warn("[concord] could not clear the vault on logout:", error);
     });
-    // Private mail, in plaintext, keyed to an account that is about to stop
+    // Private mail, in plaintext, keyed to an account that has stopped
     // existing here. Separate from the Concord wipe on purpose — that function
     // is Concord's by its own docstring.
-    await clearDirectMessages(account.pubkey).catch((error) => {
+    await clearDirectMessages(pubkey).catch((error) => {
       console.warn("[dm] could not clear direct messages on logout:", error);
     });
-    accounts.removeAccount(account);
   }
 
   function formatBalance(millisats?: number): string {
