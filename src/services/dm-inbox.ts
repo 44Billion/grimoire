@@ -710,32 +710,42 @@ export async function backfillDmHistory(
  * No `since`: the standing REQ opens with the relay's own recent window, and
  * the seen-wrap memo makes a replayed wrap free. Trying to be clever with a
  * cursor here is what the backdating defeats.
+ *
+ * A stream that ends is reported rather than swallowed. Nothing here reopens
+ * it — this owns one subscription and says when it is gone; reopening is the
+ * pipeline's job (`dm-pipeline.ts`), which is what knows whether anyone is
+ * still watching. An unnoticed end is the worst failure this file has: the
+ * inbox stays exactly as correct as it looks, and stops growing.
  */
 export function watchDmInbox(
   viewer: string,
   signer: DmSigner,
   relays: string[],
+  options: { onClosed?: (reason: "error" | "complete") => void } = {},
 ): () => void {
   const auth = authenticateDmRelays(relays);
   console.info(`[dm] watching ${relays.length} relay(s) for new wraps`);
+  let stopped = false;
   const subscription = pool
     .subscription(relays, [inboxFilter(viewer)], { eventStore: null })
     .subscribe({
       next: (wrap) => {
         void unlockWraps(viewer, signer, [wrap]);
       },
-      // An error ends the standing REQ, and nothing restarts it — from then on
-      // the inbox is as stale as it looks correct. Swallowing that left the
-      // only trace of it nowhere, so say so.
       error: (error) => {
         console.warn("[dm] the inbox watch stopped on an error:", error);
+        if (!stopped) options.onClosed?.("error");
       },
       complete: () => {
         console.warn("[dm] the inbox watch completed — no more live wraps");
+        if (!stopped) options.onClosed?.("complete");
       },
     });
 
   return () => {
+    // Before unsubscribing: a deliberate stop must not look like a stream that
+    // died, or the pipeline reopens the wire it was just told to close.
+    stopped = true;
     subscription.unsubscribe();
     auth.unsubscribe();
   };

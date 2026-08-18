@@ -59,8 +59,8 @@ vi.mock("@/lib/dm/relays", () => ({
 vi.mock("@/services/hub", () => ({ publishEventToRelays: async () => {} }));
 vi.mock("@/services/dm-inbox", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/services/dm-inbox")>()),
-  // The adapter syncs on open; the tests seed the store directly instead of
-  // standing up relays for it.
+  // The adapter tops up on open, through the pipeline — which reads THIS
+  // function. The tests seed the store directly instead of standing up relays.
   syncDmInbox: async () => ({ written: 0, failed: 0, fetched: 0 }),
 }));
 

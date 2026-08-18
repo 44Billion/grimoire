@@ -88,7 +88,12 @@ describe("useDirectMessages: the live wire", () => {
   it("watches the inbox on the relays the sync and the walk use", async () => {
     renderHook(() => useDirectMessages());
     await waitFor(() => expect(watchDmInbox).toHaveBeenCalledTimes(1));
-    expect(watchDmInbox).toHaveBeenCalledWith(VIEWER, account.signer, RELAYS);
+    expect(watchDmInbox).toHaveBeenCalledWith(
+      VIEWER,
+      account.signer,
+      RELAYS,
+      expect.anything(),
+    );
   });
 
   it("still watches when the catch-up sync throws", async () => {

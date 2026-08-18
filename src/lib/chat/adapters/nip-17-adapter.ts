@@ -54,7 +54,7 @@ import {
 } from "@/services/dm-store";
 import type { DmRumorRow } from "@/services/db";
 import { conversationScope, onDmScope } from "@/services/dm-bus";
-import { syncDmInbox } from "@/services/dm-inbox";
+import { pageDmInboxBefore, topUpDmInbox } from "@/services/dm-pipeline";
 import { resolveDmRelays, warmDmRelays } from "@/lib/dm/relays";
 import { sendDirectMessage, sendDirectReaction } from "@/lib/dm/send";
 import { timelineSignature } from "@/lib/chat/timeline-signature";
@@ -371,9 +371,12 @@ export class Nip17Adapter extends ChatProtocolAdapter {
         const stored = await this.read(id, options);
         if (stored.length > 0) this.publish(id, emitter, stored);
 
-        // Then pull the inbox. The doorbell repaints as rumors land, so this
-        // needs no callback of its own.
-        await syncDmInbox(this.self(), this.signer());
+        // Then pull the inbox — through the pipeline, which is the only thing
+        // that reads this stream. Opening three conversations at once is one
+        // read, not three, and it reuses the relay set the standing
+        // subscription is already on. The doorbell repaints as rumors land, so
+        // this needs no callback of its own.
+        await topUpDmInbox(this.self(), this.signer());
 
         // After the sync an empty answer IS the answer.
         this.publish(id, emitter, await this.read(id, options));
@@ -421,9 +424,9 @@ export class Nip17Adapter extends ChatProtocolAdapter {
     }
 
     // Local history is exhausted for this conversation; walk the wrap stream.
-    await syncDmInbox(self, this.signer(), { until: before }).catch(
-      () => undefined,
-    );
+    // Through the pipeline, so two conversations that ran dry at the same
+    // boundary — or one reader clicking twice — pay for a single page.
+    await pageDmInboxBefore(self, before, this.signer());
     const after = await repaint();
     return after.filter((m) => m.timestamp < before);
   }
