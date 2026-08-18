@@ -21,11 +21,18 @@ export function ModelDownload({
   loaded,
 }: {
   className?: string;
-  /** Whatever Chrome last reported: a fraction of one, or bytes. */
-  loaded: number;
+  /**
+   * Whatever Chrome last reported: a fraction of one, or bytes. Undefined means
+   * the download is known to be running and has reported nothing — which happens
+   * whenever it started before this page did, since `create()` then waits on a
+   * download it is not monitoring. A shimmering assistant and no explanation is
+   * the failure this component exists to prevent.
+   */
+  loaded?: number;
 }) {
-  const fraction = loaded <= 1;
-  const percent = Math.min(100, Math.round(loaded * 100));
+  const fraction = loaded !== undefined && loaded <= 1;
+  const percent =
+    loaded === undefined ? 0 : Math.min(100, Math.round(loaded * 100));
 
   return (
     <div
@@ -39,9 +46,11 @@ export function ModelDownload({
         <span className="min-w-0 flex-1 truncate">
           Downloading the on-device model — kept for next time.
         </span>
-        <span className="shrink-0 font-mono tabular-nums text-foreground">
-          {fraction ? `${percent}%` : `${Math.round(loaded / 1_000_000)} MB`}
-        </span>
+        {loaded !== undefined && (
+          <span className="shrink-0 font-mono tabular-nums text-foreground">
+            {fraction ? `${percent}%` : `${Math.round(loaded / 1_000_000)} MB`}
+          </span>
+        )}
       </div>
       {fraction ? (
         <Progress

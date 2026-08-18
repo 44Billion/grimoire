@@ -37,6 +37,7 @@ import {
   isInferenceAvailable,
   IPA_ID,
   onModelDownloadProgress,
+  promptApiAvailability,
   resolveRequest,
   type ToolSupport,
 } from "@/services/inference";
@@ -488,6 +489,14 @@ export default function AiViewer({
   const injected = isInferenceAvailable();
   /** Bytes (or fraction) of the on-device model downloaded, while it is. */
   const [download, setDownload] = useState<number>();
+  /**
+   * The on-device model is not ready and this turn is waiting for it.
+   *
+   * Separate from `download`, which only exists once Chrome reports a number —
+   * and it reports nothing for a download that began before this page loaded, so
+   * a turn can sit inside `create()` for minutes with no progress event at all.
+   */
+  const [awaitingModel, setAwaitingModel] = useState(false);
 
   // Before the first send, mentions are unknown, so show the grounding that is
   // already decided. After, show exactly what went out.
@@ -772,6 +781,14 @@ export default function AiViewer({
       // The on-device model downloads on first use, which is large enough that
       // a silent wait reads as a hang.
       onModelDownloadProgress(setDownload);
+      // Said before the request, not on the first progress event: opening a model
+      // that is still arriving blocks until it has, and Chrome does not report
+      // progress for a download it did not start here.
+      if (resolveRequest(backend).onDevice) {
+        void promptApiAvailability().then((state) => {
+          if (state !== "available") setAwaitingModel(true);
+        });
+      }
 
       try {
         const loop = await runToolLoop({
@@ -846,6 +863,7 @@ export default function AiViewer({
         setStreaming(false);
         onModelDownloadProgress(undefined);
         setDownload(undefined);
+        setAwaitingModel(false);
       }
     },
     [
@@ -1253,7 +1271,7 @@ export default function AiViewer({
       )}
 
       {/* A model download is minutes of nothing otherwise. */}
-      {download !== undefined && (
+      {(awaitingModel || download !== undefined) && (
         <ModelDownload className="mx-4 mb-2" loaded={download} />
       )}
 
