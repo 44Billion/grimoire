@@ -14,7 +14,13 @@ import {
   FileText,
   MessageSquare,
   Check,
+  CircleCheck,
+  CircleDot,
+  CircleSlash,
+  CircleDashed,
+  GitMerge,
   GitPullRequest,
+  FileDiff,
 } from "lucide-react";
 import { nip19 } from "nostr-tools";
 import type { EventPointer, AddressPointer } from "nostr-tools/nip19";
@@ -606,6 +612,21 @@ const DeliveryStatus = memo(function DeliveryStatus({
 /**
  * MessageItem - Memoized message component for performance
  */
+/**
+ * One icon per verb, so a glance separates a merge from a close without
+ * reading. Keyed on the action string `gitActivityRows` writes.
+ */
+const GIT_ACTION_ICONS: Record<string, typeof GitPullRequest> = {
+  "opened issue": CircleDot,
+  "sent a patch": FileDiff,
+  "opened a pull request": GitPullRequest,
+  opened: CircleDot,
+  resolved: CircleCheck,
+  merged: GitMerge,
+  closed: CircleSlash,
+  "marked as draft": CircleDashed,
+};
+
 const MessageItem = memo(function MessageItem({
   message,
   adapter,
@@ -697,26 +718,25 @@ const MessageItem = memo(function MessageItem({
 
   // Public git activity in a Concord channel attached to a repository. As
   // quiet as a system row and shaped like one — a line of muted text the eye
-  // passes over — but it names an event, so the subject opens it.
+  // passes over — except the subject, which is the one thing on the row worth
+  // clicking and so the one thing that carries colour.
   if (message.metadata?.git) {
     const { action, subject, pointer } = message.metadata.git;
+    const Icon = GIT_ACTION_ICONS[action] ?? GitPullRequest;
     return (
       <div className="flex items-center gap-1 px-3 py-1 text-xs text-muted-foreground">
-        <GitPullRequest className="size-3 shrink-0" />
+        <Icon className="size-3 shrink-0" />
         <UserName pubkey={message.author} className="text-xs" />
         <span className="shrink-0">{action}</span>
         {subject && (
           <button
             type="button"
             onClick={() => addWindow("open", { pointer })}
-            className="truncate text-left hover:text-foreground hover:underline"
+            className="truncate text-left font-medium text-primary hover:underline"
           >
             {subject}
           </button>
         )}
-        <span className="shrink-0">
-          · <Timestamp timestamp={message.timestamp} />
-        </span>
       </div>
     );
   }
