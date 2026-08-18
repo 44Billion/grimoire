@@ -365,7 +365,7 @@ async function connect(
       torn: false,
     };
     active = call;
-    setActiveRoom(lkRoom);
+    setActiveRoom(lkRoom, () => leaveCall());
     owned = false;
 
     // Our own key first: E2EE is only enabled once we can encrypt, or the first
@@ -621,6 +621,13 @@ export async function leaveCall(error?: string): Promise<void> {
     return;
   }
   await teardown(call, { announceLeave: true });
+  // Teardown clears `active` before it announces the goodbye, and that announce
+  // can take seconds — long enough for a new call to be joined and connected
+  // underneath us. Writing IDLE then would report the live call as idle and,
+  // worse, leave the room slot pointing at it with no state saying so. The
+  // newer call owns the atom; this one only says it is gone if nothing replaced
+  // it.
+  if (active) return;
   store().set(callStateAtom, {
     ...IDLE,
     roomEpoch: store().get(callStateAtom).roomEpoch + 1,

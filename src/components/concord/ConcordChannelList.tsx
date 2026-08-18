@@ -17,7 +17,6 @@ import {
   Hash,
   Loader2,
   Lock,
-  Phone,
   Pin,
 } from "lucide-react";
 
@@ -33,6 +32,7 @@ import {
 } from "@/lib/concord/channels";
 import type { Channel } from "@/lib/concord/types";
 import { cn } from "@/lib/utils";
+import { InCallCount } from "@/components/call/InCallCount";
 
 /**
  * The waiting-messages badge: a count, or an `@` when one of them names you.
@@ -340,22 +340,7 @@ function ChannelRow({
             height, which is the whole reason the heading went. */}
         <span className="ml-auto flex shrink-0 items-center gap-1">
           {pinned && <Pin className="size-3 shrink-0 text-muted-foreground" />}
-          {/* The call count survives a mute: muting silences the MESSAGES, and
-              who is in a call right now is a fact about the room rather than a
-              notification about it. */}
-          {inCall > 0 && (
-            <span
-              className="flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] leading-none tabular-nums text-muted-foreground"
-              title={
-                inCall === 1
-                  ? "1 member is in a call here"
-                  : `${inCall} members are in a call here`
-              }
-            >
-              <Phone className="size-2.5 shrink-0" />
-              {inCall}
-            </span>
-          )}
+          <InCallCount count={inCall} />
           {muted && (
             <BellOff className="size-3 shrink-0 text-muted-foreground" />
           )}

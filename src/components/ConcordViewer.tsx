@@ -65,6 +65,7 @@ import { groupKey, type GroupSelection } from "@/lib/nip29/group-selection";
 import { groupRowRef } from "@/lib/nip29/row-ref";
 import { markAllGroupsRead, markGroupRead } from "@/services/nip29-reads";
 import { useNip29Groups } from "@/hooks/useNip29Groups";
+import { useGroupCallCounts } from "@/hooks/useNip29Participants";
 import { useConcordInvites } from "@/hooks/useConcordInvites";
 import { useConcordPins } from "@/hooks/useConcordPins";
 import {
@@ -630,6 +631,17 @@ export function ConcordViewer({
     unread: nip29Unread,
   } = useNip29Groups();
 
+  /**
+   * Who is in each group's AV space.
+   *
+   * Every group is watched, not only the ones whose `kind:39000` advertises a
+   * `livekit` tag: the whole set costs one filter per relay either way, and
+   * gating on metadata would mean a room stays invisible until its group's
+   * metadata happens to have resolved. A group with no room simply never has a
+   * `kind:39004` to report.
+   */
+  const nip29InCall = useGroupCallCounts(nip29Groups);
+
   const viewerPubkey = account?.pubkey;
 
   /**
@@ -1188,6 +1200,7 @@ export function ConcordViewer({
                 selected={selectedGroup}
                 loading={nip29Loading}
                 unread={nip29Unread}
+                inCall={nip29InCall}
                 onMarkRead={markGroupAllRead}
               />
             </div>

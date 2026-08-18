@@ -14,6 +14,8 @@ import {
   Cloud,
   Coins,
   Compass,
+  LogOut,
+  Phone,
   Database,
   Eye,
   EyeOff,
@@ -1222,10 +1224,17 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
   },
   9021: {
     kind: 9021,
-    name: "Group Metadata",
-    description: "Group Metadata",
+    name: "Group Join Request",
+    description: "Asks a relay for admission to a group",
     nip: "29",
-    icon: Settings,
+    icon: Users,
+  },
+  9022: {
+    kind: 9022,
+    name: "Group Leave Request",
+    description: "Asks a relay to remove you from a group",
+    nip: "29",
+    icon: LogOut,
   },
 
   // Replaceable events (kind 30000+)
@@ -1739,6 +1748,13 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     description: "Group Members List",
     nip: "29",
     icon: Users,
+  },
+  39004: {
+    kind: 39004,
+    name: "Group Participants",
+    description: "Who is live in a group's audio/video space",
+    nip: "29",
+    icon: Phone,
   },
   39701: {
     kind: 39701,

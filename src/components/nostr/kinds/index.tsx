@@ -77,6 +77,7 @@ import { ZapstoreAppSetDetailRenderer } from "./ZapstoreAppSetDetailRenderer";
 import { ZapstoreReleaseRenderer } from "./ZapstoreReleaseRenderer";
 import { ZapstoreReleaseDetailRenderer } from "./ZapstoreReleaseDetailRenderer";
 import { GroupMetadataRenderer } from "./GroupMetadataRenderer";
+import { GroupParticipantsRenderer } from "./GroupParticipantsRenderer";
 import {
   RelayMembersRenderer,
   RelayMembersDetailRenderer,
@@ -318,6 +319,7 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   32267: ZapstoreAppRenderer, // Zapstore App
   38383: P2pOrderRenderer, // P2P Orders
   39000: GroupMetadataRenderer, // Group Metadata (NIP-29)
+  39004: GroupParticipantsRenderer, // Group AV Participants (NIP-29)
   39089: StarterPackRenderer, // Starter Pack (NIP-51)
   39092: MediaStarterPackRenderer, // Media Starter Pack (NIP-51)
   39701: Kind39701Renderer, // Web Bookmarks (NIP-B0)

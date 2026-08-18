@@ -18,11 +18,7 @@ import { getDefaultStore } from "jotai";
 import { Track, type Room } from "livekit-client";
 
 import { verifiedAuthorOf } from "@/lib/call/roster";
-import {
-  callStateAtom,
-  type CallProtocol,
-  type CallState,
-} from "@/services/call-state";
+import { callStateAtom, type CallState } from "@/services/call-state";
 import {
   denoiseEnabled,
   setPreferredCameraId,
@@ -32,6 +28,8 @@ import {
 import { syncRnnoise } from "@/services/concord-rnnoise";
 
 let room: Room | undefined;
+/** How to end the call currently holding the slot, as its owner defines it. */
+let hangUp: (() => Promise<void>) | undefined;
 
 function store() {
   return getDefaultStore();
@@ -47,26 +45,31 @@ export function activeRoom(): Room | undefined {
 }
 
 /**
- * Hand the slot a room, or clear it. Called by the owning service around the
- * same lifetime its own bookkeeping covers; nothing else may write it.
+ * Hand the slot a room and the way to end it, or clear both.
+ *
+ * The owner passes its own hang-up rather than being looked up later, and that
+ * is the whole point: a service's module-level bookkeeping is the truth about
+ * whether a call is running, and `callStateAtom` can lag it. A teardown
+ * announcing a goodbye holds the atom on the old call for seconds while the
+ * service already considers it gone, so dispatching on `protocol` would find
+ * nobody to hang up at exactly the moment there is something to hang up.
  */
-export function setActiveRoom(next: Room | undefined): void {
+export function setActiveRoom(
+  next: Room | undefined,
+  ownerHangUp?: () => Promise<void>,
+): void {
   room = next;
+  hangUp = next ? ownerHangUp : undefined;
 }
 
 /**
  * Hang up whatever is running, whoever owns it.
  *
- * The services are imported lazily and by name, because this module is reachable
- * from the app shell and must not pull a protocol's whole stack — or the other
- * protocol's — into a chunk that only wanted to end a call.
+ * A no-op when the slot is empty, and idempotent otherwise — every owner's
+ * teardown is.
  */
 export async function hangUpAny(): Promise<void> {
-  const protocol: CallProtocol = store().get(callStateAtom).protocol;
-  if (protocol === "concord") {
-    const { leaveCall } = await import("@/services/concord-call");
-    await leaveCall();
-  }
+  await hangUp?.();
 }
 
 /** What LiveKit says we are currently publishing. */

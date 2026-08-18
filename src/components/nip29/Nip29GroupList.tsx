@@ -15,6 +15,7 @@ import { BellOff, Hash, Pin } from "lucide-react";
 import { useGroupMetadata } from "@/hooks/useGroupMetadata";
 import { RowMenu } from "@/components/chat/RowMenu";
 import { UnreadBadge } from "@/components/concord/ConcordChannelList";
+import { InCallCount } from "@/components/call/InCallCount";
 import type { GroupUnread } from "@/lib/nip29/unread";
 import { MutedSection } from "@/components/chat/MutedSection";
 import { useConcordPrefs } from "@/hooks/useConcordPrefs";
@@ -34,6 +35,7 @@ export function Nip29GroupList({
   onSelect,
   loading,
   unread,
+  inCall,
   onMarkRead,
 }: {
   groups: GroupEntry[];
@@ -42,6 +44,8 @@ export function Nip29GroupList({
   loading?: boolean;
   /** What each group has waiting, keyed as {@link groupKey}. */
   unread?: Map<string, GroupUnread>;
+  /** How many are in each group's AV space, keyed `relayUrl'groupId`. */
+  inCall?: Map<string, number>;
   /** Stamps a group read without opening it, at its newest counted message. */
   onMarkRead?: (selection: GroupSelection, latest: number) => void;
 }) {
@@ -76,6 +80,7 @@ export function Nip29GroupList({
           group={group}
           selected={!!selected && groupKey(selected) === groupKey(group)}
           onSelect={onSelect}
+          inCall={inCall?.get(groupKey(group)) ?? 0}
           {...(unread?.get(groupKey(group))
             ? { unread: unread.get(groupKey(group)) }
             : {})}
@@ -87,6 +92,7 @@ export function Nip29GroupList({
           <Nip29GroupRow
             key={groupKey(group)}
             group={group}
+            inCall={inCall?.get(groupKey(group)) ?? 0}
             selected={!!selected && groupKey(selected) === groupKey(group)}
             onSelect={onSelect}
           />
@@ -102,9 +108,12 @@ function Nip29GroupRow({
   onSelect,
   unread,
   onMarkRead,
+  inCall = 0,
 }: {
   group: GroupEntry;
   selected: boolean;
+  /** How many are in this group's AV space right now. */
+  inCall?: number;
   onSelect: (selection: GroupSelection) => void;
   unread?: GroupUnread | undefined;
   onMarkRead?:
@@ -158,6 +167,7 @@ function Nip29GroupRow({
         <span className="truncate">{name}</span>
         <span className="ml-auto flex shrink-0 items-center gap-1">
           {pinned && <Pin className="size-3 shrink-0 text-muted-foreground" />}
+          <InCallCount count={inCall} />
           {muted && (
             <BellOff className="size-3 shrink-0 text-muted-foreground" />
           )}
