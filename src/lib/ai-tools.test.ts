@@ -109,11 +109,30 @@ describe("lookup_spec", () => {
     expect(result.command.options?.length).toBeGreaterThan(0);
   });
 
-  it("names the commands that exist when asked for one that does not", async () => {
+  it("enumerates the commands, so a model cannot ask for one that is not there", () => {
+    const schema = AI_TOOLS[0].function.parameters as {
+      properties: { command: { enum?: string[] } };
+    };
+    const names = schema.properties.command.enum ?? [];
+    expect(names).toContain("req");
+    // The prompt's catalogue hides these, so the lookup must not offer them.
+    expect(names).not.toContain("zap");
+    expect(names).not.toContain("post");
+    expect(names).not.toContain("wallet");
+  });
+
+  it("still answers as data when a provider ignores the enum", async () => {
     const result = (await executors.lookup_spec({ command: "frobnicate" })) as {
       command: { error: string };
     };
     expect(result.command.error).toContain("req");
+  });
+
+  it("will not read the manual of a command it may not propose", async () => {
+    const result = (await executors.lookup_spec({ command: "zap" })) as {
+      command: { error: string };
+    };
+    expect(result.command.error).toContain("No such command");
   });
 
   it("rejects an empty call", async () => {

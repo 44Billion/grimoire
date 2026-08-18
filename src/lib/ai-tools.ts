@@ -24,6 +24,11 @@ import type { InferenceTool } from "@/types/inference";
 /** Cap on returned content, so one long article cannot eat the window. */
 const MAX_CONTENT_CHARS = 2_000;
 
+/** Commands whose manual page Hex may read: the ones it may also propose. */
+const READABLE_COMMANDS = Object.keys(manPages)
+  .filter((name) => !PROPOSAL_DENIED.has(manPages[name].appId))
+  .sort();
+
 export const AI_TOOLS: InferenceTool[] = [
   {
     type: "function",
@@ -47,6 +52,12 @@ export const AI_TOOLS: InferenceTool[] = [
           },
           command: {
             type: "string",
+            // Enumerated, because the whole set is two dozen names: a model
+            // that has to guess spends a round finding out it guessed wrong,
+            // and a provider that enforces schemas will not let it guess.
+            // Same exclusions as the prompt's catalogue — a command Hex is not
+            // told about is not one it should be able to read up on.
+            enum: READABLE_COMMANDS,
             description:
               'A grimoire command name, e.g. "req" — returns its synopsis, ' +
               "flags with descriptions, examples, and related commands.",
@@ -210,11 +221,13 @@ async function lookupSpec(args: unknown): Promise<unknown> {
  */
 function manPage(name: string): unknown {
   const key = name.trim().split(/\s+/)[0].toLowerCase();
-  const page = manPages[key];
+  const page = READABLE_COMMANDS.includes(key) ? manPages[key] : undefined;
+  // The schema enumerates the names, so this only fires for a provider that
+  // does not enforce enums — still answered as data, never thrown.
   if (!page) {
     return {
       name: key,
-      error: `No such command. Known commands: ${Object.keys(manPages).join(", ")}.`,
+      error: `No such command. Known commands: ${READABLE_COMMANDS.join(", ")}.`,
     };
   }
   return {
@@ -224,9 +237,6 @@ function manPage(name: string): unknown {
     ...(page.options?.length ? { options: page.options } : {}),
     ...(page.examples?.length ? { examples: page.examples } : {}),
     ...(page.seeAlso?.length ? { seeAlso: page.seeAlso } : {}),
-    ...(PROPOSAL_DENIED.has(page.appId)
-      ? { note: "grimoire refuses to run this one; propose it to the user." }
-      : {}),
   };
 }
 
