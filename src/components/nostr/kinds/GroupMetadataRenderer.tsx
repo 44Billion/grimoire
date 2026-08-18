@@ -3,7 +3,9 @@ import { getTagValue } from "applesauce-core/helpers";
 import { getSeenRelays } from "applesauce-core/helpers/relays";
 import { BaseEventContainer, ClickableEventTitle } from "./BaseEventRenderer";
 import { useAddWindow } from "@/core/state";
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, Phone } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { groupSupportedKinds, groupSupportsAv } from "@/lib/nip29/livekit";
 
 interface GroupMetadataRendererProps {
   event: NostrEvent;
@@ -40,6 +42,12 @@ export function GroupMetadataRenderer({ event }: GroupMetadataRendererProps) {
 
   const canOpenChat = !!relayUrl && !!groupId;
 
+  // What the group says it is. `supported_kinds` absent means every kind;
+  // present and empty means none, which is an AV-only space.
+  const hasSpace = groupSupportsAv(event);
+  const supportedKinds = groupSupportedKinds(event);
+  const avOnly = hasSpace && supportedKinds?.length === 0;
+
   return (
     <BaseEventContainer event={event}>
       <div className="flex flex-col gap-1">
@@ -51,7 +59,21 @@ export function GroupMetadataRenderer({ event }: GroupMetadataRendererProps) {
           <p className="text-xs text-muted-foreground line-clamp-2">{about}</p>
         )}
 
-        {canOpenChat && (
+        {(hasSpace || supportedKinds) && (
+          <div className="flex flex-wrap items-center gap-1">
+            {hasSpace && (
+              <Label className="inline-flex items-center gap-1">
+                <Phone className="size-2.5 shrink-0" />
+                {avOnly ? "audio/video only" : "audio/video"}
+              </Label>
+            )}
+            {supportedKinds && supportedKinds.length > 0 && (
+              <Label>kinds {supportedKinds.join(", ")}</Label>
+            )}
+          </div>
+        )}
+
+        {canOpenChat && !avOnly && (
           <button
             onClick={handleOpenChat}
             className="text-xs text-primary hover:underline flex items-center gap-1 w-fit mt-1"

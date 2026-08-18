@@ -34,6 +34,14 @@ import type { NostrEvent } from "@/types/nostr";
 /** The newest 39004 seen per `relay'group`, and the members it named. */
 const latest = new Map<string, { createdAt: number; participants: string[] }>();
 
+/**
+ * The answer for a group nothing is known about — one array, always the same
+ * one. Callers compare snapshots by reference (`useSyncExternalStore`), and a
+ * fresh `[]` per call reads as "changed" every time: an unknown group would
+ * re-render until React gave up.
+ */
+export const NOBODY: string[] = [];
+
 function key(relayUrl: string, groupId: string): string {
   // The relay is normalized and the group id is NOT: `#d` is case-sensitive and
   // relay-assigned, so `Bitcoin` and `bitcoin` are two rooms.
@@ -50,7 +58,7 @@ export function groupParticipantsOf(
   relayUrl: string,
   groupId: string,
 ): string[] {
-  return latest.get(key(relayUrl, groupId))?.participants ?? [];
+  return latest.get(key(relayUrl, groupId))?.participants ?? NOBODY;
 }
 
 /**

@@ -75,6 +75,15 @@ export interface ConversationMetadata {
   relayUrl?: string; // Relay URL for single-relay protocols
   description?: string; // Group/thread description
   icon?: string; // Group icon/picture URL
+  /**
+   * Whether this room takes text messages at all.
+   *
+   * A NIP-29 group states its `supported_kinds`, and a group that lists none is
+   * an AV-only space: the relay will reject a kind 9 and the reader should not
+   * be offered a box to type one into. Absent means yes — every other protocol
+   * here, and every group that has not said otherwise.
+   */
+  acceptsMessages?: boolean;
 
   // NIP-53 live chat
   activityAddress?: {

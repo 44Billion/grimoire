@@ -171,6 +171,7 @@ chat wss://nos.lol'welcome
 
 Groups live on a single relay that enforces membership and moderation.
 Messages are kind 9, metadata kind 39000, admins kind 39001, members kind 39002.
+A group may also run a live audio/video room — see "NIP-29 AV spaces" below.
 
 ## Read state (optional adapter surface)
 
@@ -370,6 +371,99 @@ are load-bearing:
   with it. The adapter's emitter dedupe signature also counts
   `metadata.deleted`, because a delete landing mid-session changes no id, no
   timestamp and no delivery state.
+
+## NIP-29 AV spaces
+
+A group whose `kind:39000` carries a `livekit` tag has a media room, and the
+whole feature turns on one fact: **the party enforcing the group's rules and the
+party issuing the media credential are the same relay.** Everything that makes
+Concord's call (CORD-07) complicated is absent here, and each absence has that
+one cause.
+
+| | Concord | NIP-29 |
+| --- | --- | --- |
+| Token from | a BLIND broker, authorized by the channel key | the group's own relay, authorized by NIP-98 with the reader's key |
+| Media | end-to-end encrypted, per-sender keys nobody exchanges | TLS to the relay's SFU, and no further |
+| Who is in it | members announce themselves (kind 23313, sealed, heartbeat) | the relay publishes `kind:39004` |
+| Identity | member-visible, so a claim can be CONTESTED | relay-minted, pubkey bound into the JWT `sub` — single by construction |
+| Where | any broker; §5 rendezvous and split healing | one relay, one endpoint |
+| Hand, reactions | ride the presence rumor | no carrier; the buttons are absent, not disabled |
+
+So `nip29-call.ts` is a fifth the size of `concord-call.ts`, and what it does
+NOT buy is worth saying plainly: a hostile relay can put anyone in a room under
+anyone's name. That is the trust NIP-29 asks for everywhere else — for
+`kind:39000`, for the member list, for moderation — and nothing here makes it
+larger.
+
+### What is shared
+
+One call, app-wide and protocol-wide: one microphone, one camera, one pair of
+ears. `CallState.protocol` says whose it is, `hangUpAny()`
+(`src/services/call-room.ts`) ends it, and joining anywhere calls that first. The
+slot holds the owner's own hang-up rather than dispatching on the atom, because
+a teardown announcing a goodbye holds the atom on the old call for seconds after
+the service has already let it go — dispatching on `protocol` found nobody to
+hang up at exactly the moment there was something.
+
+`CallRoster` (`src/lib/call/roster.ts`), `CallStage`, `CallControls`,
+`CallHeaderButton`, `InCallCount`, the device prefs and RNNoise are all shared.
+`claims` in the roster is where the two trust models meet: Concord can produce a
+contested identity and a relay group cannot, and the renderer does not have to
+know which it is looking at.
+
+### Reading the roster
+
+`kind:39004` is watched for every group in the sidebar, not only the ones
+advertising a room — the whole set costs one filter per relay, and gating on
+metadata would keep a room invisible until its `kind:39000` happened to resolve.
+
+**The fold reads the subscription, never the store.** `eventStore.replaceable`
+is keyed on the address alone, so two relays hosting a `bitcoin` would merge into
+one roster; the subscription knows which relay it opened and the store does not.
+This is the `#h` lesson from the unread section, in a second place.
+
+The latest roster per group is remembered at module level
+(`src/services/nip29-participants.ts`), because a watcher that mounts second —
+the call window, over a sidebar subscribed since the app started — would
+otherwise show an empty room until the relay next republishes, which may be
+never. `useGroupParticipants` reads that memory through `useSyncExternalStore`
+rather than mirroring it into state: the snapshot is a function of the CURRENT
+group, so switching groups cannot leave the previous one's members on screen
+under the new one's name.
+
+`foldGroupRoster` merges the relay's list with the room's own participants and
+keeps everyone in either. A member holds a token before their session is up (a
+tile with no media) and the room knows a participant the relay has not
+re-announced yet (a tile the relay has not blessed). Someone audible must never
+be invisible.
+
+### Minting
+
+`GET https://<relay-host>/.well-known/nip29/livekit/<group-id>` with
+`Authorization: Nostr <base64 kind-27235>` (`src/lib/nip98.ts` — the repo's first
+real NIP-98 helper; Concord's `signAvGrant` only resembles one). Three details:
+
+- **Origin, not path.** A relay's socket may live under a path; a well-known URI
+  is defined against an origin. `wss://` only — the header is a bearer credential
+  naming the reader.
+- **One URL, both uses.** The `u` tag and the fetch take the same string. A
+  server comparing them gets a 401 with nothing in it to explain a mismatch.
+- **The identity comes from the JWT's `sub`**, not from a field beside it. `sub`
+  is what the spec mandates and what the SFU will present us as; a response
+  disagreeing with itself would leave us matching our own tile against the wrong
+  string.
+
+A network error against an endpoint the group itself advertised is almost always
+a missing CORS header — the request never reaches the application, so there is no
+status and the browser will not say which header. The viewer names it.
+
+### `supported_kinds`
+
+Absent means every kind; present and EMPTY means none. That distinction is the
+whole point of the tag, and collapsing it puts a message box on a room that has
+no messages. A group listing kinds without 9 sets
+`Conversation.metadata.acceptsMessages = false`, and `ChatViewer` renders a line
+saying so where the composer would be.
 
 ## Adding a protocol
 

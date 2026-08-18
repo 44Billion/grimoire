@@ -1072,6 +1072,12 @@ export function ChatViewer({
       ? conversationResult.conversation
       : null;
 
+  /**
+   * Whether this room takes text messages. Only a NIP-29 group ever says no,
+   * and only by listing `supported_kinds` that omit kind 9.
+   */
+  const acceptsMessages = conversation?.metadata?.acceptsMessages;
+
   // Relays for this conversation (used for reactions on root post, etc.)
   const conversationRelays = useMemo(
     () => (conversation ? getConversationRelays(conversation) : []),
@@ -2151,8 +2157,15 @@ export function ChatViewer({
         )}
       </div>
 
-      {/* Message composer - only show if user can sign */}
-      {canSign ? (
+      {/* Message composer - only show if user can sign, and only where the room
+          takes messages at all. An AV-only NIP-29 space says so in its
+          `supported_kinds`, and a box whose every send the relay rejects is
+          worse than no box. */}
+      {acceptsMessages === false ? (
+        <div className="border-t px-2 py-1 text-center text-sm text-muted-foreground">
+          This space carries live audio and video, not messages.
+        </div>
+      ) : canSign ? (
         <div className="border-t px-2 py-1 pb-0">
           {replyTo && (
             <ComposerReplyPreview

@@ -25,6 +25,9 @@ export function useGroupMetadata(
   // Subscribe to kind 39000 metadata on the group's relay
   useEffect(() => {
     if (isUnmanaged) return;
+    // A caller with nothing selected passes empty strings, and
+    // `pool.subscription` THROWS on an empty relay url rather than ignoring it.
+    if (!relayUrl || !groupId) return;
 
     const sub = pool
       .subscription([relayUrl], [{ kinds: [39000], "#d": [groupId] }], {
@@ -41,7 +44,7 @@ export function useGroupMetadata(
   const normalizedRelay = relayUrl.replace(/\/$/, "");
   const metadataEvent = use$(
     () =>
-      !isUnmanaged
+      !isUnmanaged && groupId
         ? eventStore.timeline([{ kinds: [39000], "#d": [groupId] }]).pipe(
             map((events) => {
               // Prefer the event actually seen on this relay

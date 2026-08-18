@@ -18,6 +18,7 @@ import {
 import { groupKey } from "@/lib/nip29/group-selection";
 import {
   groupParticipantsOf,
+  NOBODY,
   watchGroupParticipants,
 } from "@/services/nip29-participants";
 
@@ -26,8 +27,6 @@ export interface WatchedGroup {
   groupId: string;
   relayUrl: string;
 }
-
-const NOBODY: string[] = [];
 
 /**
  * Who is in one group's room, updating as the relay republishes.

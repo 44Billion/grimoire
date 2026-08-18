@@ -242,6 +242,12 @@ export class Nip29Adapter extends ChatProtocolAdapter {
         relayUrl,
         ...(description && { description }),
         ...(icon && { icon }),
+        // Stated only when the group has said no: an AV-only space
+        // (`supported_kinds` present and empty, or listing kinds without 9)
+        // would otherwise offer a composer whose every send the relay rejects.
+        ...(resolved.supportedKinds && !resolved.supportedKinds.includes(9)
+          ? { acceptsMessages: false }
+          : {}),
       },
       unreadCount: 0,
     };
