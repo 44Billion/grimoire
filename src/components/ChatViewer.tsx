@@ -63,6 +63,7 @@ import {
   type GroupedSystemMessage,
 } from "@/lib/chat/group-system-messages";
 import { UserName } from "./nostr/UserName";
+import { BotMarker } from "./nostr/BotMarker";
 import { RichText } from "./nostr/RichText";
 import Timestamp from "./Timestamp";
 import { ReplyPreview } from "./chat/ReplyPreview";
@@ -1783,6 +1784,21 @@ export function ChatViewer({
     }
   }, [conversation?.protocol, addWindow]);
 
+  /**
+   * The other person in a 1:1 DM, when there is exactly one.
+   *
+   * NIP-17 only, and only for two participants: a group DM's heading names
+   * several people, and one of their flags would say something false about the
+   * rest.
+   */
+  const dmOthers =
+    conversation?.protocol === "nip-17" && pubkey
+      ? (conversation.participants ?? [])
+          .map((participant) => participant.pubkey)
+          .filter((candidate) => candidate !== pubkey)
+      : [];
+  const dmPeer = dmOthers.length === 1 ? dmOthers[0] : undefined;
+
   // Get live activity metadata if this is a NIP-53 chat (with type guard)
   const liveActivity = isLiveActivityMetadata(
     conversation?.metadata?.liveActivity,
@@ -1999,6 +2015,9 @@ export function ChatViewer({
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+            {/* Says the counterpart is automation, from their kind 0. A DM
+                heading is where someone decides how much to trust an answer. */}
+            <BotMarker pubkey={dmPeer} className="w-4 h-4" />
             {/* Copy Chat ID button */}
             {getChatIdentifier(conversation) && (
               <button
