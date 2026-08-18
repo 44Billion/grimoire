@@ -717,13 +717,22 @@ export function watchDmInbox(
   relays: string[],
 ): () => void {
   const auth = authenticateDmRelays(relays);
+  console.info(`[dm] watching ${relays.length} relay(s) for new wraps`);
   const subscription = pool
     .subscription(relays, [inboxFilter(viewer)], { eventStore: null })
     .subscribe({
       next: (wrap) => {
         void unlockWraps(viewer, signer, [wrap]);
       },
-      error: () => {},
+      // An error ends the standing REQ, and nothing restarts it — from then on
+      // the inbox is as stale as it looks correct. Swallowing that left the
+      // only trace of it nowhere, so say so.
+      error: (error) => {
+        console.warn("[dm] the inbox watch stopped on an error:", error);
+      },
+      complete: () => {
+        console.warn("[dm] the inbox watch completed — no more live wraps");
+      },
     });
 
   return () => {

@@ -217,18 +217,28 @@ export function useDirectMessages(
       // reading, and how the walk's relay-set signature records a set that no
       // read actually used.
       const relays = await ownDmReadRelays(pubkey);
+      if (cancelled) return;
+
+      // The live wire goes up FIRST, and outside the try below.
+      //
+      // It used to be started after the catch-up sync, two awaits deep inside
+      // that try — so a sync that threw (one relay erroring, one page failing)
+      // took the standing subscription with it, and the session ran on with a
+      // list that only ever moved when something remounted the hook. The
+      // symptom is the worst kind: every message already on disk is there, so
+      // nothing looks broken until someone tells you they wrote.
+      //
+      // It is also the right order on its own terms. A wrap arriving DURING
+      // the catch-up is caught rather than missed, and the seen-wrap memo
+      // makes the overlap with the sync free.
+      stopWatching = watchDmInbox(pubkey, signer, relays);
+
       try {
-        // The fresh end first: whatever arrived since last time, so a reader
+        // Then the fresh end: whatever arrived since last time, so a reader
         // who opens the pane sees today's mail before a long walk starts.
         await syncDmInbox(pubkey, signer, { relays, pages: 2 });
         if (cancelled) return;
         await read("ready");
-
-        // A standing subscription, for as long as this hook is mounted. Without
-        // it nothing arrives until something re-runs the sync — a window left
-        // open showed a list that was already stale, and a message sent to you
-        // while you were reading appeared only after a reopen.
-        stopWatching = watchDmInbox(pubkey, signer, relays);
 
         // Then the whole history, once PER RELAY SET. A wrap says nothing
         // about whose conversation it belongs to until it is open, so a
