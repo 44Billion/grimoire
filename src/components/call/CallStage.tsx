@@ -55,6 +55,18 @@ export interface StageProps {
   connected: boolean;
   supported: boolean;
   hasTarget: boolean;
+  /**
+   * What an empty stage says, when the truthful answer is protocol-specific.
+   *
+   * The default is CORD-07's, and it is a claim: nobody is here, anyone with
+   * the channel key can start a call, and the broker learns nothing. None of
+   * that is true of a relay group, where the relay runs the room and decides
+   * who may enter — so a caller that is not Concord says its own thing rather
+   * than inheriting a sentence about a broker it does not have.
+   */
+  emptyNote?: string;
+  /** What to say when there is no room to be in yet. */
+  noTargetNote?: string;
 }
 
 export function CallStage(props: StageProps) {
@@ -237,17 +249,24 @@ function EmptyStage({
   supported,
   hasTarget,
   connected,
-}: Pick<StageProps, "supported" | "hasTarget" | "connected">) {
+  emptyNote,
+  noTargetNote,
+}: Pick<
+  StageProps,
+  "supported" | "hasTarget" | "connected" | "emptyNote" | "noTargetNote"
+>) {
   return (
     <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
       <p className="max-w-sm">
         {!supported
           ? "This browser cannot encrypt call media, and a Concord call is never sent unencrypted."
           : !hasTarget
-            ? "No channel. Open one and press the phone in its header."
+            ? (noTargetNote ??
+              "No channel. Open one and press the phone in its header.")
             : connected
               ? "Nobody else is here yet."
-              : "Nobody is in this call. Anyone holding the channel's key can start one — the broker is told nothing about the community, and it only ever forwards ciphertext."}
+              : (emptyNote ??
+                "Nobody is in this call. Anyone holding the channel's key can start one — the broker is told nothing about the community, and it only ever forwards ciphertext.")}
       </p>
     </div>
   );

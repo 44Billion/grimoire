@@ -146,6 +146,8 @@ export function Nip29CallViewer({
           // the relay that already reads the group.
           supported
           hasTarget={Boolean(relayUrl && groupId)}
+          emptyNote="Nobody is in this space. The relay hosting the group runs the room and decides who may enter it."
+          noTargetNote="No group. Open one and press the phone in its header."
         />
       </div>
 
