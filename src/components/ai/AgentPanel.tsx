@@ -23,6 +23,7 @@ import { useState } from "react";
 
 import { HEX_NAME } from "./Hex";
 
+import { canonicalId } from "@/lib/ai-registry";
 import { cn } from "@/lib/utils";
 
 import type { ToolSupport } from "@/services/inference";
@@ -108,7 +109,7 @@ export function AgentPanel({
                     tool={{
                       // First sentence only: the whole description is several
                       // lines, and the row is a label, not the documentation.
-                      description: `${tool.function.name} — ${firstSentence(tool.function.description)}`,
+                      description: `${canonicalId(tool.function.name)} — ${firstSentence(tool.function.description)}`,
                       jsonSchema: tool.function.parameters,
                     }}
                     value={tool.function.name}

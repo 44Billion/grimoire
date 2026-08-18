@@ -124,15 +124,24 @@ describe("the tool surface", () => {
   it("has no executor that signs or spends", () => {
     // `nostr.publish` drafts; the signature happens on a button press, in
     // `publishDraft`, which no executor can reach.
-    expect(Object.keys(executors).sort()).toEqual([
-      "grimoire_command",
-      "grimoire_help",
-      "grimoire_spells",
-      "grimoire_window",
-      "nostr_publish",
-      "nostr_req",
-      "nostr_resolve",
+    const ids = [...new Set(Object.keys(executors).map(canonicalId))].sort();
+    expect(ids).toEqual([
+      "grimoire.command",
+      "grimoire.help",
+      "grimoire.spells",
+      "grimoire.window",
+      "nostr.publish",
+      "nostr.req",
+      "nostr.resolve",
     ]);
+  });
+
+  it("answers to the dotted name too, since that is what the prompt says", () => {
+    // A model that copies the name it was told must not lose a round to
+    // punctuation.
+    for (const tool of AI_TOOLS as { function: { name: string } }[]) {
+      expect(executors[canonicalId(tool.function.name)]).toBeTypeOf("function");
+    }
   });
 });
 

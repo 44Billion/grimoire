@@ -74,7 +74,10 @@ describe("parseAiTarget", () => {
 
 describe("buildMentionContext", () => {
   it("returns nothing when the question names nothing", async () => {
-    expect(await buildMentionContext("what is a relay?")).toBeUndefined();
+    expect(await buildMentionContext("what is a relay?")).toEqual({
+      events: [],
+      pubkeys: [],
+    });
   });
 
   it("passes a referenced event's content, from the store", async () => {
@@ -83,7 +86,10 @@ describe("buildMentionContext", () => {
     const nevent = nip19.neventEncode({ id, kind: 1 });
 
     const context = await buildMentionContext(`summarize ${nevent}`);
-    expect(context).toContain("the referenced note body");
+    expect(context.system).toContain("the referenced note body");
+    // The event travels with the turn, so a reopened conversation renders it
+    // rather than the bech32 that named it.
+    expect(context.events.map((event) => event.id)).toEqual([id]);
     // Resolved locally, so no relay was asked.
     expect(eventLoader).not.toHaveBeenCalled();
   });
@@ -95,8 +101,9 @@ describe("buildMentionContext", () => {
 
     const context = await buildMentionContext(`what is ${nevent}?`);
     expect(eventLoader).toHaveBeenCalled();
-    expect(context).toContain("the referenced note body");
-    expect(context).toContain("30023");
+    expect(context.system).toContain("the referenced note body");
+    expect(context.system).toContain("30023");
+    expect(context.events).toHaveLength(1);
   });
 
   it("says so rather than inventing when nothing resolves", async () => {
@@ -106,7 +113,7 @@ describe("buildMentionContext", () => {
       const nevent = nip19.neventEncode({ id: "c".repeat(64), kind: 1 });
       const pending = buildMentionContext(`explain ${nevent}`);
       await vi.advanceTimersByTimeAsync(7_000);
-      expect(await pending).toMatch(/could not be loaded/);
+      expect((await pending).system).toMatch(/could not be loaded/);
     } finally {
       vi.useRealTimers();
     }
@@ -123,10 +130,13 @@ describe("buildMentionContext", () => {
       sig: "x",
     });
     const context = await buildMentionContext(`who is ${NPUB}?`);
-    expect(context).toContain("jack");
-    expect(context).toContain(PUBKEY);
+    expect(context.system).toContain("jack");
+    expect(context.system).toContain(PUBKEY);
     // The event, not the row: `created_at` only exists on the former.
-    expect(context).toContain("created_at");
+    expect(context.system).toContain("created_at");
+    // The kind 0 is kept with the turn, so the name survives the EventStore.
+    expect(context.events[0].kind).toBe(0);
+    expect(context.pubkeys).toEqual([PUBKEY]);
     expect(profilesGet).not.toHaveBeenCalled();
   });
 
@@ -140,8 +150,12 @@ describe("buildMentionContext", () => {
       const pending = buildMentionContext(`who is ${NPUB}?`);
       await vi.advanceTimersByTimeAsync(7_000);
       const context = await pending;
-      expect(context).toContain("jack");
-      expect(context).toContain("not the signed event");
+      expect(context.system).toContain("jack");
+      expect(context.system).toContain("not the signed event");
+      // Nothing signed resolved, so there is no event to keep — but the pubkey
+      // is worth keeping, since the profile may exist by the time it reopens.
+      expect(context.events).toEqual([]);
+      expect(context.pubkeys).toEqual([PUBKEY]);
     } finally {
       vi.useRealTimers();
     }

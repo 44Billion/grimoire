@@ -504,6 +504,15 @@ export interface AiConversation {
     model?: string;
     usage?: { inputTokens?: number; outputTokens?: number };
     toolRuns?: ToolRun[];
+    /**
+     * Nostr objects this turn named, kept with it.
+     *
+     * A transcript is full of `nostr:` URIs, and the EventStore is memory: a
+     * conversation reopened tomorrow would render a person as a stub and an
+     * attached note as a dead reference. The events come back into the store on
+     * load, so a mention renders as what it named however long ago it was said.
+     */
+    mentions?: { events?: NostrEvent[]; pubkeys?: string[] };
   }>;
   updatedAt: number;
 }

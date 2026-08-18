@@ -94,8 +94,7 @@ const BASE_SYSTEM = [
 
 /** How to write a command the user runs, rather than one Hex runs. */
 const PROPOSAL_RULES =
-  "A command the user should run goes to `grimoire.command`, or — with no tools" +
-  " — in a fenced block whose language is" +
+  "A command the user should run goes in a fenced block whose language is" +
   ` exactly \`${COMMAND_FENCE}\`, one per line, with a sentence saying what it` +
   " shows — either way it renders as a button the user presses, and an" +
   " unlabelled fence is just text. Write it so it runs as typed: `$me` and `$contacts` instead of" +
@@ -127,7 +126,10 @@ const TOOLS_SYSTEM = [
     " rather than guessing at the replies. To hand it over, `chat <nevent>`" +
     " opens the discussion (NIP-10 replies for kind 1, NIP-22 comments" +
     " otherwise), which beats `open` when they want to read it.",
-  PROPOSAL_RULES,
+  // The tools half offers `grimoire.command` as well; the fence still works, and
+  // is the only route on a provider that takes no tools — which is why the rule
+  // below is shared and this sentence is not.
+  `A command the user should run goes to \`grimoire.command\`. ${PROPOSAL_RULES}`,
   "Never claim to have opened, published, or sent anything no tool reported.",
 ].join("\n\n");
 
@@ -271,6 +273,24 @@ const MENTION_CHARS = 4_000;
 const RESOLVE_TIMEOUT = 6_000;
 
 /**
+ * What a question's references resolved to: the prose for the prompt, and the
+ * events themselves.
+ *
+ * The events travel because a conversation outlives the EventStore. A window
+ * reopened tomorrow has a transcript full of `nostr:` URIs and an empty store,
+ * so a mention that rendered as a person yesterday renders as a stub today —
+ * unless the turn brought its own copy back.
+ */
+export interface MentionContext {
+  /** Appended to the system prompt. Absent when nothing resolved. */
+  system?: string;
+  /** Resolved events, kind 0s for mentioned people included. */
+  events: NostrEvent[];
+  /** Every pubkey the text named, resolved or not. */
+  pubkeys: string[];
+}
+
+/**
  * Context for references named inside the question itself.
  *
  * Asking "what does <nevent> say?" only works if the event travels with the
@@ -279,7 +299,7 @@ const RESOLVE_TIMEOUT = 6_000;
  */
 export async function buildMentionContext(
   text: string,
-): Promise<string | undefined> {
+): Promise<MentionContext> {
   const seen = new Set<string>();
   const targets: NostrRefTarget[] = [];
 
@@ -291,27 +311,58 @@ export async function buildMentionContext(
     if (targets.length >= MAX_MENTIONS) break;
   }
 
-  if (targets.length === 0) return undefined;
+  if (targets.length === 0) return { events: [], pubkeys: [] };
 
   const described = await Promise.all(targets.map(describeTarget));
-  const blocks = described.filter((block): block is string => block != null);
-  return blocks.length > 0
-    ? `The question references these Nostr objects. Use them rather than guessing.\n\n${blocks.join("\n\n")}`
-    : undefined;
+  const blocks = described
+    .map((resolved) => resolved.block)
+    .filter((block): block is string => block != null);
+  const events = described
+    .map((resolved) => resolved.event)
+    .filter((event): event is NostrEvent => event != null);
+  const pubkeys = targets
+    .map((target) => target.pubkey)
+    .filter((pubkey): pubkey is string => typeof pubkey === "string");
+
+  return {
+    ...(blocks.length > 0
+      ? {
+          system: `The question references these Nostr objects. Use them rather than guessing.\n\n${blocks.join("\n\n")}`,
+        }
+      : {}),
+    events,
+    pubkeys,
+  };
+}
+
+/** One reference, as prose for the prompt and as the event to keep. */
+interface DescribedTarget {
+  block?: string;
+  event?: NostrEvent;
 }
 
 async function describeTarget(
   target: NostrRefTarget,
-): Promise<string | undefined> {
+): Promise<DescribedTarget> {
   if (target.pubkey) {
-    return `User ${target.pubkey}:\n${await describeProfile(target.pubkey)}`;
+    const profile = await describeProfile(target.pubkey);
+    return {
+      block: `User ${target.pubkey}:\n${profile.described}`,
+      ...(profile.event ? { event: profile.event } : {}),
+    };
   }
 
   const event = await resolveEvent(target);
   if (!event) {
-    return `A referenced event could not be loaded. Say so rather than inventing its contents.`;
+    return {
+      block:
+        "A referenced event could not be loaded. Say so rather than inventing its contents.",
+    };
   }
-  return `${describeKind(event.kind)}\n${truncate(JSON.stringify(event, null, 2))}`;
+  return {
+    block: `${describeKind(event.kind)}\n${truncate(JSON.stringify(event, null, 2))}`,
+    event,
+  };
 }
 
 /**
@@ -322,9 +373,13 @@ async function describeTarget(
  * parsed row drops, and a question about someone's profile is often a question
  * about the record rather than the name in it.
  */
-async function describeProfile(pubkey: string): Promise<string> {
+async function describeProfile(
+  pubkey: string,
+): Promise<{ described: string; event?: NostrEvent }> {
   const event = eventStore.getReplaceable(0, pubkey);
-  if (event) return truncate(JSON.stringify(event, null, 2));
+  if (event) {
+    return { described: truncate(JSON.stringify(event, null, 2)), event };
+  }
 
   const pointer = { kind: 0, pubkey, identifier: "" };
   const loaded = await resolveEvent({
@@ -332,12 +387,19 @@ async function describeProfile(pubkey: string): Promise<string> {
     props: { pubkey },
     addressPointer: pointer,
   });
-  if (loaded) return truncate(JSON.stringify(loaded, null, 2));
+  if (loaded) {
+    return {
+      described: truncate(JSON.stringify(loaded, null, 2)),
+      event: loaded,
+    };
+  }
 
   const profile = await db.profiles.get(pubkey).catch(() => undefined);
-  return profile
-    ? `(from cache, not the signed event)\n${truncate(JSON.stringify(profile, null, 2))}`
-    : "(no cached profile metadata)";
+  return {
+    described: profile
+      ? `(from cache, not the signed event)\n${truncate(JSON.stringify(profile, null, 2))}`
+      : "(no cached profile metadata)",
+  };
 }
 
 /** EventStore first, relays second. Undefined rather than throwing on failure. */

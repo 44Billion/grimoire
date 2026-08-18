@@ -1,4 +1,5 @@
 import db, { type AiConversation } from "./db";
+import eventStore from "./event-store";
 
 /**
  * AI conversation persistence, keyed by window id.
@@ -27,6 +28,7 @@ export async function loadStoredConversation(
 ): Promise<{ turns: AiTurns; target?: AiConversationTarget }> {
   try {
     const row = await db.aiConversations.get(windowId);
+    if (row) hydrateMentions(row.turns);
     return {
       turns: row?.turns ?? [],
       ...(row?.target ? { target: row.target } : {}),
@@ -35,6 +37,26 @@ export async function loadStoredConversation(
     // A conversation is a convenience, never a blocker. An unreadable row
     // should leave an empty window, not a broken one.
     return { turns: [] };
+  }
+}
+
+/**
+ * Put a conversation's referenced events back in the EventStore.
+ *
+ * Everything that renders a `nostr:` reference reads the store, so a reopened
+ * transcript shows names and embedded notes instead of stubs — without a relay
+ * round trip for objects the conversation already carried. The store dedupes and
+ * handles replaceables, so re-adding a stale kind 0 is harmless.
+ */
+function hydrateMentions(turns: AiTurns): void {
+  for (const turn of turns) {
+    for (const event of turn.mentions?.events ?? []) {
+      try {
+        eventStore.add(event);
+      } catch {
+        // A malformed stored event is not worth failing the load over.
+      }
+    }
   }
 }
 
@@ -56,6 +78,7 @@ export async function listConversations(): Promise<ConversationSummary[]> {
       .orderBy("updatedAt")
       .reverse()
       .toArray();
+    for (const row of rows) hydrateMentions(row.turns);
     return rows.map((row) => ({
       windowId: row.windowId,
       title:

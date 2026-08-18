@@ -40,6 +40,8 @@ import {
 } from "@/services/inference";
 import { PROMPT_API_MODEL } from "@/services/prompt-api";
 import { runToolLoop } from "@/services/tool-loop";
+import type { NostrEvent } from "nostr-tools";
+
 import type { InferenceMessage, Usage } from "@/types/inference";
 import { formatTimestamp, useLocale } from "@/hooks/useLocale";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -53,6 +55,7 @@ import {
   GENERAL_SUGGESTIONS,
   toolsSystem,
   type AiTarget,
+  type MentionContext,
 } from "@/lib/ai-context";
 import { Suggestion, Suggestions } from "./ai-elements/suggestion";
 import { AgentPanel } from "./ai/AgentPanel";
@@ -183,6 +186,23 @@ interface Turn {
   model?: string;
   usage?: Usage;
   toolRuns?: ToolRun[];
+  /** Nostr objects this turn named, so a reopened window can render them. */
+  mentions?: { events?: NostrEvent[]; pubkeys?: string[] };
+}
+
+/**
+ * The mentions worth keeping on a turn, as the stored shape.
+ *
+ * Only what resolved: a pubkey with no kind 0 is still worth keeping, because
+ * the profile may exist by the time the conversation is reopened, but an empty
+ * pair of arrays is not worth a row.
+ */
+function attachment(context: MentionContext): { mentions?: Turn["mentions"] } {
+  const mentions = {
+    ...(context.events.length ? { events: context.events } : {}),
+    ...(context.pubkeys.length ? { pubkeys: context.pubkeys } : {}),
+  };
+  return Object.keys(mentions).length > 0 ? { mentions } : {};
 }
 
 /**
@@ -567,8 +587,11 @@ export default function AiViewer({
       const mentions = await buildMentionContext(
         [text, ...userTurnsNewestFirst(turns)].join("\n\n"),
       );
+      // What this message named travels with it, so the reopened conversation
+      // renders the person and the note rather than the bech32 for them.
+      const attached = await buildMentionContext(text);
       const systemPrompt =
-        [system ?? context?.system, toolsSystem(toolsEnabled), mentions]
+        [system ?? context?.system, toolsSystem(toolsEnabled), mentions.system]
           .filter(Boolean)
           .join("\n\n") || undefined;
       setSentSystem(systemPrompt);
@@ -651,7 +674,7 @@ export default function AiViewer({
         // survive; the placeholder is replaced, not patched.
         const settled: Turn[] = [
           ...turns.filter((turn) => !turn.pending),
-          { role: "user", content: text, at },
+          { role: "user", content: text, at, ...attachment(attached) },
           {
             role: "assistant",
             at: Math.floor(Date.now() / 1000),

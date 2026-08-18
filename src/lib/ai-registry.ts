@@ -346,7 +346,12 @@ export function createToolExecutors(
   const executors: Record<string, ToolExecutor> = {};
   for (const tool of TOOL_REGISTRY) {
     const executor = tool.host ? hosts[tool.id] : tool.execute;
-    if (executor) executors[wireName(tool.id)] = executor;
+    if (!executor) continue;
+    executors[wireName(tool.id)] = executor;
+    // Also under the canonical id: the prompt names tools with the dot, and a
+    // model that copies what it was told should not lose a round to "no such
+    // tool" over punctuation.
+    executors[tool.id] = executor;
   }
   return executors;
 }
