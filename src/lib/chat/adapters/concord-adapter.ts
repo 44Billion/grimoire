@@ -46,7 +46,8 @@ import {
   type ReactionEntry,
 } from "@/lib/concord/chat";
 import { filterEpochCutoff } from "@/lib/concord/chat";
-import { KIND_COMMENT } from "@/lib/concord/kinds";
+import { KIND_COMMENT, KIND_ZAP } from "@/lib/concord/kinds";
+import { zapRumorTags, type ZapEntry } from "@/lib/concord/zaps";
 import type { BlobAttachmentMeta } from "./base-adapter";
 import type { FoldedControl } from "@/lib/concord/control";
 import { channelGitRepositories } from "@/lib/concord/git";
@@ -122,7 +123,11 @@ import type {
 import type { NostrEvent } from "@/types/nostr";
 import type { EmojiTag } from "@/lib/emoji-helpers";
 
-import { ChatProtocolAdapter, type SendMessageOptions } from "./base-adapter";
+import {
+  ChatProtocolAdapter,
+  type SendMessageOptions,
+  type ZapPayment,
+} from "./base-adapter";
 
 /** How many timeline rows one page holds. */
 const PAGE_ROWS = 200;
@@ -531,6 +536,11 @@ export class ConcordAdapter extends ChatProtocolAdapter {
       // nothing else. `resolveConversation` has already narrowed it to whoever
       // can actually open a private channel.
       mentionSuggestions: "roster",
+      // A Concord message id is a RUMOR id: it exists on no relay, so an
+      // nevent built from it, or a `{ids:[…]}` fetch for it, announces that the
+      // sealed conversation happened. The UI gates "Open Event" and "Copy ID"
+      // on this.
+      messageIdsArePrivate: true,
     };
   }
 
@@ -682,6 +692,99 @@ export class ConcordAdapter extends ChatProtocolAdapter {
       },
     );
     await this.publishAndStore(community, channel, built, account);
+  }
+
+  /**
+   * Seal a settled payment into the channel as a private zap (CORD.md §3).
+   *
+   * A kind-9735 rumor carrying `bolt11` + `preimage`, sealed to the payer's real
+   * identity like any message. Nothing about it reaches a relay in the clear, so
+   * no provider, indexer or relay learns that a community, a message or a zapper
+   * exists.
+   *
+   * Queued through the outbox rather than published-and-thrown like a reaction:
+   * the sats are already gone by the time this is called, so a failed publish
+   * has to be retried, not surrendered. The first attempt still happens inline.
+   */
+  async sendZap(
+    conversation: Conversation,
+    messageId: string,
+    payment: ZapPayment,
+  ): Promise<void> {
+    if (!/^[0-9a-f]{64}$/.test(payment.preimage)) {
+      throw new Error("A private zap needs its payment proof.");
+    }
+    const identifier = this.identifierOf(conversation);
+    const { community, channel, folded } = await this.resolve(identifier);
+    const target = await this.findRumor(identifier, messageId);
+    if (!target) throw new Error("Can't find the message you're zapping.");
+
+    // The `e` target rides in `extraTags`, not `target`: a drain rebuilds the
+    // rumor from `kind` + `extraTags` alone, and `replyToId` is left unset
+    // because the drain would turn it into a NIP-22 kind-1111 comment.
+    const extraTags = zapRumorTags({
+      targetId: messageId,
+      targetKind: target.kind,
+      recipient: target.pubkey,
+      amountMsats: payment.amountMsats,
+      bolt11: payment.bolt11,
+      preimage: payment.preimage,
+    });
+
+    const { built, account } = await this.prepareSend(
+      community,
+      channel,
+      folded,
+      { content: payment.comment, kind: KIND_ZAP, extraTags },
+    );
+
+    const row = await enqueueOutbox({
+      pubkey: account.pubkey,
+      communityId: community.idHex,
+      channel: channel.idHex,
+      kind: KIND_ZAP,
+      content: payment.comment,
+      extraTags,
+      createdAt: built.createdAt,
+      lastAttemptRumorId: built.rumor.id,
+    });
+    emitWireScopes([channelScope(channel.idHex)]);
+
+    const release = holdOutboxRow(row.id);
+    try {
+      await publishWrap(community.relays, built.wrap);
+    } catch (error) {
+      // Kept in the outbox for the next drain — the payment settled, so this
+      // proof is the only record of it and must not be dropped.
+      await markOutboxFailed(
+        row.id,
+        error instanceof Error ? error.message : String(error),
+      );
+      emitWireScopes([channelScope(channel.idHex)]);
+      release();
+      throw error;
+    }
+    const written = await writeChatRumors(community.idHex, [
+      {
+        rumorId: built.rumor.id,
+        author: account.pubkey,
+        kind: built.rumor.kind,
+        content: built.rumor.content,
+        tags: built.rumor.tags,
+        createdAt: built.createdAt,
+        ms: built.ms,
+        wrapId: built.wrap.id,
+        channel: channel.idHex,
+      },
+    ]);
+    await removeOutbox(row.id);
+    release();
+    if (!written.ok) {
+      console.warn(
+        "[concord] zap sent, but this device could not save it — it will reappear when it is fetched again",
+      );
+    }
+    emitWireScopes([channelScope(channel.idHex)]);
   }
 
   /**
@@ -1022,6 +1125,30 @@ export class ConcordAdapter extends ChatProtocolAdapter {
           tags: row.extraTags ?? [],
           createdAt: row.createdAt,
         }) as NostrEvent;
+        // A queued zap is not a queued message: rendering it as one would show
+        // an empty "sending" bubble. It gets the zap row it will become, with
+        // the delivery state still on it — the sats have already moved, so the
+        // reader is entitled to see that the announcement is still trying.
+        if (row.kind === KIND_ZAP) {
+          const tag = (name: string) =>
+            row.extraTags?.find(([n]) => n === name)?.[1];
+          const msats = Number(tag("amount"));
+          return {
+            ...zapMessage(
+              {
+                id: row.id,
+                pubkey: row.pubkey,
+                recipient: tag("p") ?? "",
+                sats: Number.isFinite(msats) ? Math.floor(msats / 1000) : 0,
+                comment: row.content,
+                createdAt: row.createdAt,
+              },
+              tag("e") ?? "",
+              conversationId,
+            ),
+            delivery: row.status,
+          };
+        }
         return {
           id: row.id,
           conversationId,
@@ -1126,10 +1253,20 @@ export class ConcordAdapter extends ChatProtocolAdapter {
       protocol: "concord" as const,
       event: toEvent({ ...target, content: "", tags: [] }) as NostrEvent,
     }));
+    // Verified private zaps, as their own rows citing what they paid for. The
+    // fold has already thrown out every unproven one and counted each payment
+    // once, so a row here means value verifiably moved.
+    const zaps: Message[] = [];
+    for (const [targetId, entries] of timeline.zaps) {
+      for (const entry of entries) {
+        zaps.push(zapMessage(entry, targetId, conversationId));
+      }
+    }
+
     const chat =
-      tombstones.length === 0
+      tombstones.length === 0 && zaps.length === 0
         ? messages
-        : [...messages, ...tombstones].sort(
+        : [...messages, ...tombstones, ...zaps].sort(
             (a, b) => a.timestamp - b.timestamp,
           );
 
@@ -1169,6 +1306,47 @@ export class ConcordAdapter extends ChatProtocolAdapter {
       chat[0]?.timestamp,
     );
   }
+}
+
+/**
+ * One verified zap as a chat row.
+ *
+ * The synthesized event carries the rumor's own id and a kind-9735 shape, but no
+ * `description` tag — there is no NIP-57 zap request to put there, and the zap
+ * row tolerates its absence (it reads the target from `replyTo`).
+ */
+function zapMessage(
+  entry: ZapEntry,
+  targetId: string,
+  conversationId: string,
+): Message {
+  return {
+    id: entry.id,
+    conversationId,
+    author: entry.pubkey,
+    content: entry.comment,
+    timestamp: entry.createdAt,
+    type: "zap" as const,
+    replyTo: { id: targetId },
+    metadata: {
+      encrypted: true,
+      zapAmount: entry.sats,
+      zapRecipient: entry.recipient,
+    },
+    protocol: "concord" as const,
+    event: toEvent({
+      rumorId: entry.id,
+      author: entry.pubkey,
+      kind: KIND_ZAP,
+      content: entry.comment,
+      tags: [
+        ["e", targetId],
+        ["p", entry.recipient],
+        ["amount", String(entry.sats * 1000)],
+      ],
+      createdAt: entry.createdAt,
+    }) as NostrEvent,
+  };
 }
 
 /** A NIP-30 `emoji` tag: shortcode, image, and the set it came from. */

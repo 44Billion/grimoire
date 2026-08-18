@@ -132,9 +132,14 @@ export function useWallet() {
     return await wallet.listTransactions(options);
   }
 
-  async function lookupInvoice(paymentHash: string) {
+  /**
+   * Look a payment up by hash, by invoice, or both — NIP-47 accepts either and
+   * wallets differ in which they honour, so a caller that has both should pass
+   * both rather than guess.
+   */
+  async function lookupInvoice(paymentHash?: string, invoice?: string) {
     if (!wallet) throw new Error("No wallet connected");
-    return await wallet.lookupInvoice(paymentHash);
+    return await wallet.lookupInvoice(paymentHash, invoice);
   }
 
   async function payKeysend(pubkey: string, amount: number, preimage?: string) {

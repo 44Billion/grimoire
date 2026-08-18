@@ -27,6 +27,7 @@ import { useCopy } from "@/hooks/useCopy";
 import { EventJsonDialog } from "@/components/EventJsonDialog";
 import { KindBadge } from "@/components/KindBadge";
 import { EmojiPickerDialog } from "./EmojiPickerDialog";
+import { PrivateZapDialog } from "./PrivateZapDialog";
 import { nip19 } from "nostr-tools";
 import { getTagValue } from "applesauce-core/helpers";
 import { getSeenRelays } from "applesauce-core/helpers/relays";
@@ -68,6 +69,7 @@ export function ChatMessageContextMenu({
   const { copy, copied } = useCopy();
   const [jsonDialogOpen, setJsonDialogOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [zapDialogOpen, setZapDialogOpen] = useState(false);
 
   // Extract context emojis from the conversation
   const contextEmojis = getEmojiTags(event);
@@ -98,6 +100,15 @@ export function ChatMessageContextMenu({
    * wrap around it was for.
    */
   const idIsPublic = !adapter?.getCapabilities().messageIdsArePrivate;
+
+  /**
+   * Whether this protocol carries the zap itself instead of NIP-57.
+   *
+   * A sealed protocol cannot use the public flow at all: the receipt would name
+   * the recipient, the amount and this message's id on relays that would then
+   * know the conversation happened. The private dialog is offered instead.
+   */
+  const canZapPrivately = Boolean(adapter?.sendZap && conversation && message);
 
   const deleteMessage = async () => {
     if (!adapter?.deleteMessage || !conversation) return;
@@ -231,11 +242,21 @@ export function ChatMessageContextMenu({
                 <Smile className="size-4 mr-2" />
                 React
               </ContextMenuItem>
-              {zapConfig?.supported && (
-                <ContextMenuItem onClick={openZapWindow}>
+              {/* A protocol that seals its messages announces zaps itself —
+                  see `adapter.sendZap`. Everything else gets the public NIP-57
+                  window. */}
+              {canZapPrivately ? (
+                <ContextMenuItem onClick={() => setZapDialogOpen(true)}>
                   <Zap className="size-4 mr-2" />
                   Zap
                 </ContextMenuItem>
+              ) : (
+                zapConfig?.supported && (
+                  <ContextMenuItem onClick={openZapWindow}>
+                    <Zap className="size-4 mr-2" />
+                    Zap
+                  </ContextMenuItem>
+                )
               )}
               <ContextMenuSeparator />
             </>
@@ -293,6 +314,15 @@ export function ChatMessageContextMenu({
           onOpenChange={setEmojiPickerOpen}
           onEmojiSelect={handleEmojiSelect}
           contextEmojis={contextEmojis}
+        />
+      )}
+      {canZapPrivately && conversation && adapter && message && (
+        <PrivateZapDialog
+          open={zapDialogOpen}
+          onOpenChange={setZapDialogOpen}
+          message={{ id: message.id, pubkey: message.author }}
+          conversation={conversation}
+          adapter={adapter}
         />
       )}
     </>

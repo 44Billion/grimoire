@@ -95,19 +95,22 @@ export function decodeLnurl(_lnurl: string): string {
  * Fetch invoice from LNURL callback with zap request
  * @param callbackUrl - The callback URL from LNURL-pay response
  * @param amountMillisats - Amount in millisatoshis
- * @param zapRequestEvent - Signed kind 9734 zap request event (URL-encoded JSON)
+ * @param zapRequestEvent - Signed kind 9734 zap request event (URL-encoded
+ *   JSON). OMIT it for a payment that must leave no Nostr trace: the `nostr`
+ *   parameter's presence is exactly what makes a provider mint and publish a
+ *   public kind-9735 receipt, so a private zap (CORD.md §2) cannot send one.
  * @param comment - Optional comment (if allowed by LNURL service)
  */
 export async function fetchInvoiceFromCallback(
   callbackUrl: string,
   amountMillisats: number,
-  zapRequestEvent: string,
+  zapRequestEvent?: string,
   comment?: string,
 ): Promise<LnUrlCallbackResponse> {
   // Build query parameters
   const url = new URL(callbackUrl);
   url.searchParams.set("amount", amountMillisats.toString());
-  url.searchParams.set("nostr", zapRequestEvent);
+  if (zapRequestEvent) url.searchParams.set("nostr", zapRequestEvent);
   if (comment) {
     url.searchParams.set("comment", comment);
   }

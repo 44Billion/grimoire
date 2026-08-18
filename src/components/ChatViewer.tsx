@@ -658,6 +658,9 @@ const MessageItem = memo(function MessageItem({
     [conversation],
   );
 
+  // Sat amounts are numbers, so they answer to the reader's locale.
+  const { locale } = useLocale();
+
   // Whether this message names the reader. Protocol-generic: NIP-29's factory
   // emits the same `p` tag Concord now sends.
   //
@@ -779,13 +782,16 @@ const MessageItem = memo(function MessageItem({
       [zapReplyEventId],
     );
 
-    // Only show reply preview if:
-    // 1. The event exists in our store
-    // 2. The event is a chat kind (includes messages, nutzaps, live chat, and zap receipts)
+    // Show the reply preview whenever the zap names a target, unless the target
+    // resolves to something that is not a chat message. A sealed protocol's
+    // target is never in the shared EventStore — its id is a rumor id — so
+    // requiring it there would hide what every private zap was paid for.
+    // `ReplyPreview` resolves those through `adapter.loadReplyMessage`, exactly
+    // as the ordinary message path above does.
     const shouldShowReplyPreview =
       zapReplyPointer &&
-      replyEvent &&
-      (CHAT_KINDS as readonly number[]).includes(replyEvent.kind);
+      (!replyEvent ||
+        (CHAT_KINDS as readonly number[]).includes(replyEvent.kind));
 
     return (
       <div className="pl-2 my-1">
@@ -804,7 +810,7 @@ const MessageItem = memo(function MessageItem({
               />
               <Zap className="size-4 fill-yellow-500 text-yellow-500" />
               <span className="text-yellow-500 font-bold">
-                {(message.metadata?.zapAmount || 0).toLocaleString("en", {
+                {(message.metadata?.zapAmount || 0).toLocaleString(locale, {
                   notation: "compact",
                 })}
               </span>

@@ -362,3 +362,124 @@ describe("a drain that fires while the adapter's own attempt is still open", () 
     expect(await db.concordOutbox.count()).toBe(0);
   });
 });
+
+/**
+ * A private zap (CORD.md) rides the same outbox as a message, because by the
+ * time it is queued the sats are already gone: a refused publish has to be
+ * retried, not surrendered. What the drain must not do is mistake it for
+ * anything else — the proof and the target both live in `extraTags`.
+ */
+describe("a queued private zap", () => {
+  const conversation = {
+    id: `${idHex}:${channelIdHex}`,
+    type: "group",
+    protocol: "concord",
+    title: "general",
+    participants: [],
+    unreadCount: 0,
+  } as unknown as import("@/types/chat").Conversation;
+
+  const PREIMAGE = "11".repeat(32);
+  const TARGET = "ef".repeat(32);
+
+  /** A zap of 21 sats on a stored message, queued as `sendZap` leaves it. */
+  async function queueZap() {
+    const { KIND_ZAP } = await import("@/lib/concord/kinds");
+    const { zapRumorTags } = await import("@/lib/concord/zaps");
+    return queue({
+      kind: KIND_ZAP,
+      content: "nice",
+      extraTags: zapRumorTags({
+        targetId: TARGET,
+        targetKind: KIND_MESSAGE,
+        recipient: "aa".repeat(32),
+        amountMsats: 21_000,
+        bolt11: "lnbc210n1p",
+        preimage: PREIMAGE,
+      }),
+    });
+  }
+
+  it("drains into a kind-9735 rumor carrying its proof and target", async () => {
+    const { KIND_ZAP } = await import("@/lib/concord/kinds");
+    await queueZap();
+    await drainOutbox(NOW);
+
+    const [stored] = await db.concordRumors.toArray();
+    expect(stored.kind).toBe(KIND_ZAP);
+    expect(stored.content).toBe("nice");
+    const tag = (name: string) =>
+      stored.tags.find(([n]: string[]) => n === name)?.[1];
+    expect(tag("e")).toBe(TARGET);
+    expect(tag("preimage")).toBe(PREIMAGE);
+    expect(tag("amount")).toBe("21000");
+    expect(tag("bolt11")).toBe("lnbc210n1p");
+    // A zap is not a threaded reply: NIP-22 root tags here would make every
+    // other client render it as a comment on the message.
+    expect(
+      stored.tags.some(([n]: string[]) => ["K", "E", "P"].includes(n)),
+    ).toBe(false);
+    // And the binding tags every chat rumor carries are still there.
+    expect(tag("channel")).toBe(channelIdHex);
+    expect(tag("epoch")).toBe("0");
+  });
+
+  it("keeps the proof queued when no relay took it", async () => {
+    published.mockRejectedValueOnce(
+      new Error("No relay accepted the message."),
+    );
+    const row = await queueZap();
+    await drainOutbox(NOW);
+
+    const after = await db.concordOutbox.get(row.id);
+    expect(after?.status).toBe("failed");
+    // The payment settled; losing this row would lose the only record of it.
+    expect(after?.extraTags?.some(([n]) => n === "preimage")).toBe(true);
+  });
+
+  it("publishes and stores it through the adapter, target resolved", async () => {
+    await writeChatRumors(idHex, [
+      {
+        rumorId: TARGET,
+        author: "aa".repeat(32),
+        kind: KIND_MESSAGE,
+        content: "zap me",
+        tags: [],
+        ms: NOW * 1000,
+        createdAt: NOW,
+        channel: channelIdHex,
+      },
+    ]);
+
+    const adapter = new ConcordAdapter();
+    await adapter.sendZap(conversation, TARGET, {
+      amountMsats: 21_000,
+      bolt11: "lnbc210n1p",
+      preimage: PREIMAGE,
+      comment: "nice",
+    });
+
+    expect(published).toHaveBeenCalledTimes(1);
+    expect(await db.concordOutbox.count()).toBe(0);
+    const zap = (await db.concordRumors.toArray()).find((r) => r.id !== TARGET);
+    expect(zap?.tags.find(([n]: string[]) => n === "p")?.[1]).toBe(
+      "aa".repeat(32),
+    );
+    expect(zap?.tags.find(([n]: string[]) => n === "k")?.[1]).toBe(
+      String(KIND_MESSAGE),
+    );
+  });
+
+  it("refuses a zap with no payment proof", async () => {
+    const adapter = new ConcordAdapter();
+    await expect(
+      adapter.sendZap(conversation, TARGET, {
+        amountMsats: 21_000,
+        bolt11: "lnbc210n1p",
+        preimage: "",
+        comment: "",
+      }),
+    ).rejects.toThrow(/payment proof/i);
+    expect(published).not.toHaveBeenCalled();
+  });
+});

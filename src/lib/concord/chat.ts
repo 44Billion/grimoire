@@ -3,14 +3,17 @@
  *
  * Ported from armada `bc19d1f` (`src/concord/lib/chat.ts`), read half only.
  *
- * Narrowed on purpose. Armada's fold additionally handles zaps, polls, poll
- * votes, calendar events, RSVPs, WebXDC and its flood/pause display heuristics;
- * none of that is ported. The kinds that carry standalone CONTENT (polls,
- * calendar events) still land in the timeline pool so grimoire's kind registry
- * renders them rather than dropping them silently. The kinds that are SIDE
- * events referencing another rumor (votes, RSVPs, zap receipts) are skipped: a
- * vote has no meaning as a timeline row, and rendering one would be worse than
- * omitting it.
+ * Narrowed on purpose. Armada's fold additionally handles polls, poll votes,
+ * calendar events, RSVPs, WebXDC and its flood/pause display heuristics; none
+ * of that is ported. The kinds that carry standalone CONTENT (polls, calendar
+ * events) still land in the timeline pool so grimoire's kind registry renders
+ * them rather than dropping them silently. The kinds that are SIDE events
+ * referencing another rumor (votes, RSVPs) are skipped: a vote has no meaning
+ * as a timeline row, and rendering one would be worse than omitting it.
+ *
+ * Private zaps (CORD.md, kind 9735) ARE folded — verified against their own
+ * payment proof and handed over per target — but never as timeline rows: the
+ * reader decides how to draw them.
  *
  * What is NOT narrowed, and must not be: the decode gate (encrypted seal,
  * channel binding, retired-epoch cutoff), banned-author dropping, the CORD-08
@@ -35,7 +38,9 @@ import {
   KIND_REACTION,
   KIND_SEAL_ENCRYPTED,
   KIND_TIMER_NOTICE,
+  KIND_ZAP,
 } from "@/lib/concord/kinds";
+import { verifyZapRumor, type ZapEntry } from "@/lib/concord/zaps";
 import type { NostrRumor } from "@/lib/concord/rumor";
 import {
   checkChannelBinding,
@@ -74,6 +79,7 @@ export function _resetChatDecodeForTests(): void {
   decodeMemo.clear();
   skippedNoKey.clear();
   deletedReactionIds.clear();
+  zapVerdicts.clear();
 }
 
 function openOne(wrap: NostrRumor, channel: Channel): OpenedChat | null {
@@ -303,6 +309,14 @@ export interface FoldedTimeline {
   /** target rumor id → emoji → tally. */
   reactions: Map<string, Map<string, ReactionEntry>>;
   /**
+   * target rumor id → VERIFIED private zaps (CORD.md §4), earliest first.
+   *
+   * A zap whose proof does not check out never appears here, and one settled
+   * payment appears at most once per channel — see the dedup pass in
+   * {@link foldTimeline}.
+   */
+  zaps: Map<string, ZapEntry[]>;
+  /**
    * Authorized disappearing-messages timer notices (kind 1740, CORD-08 §4),
    * sorted by `ms` ascending. Not messages — a reader interleaves them as
    * centered notice rows.
@@ -331,6 +345,15 @@ export interface FoldedTimeline {
  */
 const deletedReactionIds = new Set<string>();
 const DELETED_REACTION_CAP = 8192;
+
+/**
+ * zap rumor id → its verdict (payment hash, or null for "fails the proof").
+ *
+ * A rumor's tags never change, so the hash and the invoice decode are done once
+ * per session instead of on every fold — a channel re-folds on each write batch.
+ */
+const zapVerdicts = new Map<string, string | null>();
+const ZAP_VERDICT_CAP = 8192;
 
 /**
  * Mark a reaction rumor id deleted NOW, before the kind-5 is sealed and stored,
@@ -383,6 +406,15 @@ export function foldTimeline(
     Array<{ author: string; content: string; ms: number }>
   >();
   const reactions = new Map<string, Map<string, ReactionEntry>>();
+  // Verified zaps, deduped by payment hash after the loop: a published proof is
+  // visible to every member, so without that pass anyone could replay someone
+  // else's — as their own zap, or on another message (CORD.md §4).
+  const zapCandidates: Array<{
+    target: string;
+    hash: string;
+    ms: number;
+    entry: ZapEntry;
+  }> = [];
   const timerNotices: OpenedChat[] = [];
   // ONE clock per fold: a rumor expiring mid-loop must not split the batch.
   const nowSecs = Math.floor(Date.now() / 1000);
@@ -448,6 +480,37 @@ export function foldTimeline(
       if (!entry) byEmoji.set(key, (entry = { reactors: new Map() }));
       entry.reactors.set(ev.author, ev.rumorId);
       if (url && !entry.url) entry.url = url;
+      continue;
+    }
+
+    if (ev.kind === KIND_ZAP) {
+      const target = eTargetOf(ev);
+      if (!target) continue;
+      let verdict = zapVerdicts.get(ev.rumorId);
+      if (verdict === undefined) {
+        if (zapVerdicts.size >= ZAP_VERDICT_CAP) {
+          zapVerdicts.delete(zapVerdicts.keys().next().value as string);
+        }
+        verdict = verifyZapRumor({ kind: ev.kind, tags: ev.tags });
+        zapVerdicts.set(ev.rumorId, verdict);
+      }
+      // A zap whose payment proof does not check out is not a weaker zap, it is
+      // no zap: it never enters a total.
+      if (!verdict) continue;
+      const msats = Number(ev.tags.find((t) => t[0] === "amount")?.[1]);
+      zapCandidates.push({
+        target,
+        hash: verdict,
+        ms: ev.ms,
+        entry: {
+          id: ev.rumorId,
+          pubkey: ev.author,
+          recipient: ev.tags.find((t) => t[0] === "p")?.[1] ?? "",
+          sats: Math.floor(msats / 1000),
+          comment: ev.content,
+          createdAt: ev.createdAt,
+        },
+      });
       continue;
     }
 
@@ -521,9 +584,26 @@ export function foldTimeline(
     if (byEmoji.size === 0) reactions.delete(targetId);
   }
 
+  // Zaps: one settled payment counts once per channel, and the winner is picked
+  // deterministically (earliest `ms`, then lowest rumor id) so every member —
+  // grimoire or armada — folds the same set from the same rumors.
+  const zaps = new Map<string, ZapEntry[]>();
+  const claimedHashes = new Set<string>();
+  zapCandidates.sort((a, b) =>
+    a.ms !== b.ms ? a.ms - b.ms : a.entry.id < b.entry.id ? -1 : 1,
+  );
+  for (const { target, hash, entry } of zapCandidates) {
+    if (claimedHashes.has(hash)) continue;
+    claimedHashes.add(hash);
+    let list = zaps.get(target);
+    if (!list) zaps.set(target, (list = []));
+    list.push(entry);
+  }
+
   return {
     messages: [...byId.values()].sort((a, b) => a.ms - b.ms),
     reactions,
+    zaps,
     timerNotices: timerNotices.sort((a, b) => a.ms - b.ms),
     removed: removed.sort((a, b) => a.ms - b.ms),
   };

@@ -23,6 +23,22 @@ import type {
  * Zap configuration for chat messages
  * Defines how zap requests should be constructed for protocol-specific tagging
  */
+/**
+ * A settled Lightning payment, with the proof a private zap rests on.
+ *
+ * The preimage is the whole point: `sha256(preimage)` is the invoice's payment
+ * hash, so anyone holding both can verify the payment locally without asking a
+ * provider, a relay or an indexer (CORD.md §"Private Zaps").
+ */
+export interface ZapPayment {
+  amountMsats: number;
+  bolt11: string;
+  /** 64 lowercase hex characters, as the wallet returned them. */
+  preimage: string;
+  /** The zap comment. It reaches the protocol, never the LNURL provider. */
+  comment: string;
+}
+
 export interface ZapConfig {
   /** Whether zapping is supported for this message/conversation */
   supported: boolean;
@@ -199,6 +215,23 @@ export abstract class ChatProtocolAdapter {
    * message is moderation, which is a different capability.
    */
   deleteMessage?(conversation: Conversation, messageId: string): Promise<void>;
+
+  /**
+   * Announce a settled Lightning payment as a zap ON THIS PROTOCOL, rather than
+   * as a public NIP-57 receipt.
+   *
+   * Optional, and its presence is what selects the private zap flow: a sealed
+   * protocol cannot use NIP-57 at all — the receipt is a public event naming the
+   * recipient, the amount and the message id, published by the recipient's
+   * wallet provider to relays that would then know the conversation happened.
+   * An adapter implementing this takes the announcement into its own transport;
+   * one that does not gets the public flow through {@link getZapConfig}.
+   */
+  sendZap?(
+    conversation: Conversation,
+    messageId: string,
+    payment: ZapPayment,
+  ): Promise<void>;
 
   /**
    * Try a queued message again, now.
