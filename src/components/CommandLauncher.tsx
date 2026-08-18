@@ -38,6 +38,10 @@ export default function CommandLauncher({
   onOpenChange,
 }: CommandLauncherProps) {
   const [input, setInput] = useState("");
+  // A failed argParser used to only reach the console, so a command that could
+  // not run looked identical to one that did nothing.
+  const [error, setError] = useState<string | null>(null);
+  const [isExecuting, setIsExecuting] = useState(false);
   const [editMode, setEditMode] = useAtom(commandLauncherEditModeAtom);
   const { state, addWindow, updateWindow } = useGrimoire();
   const navigate = useNavigate();
@@ -60,6 +64,7 @@ export default function CommandLauncher({
     } else if (!open) {
       // Clear input and edit mode when dialog closes
       setInput("");
+      setError(null);
       setEditMode(null);
     }
   }, [open, editMode, setEditMode]);
@@ -103,16 +108,26 @@ export default function CommandLauncher({
 
   // Execute command (async to support async argParsers)
   const executeCommand = async () => {
-    if (!recognizedCommand) return;
+    if (!recognizedCommand || isExecuting) return;
+
+    setError(null);
+    setIsExecuting(true);
 
     // Execute argParser and get props/title
-    const result = await executeCommandParser(
-      effectiveParsed,
-      state.activeAccount?.pubkey,
-    );
+    let result;
+    try {
+      result = await executeCommandParser(
+        effectiveParsed,
+        state.activeAccount?.pubkey,
+      );
+    } finally {
+      setIsExecuting(false);
+    }
 
     if (result.error || !result.props) {
-      console.error("Failed to parse command:", result.error);
+      const message = result.error || "Failed to parse command arguments";
+      console.error("Failed to parse command:", message);
+      setError(message);
       return;
     }
 
@@ -145,9 +160,16 @@ export default function CommandLauncher({
     onOpenChange(false);
   };
 
-  // Handle item selection (populate input, don't execute)
+  // Handle item selection (populate input, don't execute) - a tap must not run
+  // a command that still needs arguments.
   const handleSelect = (selectedCommand: string) => {
     setInput(selectedCommand + " ");
+    setError(null);
+  };
+
+  const handleInputChange = (value: string) => {
+    setInput(value);
+    setError(null);
   };
 
   // Handle Enter key
@@ -194,7 +216,7 @@ export default function CommandLauncher({
           <div className="command-launcher-wrapper">
             <Command.Input
               value={input}
-              onValueChange={setInput}
+              onValueChange={handleInputChange}
               onKeyDown={handleKeyDown}
               placeholder={placeholder}
               className="command-input"
@@ -259,13 +281,28 @@ export default function CommandLauncher({
             </Command.List>
 
             <div className="command-footer">
-              <div className="hidden md:block">
-                <kbd>↑↓</kbd> navigate
-                <kbd>↵</kbd> execute
-                <kbd>esc</kbd> close
-              </div>
+              {error ? (
+                <div className="command-footer-error" role="alert">
+                  {error}
+                </div>
+              ) : (
+                <div className="hidden md:block">
+                  <kbd>↑↓</kbd> navigate
+                  <kbd>↵</kbd> execute
+                  <kbd>esc</kbd> close
+                </div>
+              )}
               {recognizedCommand && (
-                <div className="command-footer-status">Ready to execute</div>
+                /* Enter is the only way in on a soft keyboard that does not
+                   deliver one; the status line is the button. */
+                <button
+                  type="button"
+                  className="command-footer-status"
+                  onClick={() => void executeCommand()}
+                  disabled={isExecuting}
+                >
+                  {isExecuting ? "Executing…" : "Run"}
+                </button>
               )}
             </div>
           </div>

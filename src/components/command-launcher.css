@@ -191,6 +191,35 @@
 .command-footer-status {
   color: hsl(var(--accent));
   font-weight: 600;
+  font-family: inherit;
+  font-size: inherit;
+  background: transparent;
+  border: 1px solid hsl(var(--accent));
+  padding: 6px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+.command-footer-status:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@media (min-width: 768px) {
+  .command-footer-status {
+    padding: 2px 8px;
+  }
+}
+
+.command-footer-error {
+  color: hsl(var(--destructive));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  margin-right: 12px;
 }
 
 .command-footer kbd {
