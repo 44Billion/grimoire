@@ -37,6 +37,12 @@ export type MockInferenceBehaviour =
       /** One entry per round; an empty array ends the loop with `text`. */
       rounds: Array<Array<{ name: string; arguments?: string }>>;
       text?: string;
+      /**
+       * Reasoning per round, streamed and then repeated in that round's `done`
+       * message — which is what real providers do, and what makes a caller that
+       * assigns rather than accumulates lose the earlier rounds.
+       */
+      reasoning?: string[];
     };
 
 export interface MockInference extends Inference {
@@ -67,7 +73,11 @@ export function createMockInference(
 
           if (behaviour.kind === "tool-calls") {
             const calls = behaviour.rounds[round] ?? [];
+            const thought = behaviour.reasoning?.[round];
             round++;
+            if (thought) {
+              yield { type: "reasoning_delta", content: thought };
+            }
             if (calls.length > 0) {
               yield {
                 type: "done",
@@ -75,6 +85,7 @@ export function createMockInference(
                 message: {
                   role: "assistant",
                   content: null,
+                  ...(thought ? { reasoning: thought } : {}),
                   toolCalls: calls.map((call, index) => ({
                     id: `call-${round}-${index}`,
                     type: "function",
@@ -92,7 +103,11 @@ export function createMockInference(
             yield {
               type: "done",
               model: "mock-model",
-              message: { role: "assistant", content: text },
+              message: {
+                role: "assistant",
+                content: text,
+                ...(thought ? { reasoning: thought } : {}),
+              },
               usage: { inputTokens: 1, outputTokens: 1 },
             };
             return;

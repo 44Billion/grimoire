@@ -1,4 +1,5 @@
 import {
+  cloneElement,
   Fragment,
   isValidElement,
   useCallback,
@@ -6,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactElement,
   type ReactNode,
 } from "react";
 import { ArrowDown, ArrowUp, ExternalLink, Send, Square } from "lucide-react";
@@ -186,10 +188,38 @@ function fencedBlock(
 function containsEventEmbed(children: ReactNode): boolean {
   if (typeof children === "string") return hasEventEmbed(children);
   if (Array.isArray(children)) return children.some(containsEventEmbed);
+  if (isValidElement(children)) {
+    return containsEventEmbed(
+      (children.props as { children?: ReactNode }).children,
+    );
+  }
   return false;
 }
 
-/** Apply LinkedText to the string leaves of a markdown element's children. */
+/** A reference inside these is text on purpose, so it stays text. */
+const LITERAL_TAGS = new Set(["code", "pre"]);
+
+/** True when a string leaf holds any reference grimoire can resolve. */
+function containsNostrRef(children: ReactNode): boolean {
+  if (typeof children === "string") {
+    return splitNostrRefs(children).some((segment) => segment.target);
+  }
+  if (Array.isArray(children)) return children.some(containsNostrRef);
+  if (isValidElement(children)) {
+    return containsNostrRef(
+      (children.props as { children?: ReactNode }).children,
+    );
+  }
+  return false;
+}
+
+/**
+ * Apply LinkedText to the string leaves of a markdown element's children.
+ *
+ * It walks into elements, not just arrays: a `nostr:` reference lands inside
+ * whatever markdown wrapped it — bold, a link, a heading — and stopping at the
+ * first element left those rendering as raw bech32.
+ */
 function withLinks(
   children: ReactNode,
   onOpen: (target: NostrRefTarget, label: string) => void,
@@ -201,6 +231,23 @@ function withLinks(
     return children.map((child, index) => (
       <Fragment key={index}>{withLinks(child, onOpen)}</Fragment>
     ));
+  }
+  if (isValidElement(children)) {
+    if (typeof children.type === "string" && LITERAL_TAGS.has(children.type)) {
+      return children;
+    }
+    const inner = (children.props as { children?: ReactNode }).children;
+    if (inner === undefined) return children;
+    // An autolinked reference loses its anchor: what replaces it is a button or
+    // an embed, and neither is valid inside an <a>.
+    if (children.type === "a" && containsNostrRef(inner)) {
+      return withLinks(inner, onOpen);
+    }
+    return cloneElement(
+      children as ReactElement<{ children?: ReactNode }>,
+      undefined,
+      withLinks(inner, onOpen),
+    );
   }
   return children;
 }
@@ -394,6 +441,30 @@ export default function AiViewer({
       li: ({ children }: { children?: ReactNode }) => (
         <li>{withLinks(children, onOpen)}</li>
       ),
+      // Every other place a reference can land. Markdown only routes the tag it
+      // renders through `components`, so a heading or a table cell that was not
+      // listed here showed raw bech32 — the model puts npubs in both.
+      ...Object.fromEntries(
+        (
+          [
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "blockquote",
+            "td",
+            "th",
+          ] as const
+        ).map((tag) => [
+          tag,
+          ({ children, ...rest }: { children?: ReactNode }) => {
+            const Tag = tag;
+            return <Tag {...rest}>{withLinks(children, onOpen)}</Tag>;
+          },
+        ]),
+      ),
     };
   }, [addWindow]);
 
@@ -482,8 +553,16 @@ export default function AiViewer({
         const loop = await runToolLoop({
           executors,
           messages: history,
-          onDelta: schedule,
-          onReasoningDelta: schedule,
+          // Snapshots, not deltas: the loop drops the preamble a tool round
+          // emits, so it owns the text and this only mirrors it.
+          onDelta: (text) => {
+            content = text;
+            schedule();
+          },
+          onReasoningDelta: (text) => {
+            reasoning = text;
+            schedule();
+          },
           onToolRuns: flushToolRuns,
           request: resolveRequest().request,
           signal: controller.signal,
@@ -653,9 +732,7 @@ export default function AiViewer({
       <Conversation className="min-h-0">
         {/* The empty state centers itself in `size-full`, so the content box
             has to fill the pane — its default height is its content. */}
-        <ConversationContent
-          className={turns.length === 0 && !showIndex ? "h-full" : ""}
-        >
+        <ConversationContent className={turns.length === 0 ? "h-full" : ""}>
           {/* What the model was actually told, before anything the user typed. */}
           {/* Configuration belongs to a conversation, not to the index: the
               bare page is a list, and nothing has been sent from it yet. */}

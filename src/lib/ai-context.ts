@@ -112,6 +112,11 @@ const TOOLS_SYSTEM = [
     " fetching kind 1 and sorting it in your head. `$me` and `$contacts` work" +
     " in `authors` and in the `p` tag. Read what came back and answer from it," +
     " quoting the events rather than summarising them from nothing.",
+  // Every npub in one reply was invented from the hex the tool returned, and
+  // every one of them failed its checksum and rendered as dead text.
+  "Each returned event carries an `npub` and an `nevent`. Reference people and" +
+    " events with those exact strings — never build bech32 from a hex id or" +
+    " pubkey, because a wrong checksum renders as plain text, not as a person.",
   "Use `open_window` when the user asked for a window; otherwise hand them a" +
     ` \`${COMMAND_FENCE}\` fence and let them click. Never claim to have opened` +
     " something a tool did not report opening.",

@@ -1,3 +1,5 @@
+import { nip19 } from "nostr-tools";
+
 import { PROPOSAL_DENIED, proposeCommand } from "./ai-commands";
 import { MAX_QUERY_LIMIT, resolveAliases, sanitizeFilter } from "./ai-filter";
 import { requestEvents } from "./relay-subscription";
@@ -248,6 +250,15 @@ async function queryNostr(args: unknown): Promise<unknown> {
       id: event.id,
       kind: event.kind,
       pubkey: event.pubkey,
+      // The bech32 to quote. A model handed only hex writes an npub with a bad
+      // checksum, and grimoire renders an undecodable reference as dead text —
+      // so the encoding it must copy is supplied rather than left to it.
+      npub: nip19.npubEncode(event.pubkey),
+      nevent: nip19.neventEncode({
+        id: event.id,
+        kind: event.kind,
+        author: event.pubkey,
+      }),
       created_at: event.created_at,
       tags: event.tags,
       content:

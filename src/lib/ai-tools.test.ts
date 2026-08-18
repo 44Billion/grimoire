@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { nip19 } from "nostr-tools";
 
 const requestEvents = vi.fn();
 const getNipText = vi.fn();
@@ -225,6 +226,21 @@ describe("query_nostr", () => {
     })) as { filter: unknown; relays: unknown };
     expect(result.filter).toEqual({ kinds: [1], limit: 5 });
     expect(result.relays).toEqual(["wss://named.example"]);
+  });
+
+  it("hands back bech32 the model can quote, because it invents bad ones", async () => {
+    requestEvents.mockResolvedValue([eventFor("c".repeat(64))]);
+    const result = (await executors.query_nostr({ kinds: [1] })) as {
+      events: { npub: string; nevent: string }[];
+    };
+    const { npub, nevent } = result.events[0];
+    expect(nip19.decode(npub).data).toBe("a".repeat(64));
+    // Kind and author travel with the id, so an adapter can dispatch on them.
+    expect(nip19.decode(nevent).data).toMatchObject({
+      id: "c".repeat(64),
+      kind: 1,
+      author: "a".repeat(64),
+    });
   });
 
   it("truncates content so one long article cannot fill the window", async () => {

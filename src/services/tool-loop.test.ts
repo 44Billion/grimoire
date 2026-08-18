@@ -181,4 +181,61 @@ describe("runToolLoop", () => {
       runToolLoop({ messages, request: mock.request }),
     ).rejects.toMatchObject({ code: "provider_error" });
   });
+  it("streams the answer so far, not the delta", async () => {
+    const mock = createMockInference({
+      kind: "normal",
+      deltas: ["one ", "two ", "three"],
+    });
+    const seen: string[] = [];
+    await runToolLoop({
+      messages,
+      request: mock.request,
+      onDelta: (text) => seen.push(text),
+    });
+    // A caller that renders the argument must see the whole reply, not "three".
+    expect(seen).toEqual(["one ", "one two ", "one two three"]);
+  });
+
+  it("keeps the reasoning of every round, not just the last", async () => {
+    const mock = createMockInference({
+      kind: "tool-calls",
+      rounds: [[{ name: "lookup" }], []],
+      reasoning: ["I should look this up", "Now I can answer"],
+      text: "answered",
+    });
+    const seen: string[] = [];
+
+    const result = await runToolLoop({
+      messages,
+      request: mock.request,
+      tools,
+      executors: { lookup: () => Promise.resolve("ok") },
+      onReasoningDelta: (text) => seen.push(text),
+    });
+
+    expect(result.reasoning).toBe("I should look this up\n\nNow I can answer");
+    // And the thinking was on screen before the tool ran, not only after.
+    expect(seen[0]).toBe("I should look this up");
+  });
+
+  it("clears the preamble a tool round emitted, matching the settled turn", async () => {
+    const mock = createMockInference({
+      kind: "tool-calls",
+      rounds: [[{ name: "lookup" }], []],
+      text: "the answer",
+    });
+    const seen: string[] = [];
+
+    const result = await runToolLoop({
+      messages,
+      request: mock.request,
+      tools,
+      executors: { lookup: () => Promise.resolve("ok") },
+      onDelta: (text) => seen.push(text),
+    });
+
+    expect(result.content).toBe("the answer");
+    expect(seen).toContain("");
+    expect(seen[seen.length - 1]).toBe("the answer");
+  });
 });

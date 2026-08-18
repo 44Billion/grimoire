@@ -34,8 +34,14 @@ export interface ToolLoopOptions {
   /** Rounds before giving up on a model that will not stop calling. */
   maxRounds?: number;
   signal?: AbortSignal;
+  /**
+   * The reply so far, not the delta. A snapshot because the loop drops the
+   * preamble a tool-calling round emits, so a caller appending deltas itself
+   * would end up with text the finished turn does not contain.
+   */
   onDelta?: (content: string) => void;
-  onReasoningDelta?: (content: string) => void;
+  /** The reasoning so far, across every round. */
+  onReasoningDelta?: (reasoning: string) => void;
   /** Called whenever a run starts or finishes, with a snapshot. */
   onToolRuns?: (runs: ToolRun[]) => void;
 }
@@ -67,9 +73,15 @@ export async function runToolLoop(
   let messages = options.messages;
   const toolRuns: ToolRun[] = [];
   let content = "";
-  let reasoning = "";
   let model: string | undefined;
   let usage: Usage | undefined;
+  // Reasoning is kept per round and joined, because a `done` chunk carries the
+  // whole round's reasoning: assigning it would erase what earlier rounds
+  // thought, which is exactly the part that explains a tool call.
+  const priorReasoning: string[] = [];
+  let roundReasoning = "";
+  const reasoningSoFar = () =>
+    [...priorReasoning, roundReasoning].filter(Boolean).join("\n\n");
 
   const report = () => onToolRuns?.(toolRuns.map((run) => ({ ...run })));
 
@@ -90,11 +102,11 @@ export async function runToolLoop(
       switch (chunk.type) {
         case "delta":
           content += chunk.content;
-          onDelta?.(chunk.content);
+          onDelta?.(content);
           break;
         case "reasoning_delta":
-          reasoning += chunk.content;
-          onReasoningDelta?.(chunk.content);
+          roundReasoning += chunk.content;
+          onReasoningDelta?.(reasoningSoFar());
           break;
         case "done":
           done = chunk;
@@ -102,7 +114,10 @@ export async function runToolLoop(
           usage = chunk.usage;
           if (chunk.message.role === "assistant") {
             content = chunk.message.content ?? content;
-            if (chunk.message.reasoning) reasoning = chunk.message.reasoning;
+            if (chunk.message.reasoning) {
+              roundReasoning = chunk.message.reasoning;
+              onReasoningDelta?.(reasoningSoFar());
+            }
           }
           break;
         default:
@@ -124,6 +139,7 @@ export async function runToolLoop(
       done.message.role === "assistant" ? done.message : undefined;
     const calls: ToolCall[] = assistant?.toolCalls ?? [];
     if (calls.length === 0) {
+      const reasoning = reasoningSoFar();
       return {
         content,
         ...(reasoning ? { reasoning } : {}),
@@ -190,6 +206,10 @@ export async function runToolLoop(
     ];
     // Text emitted alongside a tool call is preamble; the answer comes after.
     content = "";
+    onDelta?.(content);
+    // Close this round's reasoning so the next one appends rather than replaces.
+    if (roundReasoning) priorReasoning.push(roundReasoning);
+    roundReasoning = "";
   }
 
   throw makeInferenceError(
