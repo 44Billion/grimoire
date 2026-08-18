@@ -1,0 +1,306 @@
+/**
+ * Building agent-session events (NIP-xx: Agent Sessions).
+ *
+ * Every function returns an unsigned rumor with its id filled in. Nothing here
+ * signs, encrypts, or publishes — a channel does that, and which envelope it
+ * uses is the channel's business, not the encoding's.
+ */
+
+import { getEventHash } from "nostr-tools";
+
+import {
+  KIND_AGENT_DEFINITION,
+  KIND_DELTA,
+  KIND_MILESTONE,
+  KIND_SESSION_HEAD,
+  KIND_TURN,
+} from "./kinds";
+import type {
+  AgentDefinitionInput,
+  AgentTurnInput,
+  Cost,
+  DeltaInput,
+  MilestoneInput,
+  RedactionProfile,
+  Rumor,
+  SessionHeadInput,
+  SessionRef,
+  UnsignedRumor,
+  Usage,
+} from "./types";
+
+/** The address every event in a session points at. */
+export function sessionAddress(agent: string, session: string): string {
+  return `${KIND_SESSION_HEAD}:${agent}:${session}`;
+}
+
+/** The address of an agent's definition. */
+export function definitionAddress(agent: string, slug: string): string {
+  return `${KIND_AGENT_DEFINITION}:${agent}:${slug}`;
+}
+
+/** Parse `31777:<agent>:<session>` back. Returns null on anything else. */
+export function parseSessionAddress(
+  value: string,
+): { kind: number; agent: string; session: string } | null {
+  const parts = value.split(":");
+  if (parts.length !== 3) return null;
+  const kind = Number(parts[0]);
+  const [, agent, session] = parts;
+  if (!Number.isInteger(kind) || !agent || !session) return null;
+  if (!/^[0-9a-f]{64}$/.test(agent)) return null;
+  return { kind, agent, session };
+}
+
+function stamp(rumor: UnsignedRumor): Rumor {
+  return {
+    ...rumor,
+    id: getEventHash(rumor as Parameters<typeof getEventHash>[0]),
+  };
+}
+
+function now(override?: number): number {
+  return override ?? Math.floor(Date.now() / 1000);
+}
+
+function usageTag(usage: Usage): string[] {
+  return [
+    "usage",
+    String(usage.input),
+    String(usage.output),
+    String(usage.cacheRead),
+    String(usage.cacheWrite),
+  ];
+}
+
+function costTag(cost: Cost): string[] {
+  return ["cost", cost.amount, cost.currency];
+}
+
+function sessionTag(session: SessionRef): string[] {
+  const tag = ["a", sessionAddress(session.agent, session.session)];
+  if (session.relay) tag.push(session.relay);
+  return tag;
+}
+
+function cursorTags(seq: number, prev?: string): string[][] {
+  const tags = [["seq", String(seq)]];
+  if (seq > 1) {
+    if (!prev)
+      throw new Error(
+        `agent-session: seq ${seq} needs a prev; only seq 1 may omit it`,
+      );
+    tags.push(["prev", prev]);
+  }
+  return tags;
+}
+
+function msTag(ms?: number): string[][] {
+  if (ms === undefined) return [];
+  if (!Number.isInteger(ms) || ms < 0 || ms > 999)
+    throw new Error(`agent-session: ms must be an integer 0-999, got ${ms}`);
+  return [["ms", String(ms)]];
+}
+
+// ── Turn ─────────────────────────────────────────────────────────────────────
+
+export function buildTurn(
+  agentPubkey: string,
+  session: SessionRef,
+  input: AgentTurnInput,
+  cursor: { seq: number; prev?: string },
+  operator: { pubkey: string; relay?: string },
+  redaction: RedactionProfile,
+): Rumor {
+  const tools = new Set<string>();
+  for (const block of input.blocks) {
+    if (block.type === "tool_call" || block.type === "tool_result")
+      tools.add(block.name);
+  }
+
+  const tags: string[][] = [
+    sessionTag(session),
+    ...cursorTags(cursor.seq, cursor.prev),
+    ["turn", String(input.turn)],
+    ["role", input.role],
+    ["p", operator.pubkey, operator.relay ?? "", "operator"],
+    ...msTag(input.ms),
+  ];
+
+  if (input.stop) tags.push(["stop", input.stop]);
+  if (input.model)
+    tags.push([
+      "model",
+      input.model.id,
+      ...(input.model.provider ? [input.model.provider] : []),
+    ]);
+  if (input.usage) tags.push(usageTag(input.usage));
+  if (input.cost) tags.push(costTag(input.cost));
+  for (const tool of tools) tags.push(["tool", tool]);
+  tags.push(["redaction", redaction]);
+  if (input.alt) tags.push(["alt", input.alt]);
+
+  return stamp({
+    kind: KIND_TURN,
+    pubkey: agentPubkey,
+    created_at: now(input.createdAt),
+    tags,
+    content: JSON.stringify(input.blocks),
+  });
+}
+
+// ── Milestone ────────────────────────────────────────────────────────────────
+
+export function buildMilestone(
+  agentPubkey: string,
+  session: SessionRef,
+  input: MilestoneInput,
+  cursor: { seq: number; prev?: string },
+  operator: { pubkey: string; relay?: string },
+  redaction: RedactionProfile,
+): Rumor {
+  const tags: string[][] = [
+    sessionTag(session),
+    ...cursorTags(cursor.seq, cursor.prev),
+    ["status", input.status],
+    ["p", operator.pubkey, operator.relay ?? "", "operator"],
+  ];
+
+  if (input.turn !== undefined) tags.push(["turn", String(input.turn)]);
+  if (input.step)
+    tags.push(["step", String(input.step.n), String(input.step.total)]);
+  if (input.tool)
+    tags.push([
+      "tool",
+      input.tool.name,
+      ...(input.tool.callId ? [input.tool.callId] : []),
+    ]);
+  if (input.turnEventId)
+    tags.push(["e", input.turnEventId, session.relay ?? "", "turn"]);
+  tags.push(["redaction", redaction]);
+  if (input.alt) tags.push(["alt", input.alt]);
+
+  return stamp({
+    kind: KIND_MILESTONE,
+    pubkey: agentPubkey,
+    created_at: now(input.createdAt),
+    tags,
+    content: input.text,
+  });
+}
+
+// ── Delta ────────────────────────────────────────────────────────────────────
+
+/** Ephemeral. Ordered by `part` within its turn — deltas never consume `seq`. */
+export function buildDelta(
+  agentPubkey: string,
+  session: SessionRef,
+  input: DeltaInput,
+  operator: { pubkey: string; relay?: string },
+  redaction: RedactionProfile,
+): Rumor {
+  if (input.delta === "tool" && !input.toolId)
+    throw new Error("agent-session: a tool delta needs a tool-id");
+
+  const tags: string[][] = [
+    sessionTag(session),
+    ["turn", String(input.turn)],
+    ["part", String(input.part)],
+    ["delta", input.delta],
+    ["p", operator.pubkey, operator.relay ?? "", "operator"],
+  ];
+  if (input.toolId) tags.push(["tool-id", input.toolId]);
+  tags.push(["redaction", redaction]);
+
+  return stamp({
+    kind: KIND_DELTA,
+    pubkey: agentPubkey,
+    created_at: now(input.createdAt),
+    tags,
+    content: input.delta === "heartbeat" ? "" : input.text,
+  });
+}
+
+// ── Session head ─────────────────────────────────────────────────────────────
+
+export function buildSessionHead(
+  agentPubkey: string,
+  sessionId: string,
+  input: SessionHeadInput,
+  cursor: { seq: number },
+  redaction: RedactionProfile,
+): Rumor {
+  const tags: string[][] = [
+    ["d", sessionId],
+    ["title", input.title],
+    ["status", input.status],
+    ["p", input.operator.pubkey, input.operator.relay ?? "", "operator"],
+  ];
+
+  for (const observer of input.observers ?? [])
+    tags.push(["p", observer.pubkey, observer.relay ?? "", "observer"]);
+  for (const stream of input.streams)
+    tags.push([
+      "stream",
+      stream.transport,
+      stream.address,
+      stream.visibility,
+      stream.redaction,
+    ]);
+
+  tags.push(["seq", String(cursor.seq)]);
+  tags.push(["last-seq", String(input.lastSeq)]);
+  if (input.head) tags.push(["head", input.head]);
+  tags.push(["turns", String(input.turns)]);
+  tags.push(["started", String(input.started)]);
+  if (input.ended !== undefined) tags.push(["ended", String(input.ended)]);
+  if (input.model)
+    tags.push([
+      "model",
+      input.model.id,
+      ...(input.model.provider ? [input.model.provider] : []),
+    ]);
+  if (input.usage) tags.push(usageTag(input.usage));
+  if (input.cost) tags.push(costTag(input.cost));
+  if (input.definition) tags.push(["agent", input.definition]);
+  tags.push(["redaction", redaction]);
+  if (input.alt) tags.push(["alt", input.alt]);
+
+  return stamp({
+    kind: KIND_SESSION_HEAD,
+    pubkey: agentPubkey,
+    created_at: now(input.createdAt),
+    tags,
+    content: "",
+  });
+}
+
+// ── Agent definition ─────────────────────────────────────────────────────────
+
+export function buildAgentDefinition(
+  agentPubkey: string,
+  input: AgentDefinitionInput,
+): Rumor {
+  const tags: string[][] = [
+    ["d", input.slug],
+    ["name", input.name],
+  ];
+  if (input.picture) tags.push(["picture", input.picture]);
+  if (input.about) tags.push(["about", input.about]);
+  for (const tool of input.tools ?? []) tags.push(["tool", tool.name]);
+  for (const suggestion of input.suggestions ?? [])
+    tags.push(["try", suggestion]);
+  if (input.alt) tags.push(["alt", input.alt]);
+
+  const content: Record<string, unknown> = { v: 1 };
+  if (input.instructions) content.instructions = input.instructions;
+  if (input.tools?.length) content.tools = input.tools;
+
+  return stamp({
+    kind: KIND_AGENT_DEFINITION,
+    pubkey: agentPubkey,
+    created_at: now(input.createdAt),
+    tags,
+    content: JSON.stringify(content),
+  });
+}

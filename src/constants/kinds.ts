@@ -6,6 +6,7 @@ import {
   BarChart3,
   ShieldCheck,
   Bookmark,
+  Bot,
   Calendar,
   CalendarClock,
   CalendarDays,
@@ -610,6 +611,20 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
   //   icon: Bug,
   // },
 
+  1777: {
+    kind: 1777,
+    name: "Session Turn",
+    description: "Agent session turn",
+    nip: "",
+    icon: Bot,
+  },
+  1778: {
+    kind: 1778,
+    name: "Agent Milestone",
+    description: "Agent session progress milestone",
+    nip: "",
+    icon: Activity,
+  },
   // Moderation
   1984: {
     kind: 1984,
@@ -1581,6 +1596,27 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     description: "Calendar Event RSVP",
     nip: "52",
     icon: Calendar,
+  },
+  21777: {
+    kind: 21777,
+    name: "Agent Delta",
+    description: "Agent session streaming delta (ephemeral)",
+    nip: "",
+    icon: Activity,
+  },
+  31777: {
+    kind: 31777,
+    name: "Session Head",
+    description: "Agent session head",
+    nip: "",
+    icon: Bot,
+  },
+  31779: {
+    kind: 31779,
+    name: "Agent Definition",
+    description: "Agent definition: prompt, tools, suggestions",
+    nip: "",
+    icon: Bot,
   },
   31989: {
     kind: 31989,
