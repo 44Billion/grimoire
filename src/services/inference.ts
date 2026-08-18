@@ -111,6 +111,43 @@ export function serializeToolResult(value: unknown): string {
   }
 }
 
+/**
+ * How this window may send tools, if at all.
+ *
+ * `"standard"` is a spec-advertised capability. `"experimental"` means the
+ * injector only offers tools on its own namespace — usable, but a surface the
+ * spec asks applications not to depend on, so callers must say so.
+ */
+export type ToolSupport = "standard" | "experimental" | "none";
+
+export interface ResolvedRequest {
+  request: Inference["request"];
+  tools: ToolSupport;
+}
+
+/**
+ * Pick the request function to use. Prefers the standard path; falls back to
+ * the experimental one only to gain tool calling, never for plain chat.
+ */
+export function resolveRequest(): ResolvedRequest {
+  const inference = getInference();
+  const standard = inference.request.bind(inference);
+
+  if (inference.getFeatures?.().toolCalling === true) {
+    return { request: standard, tools: "standard" };
+  }
+
+  const experimental = inference.experimental?.request;
+  if (typeof experimental === "function") {
+    return {
+      request: experimental.bind(inference.experimental),
+      tools: "experimental",
+    };
+  }
+
+  return { request: standard, tools: "none" };
+}
+
 /** Drain a stream to its single `done` chunk, ignoring deltas. */
 export async function complete(request: InferenceRequest): Promise<DoneChunk> {
   let done: DoneChunk | undefined;

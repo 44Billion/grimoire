@@ -31,14 +31,16 @@ export function ConversationIndex({
 
   return (
     <div className="flex flex-col">
-      <div className="flex items-center gap-2 px-3 py-2">
+      <div className="flex items-center gap-2 px-3 pb-1 pt-2">
         <HexAvatar />
-        <span className="text-sm font-medium">Ask {HEX_NAME}</span>
+        <span className="text-xs uppercase tracking-wide text-muted-foreground">
+          Recent conversations
+        </span>
       </div>
 
       {others.length === 0 ? (
         <p className="px-3 pb-2 text-xs text-muted-foreground">
-          Nothing asked yet.
+          Nothing asked yet. Ask {HEX_NAME} above to start one.
         </p>
       ) : (
         others.map((row) => (

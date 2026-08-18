@@ -64,9 +64,16 @@ export function SystemPromptDisclosure({
  */
 export function ToolsDisclosure({
   className,
+  offered,
   tools,
 }: {
   className?: string;
+  /**
+   * Whether the tools were actually sent. Shown either way: "what could Hex
+   * ask for" is worth seeing even when the injector does not advertise tool
+   * calling, and hiding it made the answer to "do we pass tools?" invisible.
+   */
+  offered: boolean;
   tools: InferenceTool[];
 }) {
   const [open, setOpen] = useState(false);
@@ -80,8 +87,9 @@ export function ToolsDisclosure({
     >
       <CollapsibleTrigger className="flex w-full items-center gap-2 px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground">
         <Wrench className="size-3" />
-        <span>
+        <span className="truncate">
           Tools · {tools.map((tool) => tool.function.name).join(", ")}
+          {!offered && " · not sent"}
         </span>
         <ChevronDown
           className={cn(
@@ -91,6 +99,13 @@ export function ToolsDisclosure({
         />
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-2 border-t border-dashed border-border px-2 py-2">
+        {!offered && (
+          <p className="text-xs text-muted-foreground">
+            Your provider does not advertise tool calling, so these are not sent
+            — sending them anyway is an invalid request. Hex proposes commands
+            for you to run instead.
+          </p>
+        )}
         {tools.map((tool) => (
           <div key={tool.function.name}>
             <div className="font-mono text-xs">{tool.function.name}</div>

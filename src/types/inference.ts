@@ -101,6 +101,18 @@ export type InferenceError = Error & { code: InferenceErrorCode };
 export type Inference = {
   request(request: InferenceRequest): AsyncIterable<InferenceChunk>;
   getFeatures?(): InferenceFeatures;
+  /**
+   * Injector-specific surface, outside the spec. Inference Bridge exposes tool
+   * calling here while `getFeatures().toolCalling` is still false, so this is
+   * the only way to use tools today. The spec tells applications to target
+   * `request`/`getFeatures` and not extension namespaces — so everything that
+   * touches this is labelled experimental in the UI, and the standard path is
+   * preferred whenever it advertises support.
+   */
+  experimental?: {
+    request?(request: InferenceRequest): AsyncIterable<InferenceChunk>;
+    runTools?(options: unknown): Promise<unknown>;
+  };
 };
 
 export type DoneChunk = Extract<InferenceChunk, { type: "done" }>;

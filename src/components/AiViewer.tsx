@@ -26,9 +26,9 @@ import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 import {
   describeInferenceError,
-  getInference,
-  getInferenceFeatures,
   isInferenceAvailable,
+  resolveRequest,
+  type ToolSupport,
 } from "@/services/inference";
 import { runToolLoop } from "@/services/tool-loop";
 import type { InferenceMessage, Usage } from "@/types/inference";
@@ -45,10 +45,7 @@ import {
   type AiTarget,
 } from "@/lib/ai-context";
 import { Suggestion, Suggestions } from "./ai-elements/suggestion";
-import {
-  SystemPromptDisclosure,
-  ToolsDisclosure,
-} from "./ai/SystemPromptDisclosure";
+import { AgentPanel } from "./ai/AgentPanel";
 import { HEX_NAME, HexAvatar } from "./ai/Hex";
 import { Shimmer } from "./ai-elements/shimmer";
 import { CommandChips } from "./ai/CommandChips";
@@ -310,7 +307,6 @@ export default function AiViewer({
   // Availability is read once: an injector that appears later is picked up on
   // the next send, which throws `unavailable` with the same message.
   const available = isInferenceAvailable();
-  const features = available ? getInferenceFeatures() : {};
 
   // Before the first send, mentions are unknown, so show the grounding that is
   // already decided. After, show exactly what went out.
@@ -325,9 +321,19 @@ export default function AiViewer({
     return ref?.eventPointer || ref?.addressPointer ? ref : undefined;
   }, [targetValue]);
 
-  // Tools are offered only when the injector advertises them. Sending `tools`
-  // otherwise is invalid_request, and a chat-only grant does not cover them.
-  const toolsEnabled = features.toolCalling === true;
+  // Which request function to use, and whether it takes tools. Standard first;
+  // the experimental namespace only to gain tool calling.
+  const toolSupport: ToolSupport = useMemo(
+    () => (available ? resolveRequest().tools : "none"),
+    [available],
+  );
+  const toolsEnabled = toolSupport !== "none";
+
+  // The model that answered most recently, for the agent header.
+  const lastModel = useMemo(
+    () => [...turns].reverse().find((turn) => turn.model !== undefined)?.model,
+    [turns],
+  );
 
   // `open_window` needs the window state, so it is built here; the read-only
   // executors are pure and live in the lib.
@@ -476,7 +482,7 @@ export default function AiViewer({
           onDelta: schedule,
           onReasoningDelta: schedule,
           onToolRuns: flushToolRuns,
-          request: getInference().request.bind(getInference()),
+          request: resolveRequest().request,
           signal: controller.signal,
           ...(toolsEnabled ? { tools: AI_TOOLS } : {}),
         });
@@ -584,8 +590,55 @@ export default function AiViewer({
     );
   }
 
+  // The composer leads on the index — a bare window is a place to start a
+  // conversation — and trails a conversation, where it is a reply box.
+  const composer = (
+    <div className={cn("px-2 py-1", showIndex ? "border-b" : "border-t")}>
+      <div className="flex items-end gap-1.5">
+        <Textarea
+          className="min-h-7 max-h-40 flex-1 min-w-0 resize-none py-1 text-sm"
+          onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              submit();
+            }
+          }}
+          placeholder={`Ask ${HEX_NAME}...`}
+          rows={1}
+          value={input}
+        />
+        {streaming ? (
+          <Button
+            className="h-7 flex-shrink-0 px-2 text-xs"
+            onClick={() => controllerRef.current?.abort()}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            <Square className="size-3" />
+            Stop
+          </Button>
+        ) : (
+          <Button
+            className="h-7 flex-shrink-0 px-2 text-xs"
+            disabled={!input.trim()}
+            onClick={submit}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            <Send className="size-3" />
+            Send
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      {showIndex && composer}
       {/*
         `min-h-0` is load-bearing: a flex item defaults to min-height:auto, so
         Conversation would grow past the pane and the window's own overflow-auto
@@ -602,10 +655,14 @@ export default function AiViewer({
           {/* What the model was actually told, before anything the user typed. */}
           {/* Configuration belongs to a conversation, not to the index: the
               bare page is a list, and nothing has been sent from it yet. */}
-          {!showIndex && disclosedSystem && (
-            <SystemPromptDisclosure prompt={disclosedSystem} />
+          {!showIndex && (
+            <AgentPanel
+              instructions={disclosedSystem}
+              model={lastModel}
+              toolSupport={toolSupport}
+              tools={AI_TOOLS}
+            />
           )}
-          {!showIndex && toolsEnabled && <ToolsDisclosure tools={AI_TOOLS} />}
           {/* The event under discussion, rendered as itself — the question is
               about this, so it belongs in the conversation, not just the prompt. */}
           {targetRef && (
@@ -741,54 +798,7 @@ export default function AiViewer({
         </div>
       )}
 
-      {/* Matches the chat composer: border-t, tight padding, flex-1 input. */}
-      <div className="border-t px-2 py-1">
-        <div className="flex items-end gap-1.5">
-          <Textarea
-            className="min-h-7 max-h-40 flex-1 min-w-0 resize-none py-1 text-sm"
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                submit();
-              }
-            }}
-            placeholder={`Ask ${HEX_NAME}...`}
-            rows={1}
-            value={input}
-          />
-          {streaming ? (
-            <Button
-              className="h-7 flex-shrink-0 px-2 text-xs"
-              onClick={() => controllerRef.current?.abort()}
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              <Square className="size-3" />
-              Stop
-            </Button>
-          ) : (
-            <Button
-              className="h-7 flex-shrink-0 px-2 text-xs"
-              disabled={!input.trim()}
-              onClick={submit}
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              <Send className="size-3" />
-              Send
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {features.toolCalling && (
-        <div className="px-3 pb-2 text-xs text-muted-foreground">
-          Provider advertises tool calling.
-        </div>
-      )}
+      {!showIndex && composer}
     </div>
   );
 }

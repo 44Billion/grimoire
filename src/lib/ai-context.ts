@@ -49,14 +49,24 @@ export type { AiTarget, AiTargetKind } from "./ai-target";
 export { parseAiTarget } from "./ai-target";
 
 /**
- * Commands the model may propose, as `name — synopsis`. Generated from the man
- * pages so the list cannot drift from what grimoire actually has, and filtered
- * to the ones a proposal may run (see NEEDS_HUMAN in ai-commands).
+ * The commands a model may propose, with their flags.
+ *
+ * Synopsis alone was not enough: asked how to read highlights from contacts,
+ * Hex invented a relay URL and a `<contact-pubkey>` placeholder because it could
+ * not know `req` takes `-a $contacts`. Flags are listed by name only — the
+ * descriptions would be several thousand tokens for no extra decision power.
  */
 function commandCatalogue(): string {
   return Object.values(manPages)
     .filter((page) => !PROPOSAL_DENIED.has(page.appId))
-    .map((page) => `  ${page.synopsis} — ${page.name}`)
+    .map((page) => {
+      const flags = (page.options ?? [])
+        .map((option) => option.flag)
+        .filter((flag) => flag.startsWith("-"))
+        .join(" ");
+      const summary = page.description.split(".")[0];
+      return `  ${page.synopsis}${flags ? `\n    flags: ${flags}` : ""}\n    ${summary}.`;
+    })
     .join("\n");
 }
 
@@ -69,10 +79,23 @@ const BASE_SYSTEM = [
     " profiles and embedded events.",
   "Never state spec details as fact when the spec text is not in this prompt;" +
     " say you are answering from memory instead.",
-  "When a grimoire window would answer better than prose, propose the command" +
-    ` in a fenced ${COMMAND_FENCE} block, one command per line, and say in a` +
-    " sentence what it will show. The user clicks to run it; you cannot run it" +
-    " yourself, and you must not claim to have opened anything.",
+  // The fence language is what turns a suggestion into a button, so it is
+  // spelled out with an example rather than described.
+  "When a grimoire command answers better than prose, write it in a fenced" +
+    ` block whose language is exactly \`${COMMAND_FENCE}\`, one command per` +
+    " line, and say in a sentence what it will show. Never put a grimoire" +
+    " command in an unlabelled fence or inline code — only a" +
+    ` \`${COMMAND_FENCE}\` fence becomes a button the user can run. Example:` +
+    `\n\n\`\`\`${COMMAND_FENCE}\nreq -k 1 -a $contacts -l 50\n\`\`\``,
+  "You cannot run commands yourself and must not claim to have opened anything;" +
+    " the user clicks to run them.",
+  // Placeholders are the other half of that failure: a command the user has to
+  // fill in by hand is not runnable, and a button that errors is worse than
+  // prose.
+  "Write commands that run as written. Use the `$me` and `$contacts` aliases" +
+    " instead of placeholder pubkeys, and omit the relay unless the user named" +
+    " one — grimoire selects relays itself via NIP-65. Never invent a relay" +
+    " URL, a pubkey, or an event id.",
   `Commands available:\n${commandCatalogue()}`,
 ].join("\n\n");
 
