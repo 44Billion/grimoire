@@ -9,7 +9,7 @@
  */
 
 /** Decimal (`NIP-01`, `NIP-100`) and hex (`NIP-C7`) alike. */
-const NIP_PATTERN = /\bNIP-([0-9A-Fa-f]{1,3})\b/g;
+const NIP_PATTERN = /\bNIP-([0-9A-Fa-f]{1,3})\b/gi;
 
 export interface NipSegment {
   text: string;

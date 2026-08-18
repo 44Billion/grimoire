@@ -24,7 +24,11 @@ Check these, in this order — each has caught a real bug:
 
    **Do not send** unless the change is in the request path: each turn spends the user's own money through their extension. `ai "prompt"` auto-sends by design, so type into the composer and leave it there instead. When you must send, one turn is enough, and prefer a question that needs a tool (`summarize the last 5 notes from my contacts`) since the tool loop is where the bugs are.
 
-   Tool results render as the thing they returned, headed by the canonical tool id (`nostr.req`, `grimoire.help`): a feed for a query, badges for a lookup, command rows for a suggestion, and a draft card with a **Sign & publish** button for `nostr.publish`. Never press that button — publishing is the user's signature, not yours.
+   Tool results render as the thing they returned, headed by the canonical tool id (`nostr.req`, `grimoire.help`): a feed for a query, badges for a lookup, command rows for a suggestion, and a draft card for `nostr.publish` — body, relay list with connection state, and a **Sign & publish** button. Never press that button; publishing is the user's signature, not yours. In a reply, check that `nostr:` references render as people and events and that `NIP-XX` is a link — both are re-linked by hand, since markdown never passes through applesauce's content pipeline.
+
+   Reopen a stored conversation from the index afterwards: the mentions must still render as people and notes, not bech32. They are kept on the turn precisely because the EventStore is memory.
+
+   Anything that opens a window from a `/run` page mutates state invisibly (issue #313), so drive the `ai` window from the app, not from `/run`, when the thing you are checking is a click that opens something.
 
    To exercise the on-device fallback, disable the Inference Bridge extension first — with an injector present `resolveRequest()` never reaches it — and expect Chrome's model to download on the first send, which needs a real click and shows a progress bar.
 

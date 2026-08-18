@@ -18,7 +18,8 @@ The page never sees a key, never names a provider, and never chooses a model.
 | `src/lib/ai-draft.ts` | A drafted event, checked before it can be signed |
 | `src/actions/publish-draft.ts` | Signing and publishing a draft — from a button, never a tool |
 | `src/lib/ai-filter.ts` | A model's arguments as a NIP-01 filter, aliases resolved |
-| `src/lib/ai-context.ts` | The system prompt, built from what grimoire already holds |
+| `src/lib/ai-context.ts` | The system prompt, and the references a question carries |
+| `src/lib/nip-refs.ts` | `NIP-01` in a reply, as a link |
 | `src/components/AiViewer.tsx` | The window: turns, streaming, persistence |
 | `src/types/inference.ts` | `ipa-tools` types, aliased, plus the experimental namespace |
 
@@ -130,7 +131,11 @@ and re-prompts whenever the set widens.
   is not reachable from the loop. `sanitizeDraft` refuses the kinds one click
   must not be able to rewrite — 0, 3, anything replaceable or addressable — plus
   what spends or must be encrypted. The kind is checked again in the action,
-  because that is the function that signs.
+  because that is the function that signs. The card shows the body as it will
+  render (not the kind renderer, whose header carries a timestamp and a menu an
+  unsigned event has no business showing) over the post composer's relay list,
+  with connection and auth state and a per-relay result: a publish that half works
+  is the normal case.
 
 No tool signs, publishes, spends or follows. Tool arguments are shaped by
 whatever the model read — including note text, which is untrusted — so the only
@@ -148,6 +153,28 @@ prompt (`buildAiContext`). `buildMentionContext` does the same for up to three
 `ai` takes an event, a profile, a kind or a NIP as its subject, and every one of
 those has an entry point in the UI (the event menu, the profile header, the kind
 and NIP windows) through `AskHexButton`.
+
+**A turn keeps what it named.** A transcript is `nostr:` URIs and the EventStore
+is memory, so a conversation reopened tomorrow would render a person as a stub and
+an attached note as a dead reference. `buildMentionContext` returns the events it
+resolved along with the prose; both the question and the reply keep theirs
+(`Turn.mentions`), and loading a conversation — or listing the index, whose titles
+render mentions too — puts them back in the store. The reply matters as much as
+the question: Hex answers by quoting npubs and nevents, which is exactly what
+would otherwise stop rendering.
+
+**Relay selection is not the model's.** grimoire routes reads and writes itself —
+NIP-65 inbox/outbox, hints on the pointer, liveness and backoff — so the prompt
+says so in three places a model reads: the base rules, `nostr.req`'s prompt line,
+and the `relays` field description. A guessed relay URL is a query that answers
+nothing.
+
+**A reply is markdown, an event is not.** Model text renders through
+`MessageResponse` (Streamdown), so it never passes through applesauce's content
+pipeline: `nostr:` references and `NIP-01` are re-linked by hand in `AiViewer`
+(`withLinks`, `LinkedText`, `NipText`) at `text-sm`, matching every event body
+around it. `nip-refs.ts` deliberately mirrors `nip-transformer`'s pattern so a NIP
+in a note and a NIP in a reply open the same window.
 
 The composer is `RichEditor`, the same editor the chat and post windows use: `@`
 completes to a profile and a pasted entity becomes a preview. What it serializes

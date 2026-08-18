@@ -27,6 +27,7 @@ import {
 } from "./ai-elements/conversation";
 import { MessageResponse } from "./ai-elements/message";
 import { Button } from "./ui/button";
+import { Kbd, KbdGroup } from "./ui/kbd";
 import { RichEditor, type RichEditorHandle } from "./editor/RichEditor";
 import { useEmojiSearch } from "@/hooks/useEmojiSearch";
 import { useProfileSearch } from "@/hooks/useProfileSearch";
@@ -53,6 +54,7 @@ import {
   buildAiContext,
   buildMentionContext,
   GENERAL_SUGGESTIONS,
+  MAX_KEPT_MENTIONS,
   toolsSystem,
   type AiTarget,
   type MentionContext,
@@ -85,6 +87,7 @@ import { UserName } from "./nostr/UserName";
 import { RichText } from "./nostr/RichText";
 import { cn } from "@/lib/utils";
 import { EmbeddedEvent } from "./nostr/EmbeddedEvent";
+import { MediaEmbed } from "./nostr/MediaEmbed";
 
 interface AiViewerProps {
   /** Prompt from the command line. Sent once, when nothing is stored yet. */
@@ -215,6 +218,14 @@ function NipText({
       )}
     </>
   );
+}
+
+/** The submit modifier as this platform draws it. */
+function modifierKey(): string {
+  return typeof navigator !== "undefined" &&
+    /Mac|iP(hone|ad)/.test(navigator.platform)
+    ? "Cmd"
+    : "Ctrl";
 }
 
 /** Questions already asked, newest first — the order mention budget is spent in. */
@@ -590,6 +601,20 @@ export default function AiViewer({
       li: ({ children }: { children?: ReactNode }) => (
         <li>{withLinks(children, onOpen, onOpenNip)}</li>
       ),
+      // A reply can carry an image two ways: a URL a model quoted from an event
+      // it read, or a `data:` URI it produced. Both go through the same embed
+      // every note uses — zoomable, bounded, and with grimoire's own failure
+      // state rather than a browser broken-image icon.
+      img: ({ alt, src }: { alt?: string; src?: unknown }) =>
+        typeof src === "string" && src ? (
+          <MediaEmbed
+            alt={alt}
+            className="my-2 max-w-full"
+            preset="inline"
+            type="image"
+            url={src}
+          />
+        ) : null,
       // Every other place a reference can land. Markdown only routes the tag it
       // renders through `components`, so a heading or a table cell that was not
       // listed here showed raw bech32 — the model puts npubs in both.
@@ -659,6 +684,8 @@ export default function AiViewer({
       );
       // What this message named travels with it, so the reopened conversation
       // renders the person and the note rather than the bech32 for them.
+      // Resolved a second time rather than filtered out of the above: the first
+      // call put everything in the EventStore, so this one is local.
       const attached = await buildMentionContext(text);
       const systemPrompt =
         [system ?? context?.system, toolsSystem(toolsEnabled), mentions.system]
@@ -742,6 +769,14 @@ export default function AiViewer({
 
         // Rebuild from the turns we started with so earlier model and usage
         // survive; the placeholder is replaced, not patched.
+        // The reply's own references, kept the same way: Hex answers by quoting
+        // npubs and nevents, and those are exactly what a reopened conversation
+        // could no longer render. Everything it quotes was resolved during the
+        // turn, so this reads the EventStore rather than the network.
+        const replied = await buildMentionContext(content, {
+          limit: MAX_KEPT_MENTIONS,
+        });
+
         const settled: Turn[] = [
           ...turns.filter((turn) => !turn.pending),
           { role: "user", content: text, at, ...attachment(attached) },
@@ -749,6 +784,7 @@ export default function AiViewer({
             role: "assistant",
             at: Math.floor(Date.now() / 1000),
             content,
+            ...attachment(replied),
             ...(reasoningRounds.some(Boolean) ? { reasoningRounds } : {}),
             ...(model ? { model } : {}),
             ...(usage ? { usage } : {}),
@@ -864,8 +900,15 @@ export default function AiViewer({
       className={cn("px-2 py-1 text-left", showIndex ? "w-full" : "border-t")}
     >
       {/* On the index the composer sits in the centred column with the greeting
-          and the list, so the width is the column's. */}
-      <div className="flex items-end gap-1.5">
+          and the list, so the width is the column's — and it wears the dotted
+          border grimoire puts around anything you fill in yourself, rather than
+          floating unmarked in the middle of the page. */}
+      <div
+        className={cn(
+          "flex items-end gap-1.5",
+          showIndex && "rounded border border-dotted border-muted px-2 py-1",
+        )}
+      >
         {/* The same editor the chat and post windows use: `@` completes to a
             profile and a pasted nostr entity becomes a preview, so a question
             can name a person or an event the way the rest of grimoire does —
@@ -877,7 +920,10 @@ export default function AiViewer({
           autoFocus
           className="min-w-0 flex-1"
           maxHeight={160}
-          minHeight={28}
+          // Three lines on the landing page, where the box is the page and a
+          // one-line slot reads as a search field; one line as a reply box,
+          // where the conversation above it is what matters.
+          minHeight={showIndex ? 64 : 28}
           onSubmit={(content) => {
             const text = content.trim();
             if (!text || streaming) return;
@@ -913,6 +959,18 @@ export default function AiViewer({
           </Button>
         )}
       </div>
+      {/* The shortcut has always worked; nothing said so, and a three-line box
+          invites Enter. Only on the landing page — a reply box sits under a
+          conversation, which is what should be read there. */}
+      {showIndex && !streaming && (
+        <div className="flex items-center justify-end gap-1 pt-1 pr-1 text-xs text-muted-foreground">
+          <KbdGroup>
+            <Kbd>{modifierKey()}</Kbd>
+            <Kbd>↵</Kbd>
+          </KbdGroup>
+          <span>to send, Enter for a new line</span>
+        </div>
+      )}
     </div>
   );
 
@@ -1129,7 +1187,10 @@ export default function AiViewer({
                   />
                 ) : (
                   <MessageResponse
-                    className="max-w-full break-words"
+                    // `text-sm`, like the question above it and like every event
+                    // body in grimoire: markdown's base size made the reply the
+                    // largest text on screen, which read as a different app.
+                    className="max-w-full break-words text-sm"
                     components={markdownComponents}
                   >
                     {turn.content}

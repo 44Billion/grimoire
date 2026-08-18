@@ -274,6 +274,14 @@ async function nipContext(id: string): Promise<AiContext> {
 
 /** Most references resolved for one message. A prompt is not a crawl. */
 const MAX_MENTIONS = 3;
+/**
+ * The cap when the point is keeping references rather than prompting with them.
+ *
+ * A reply naming eight people costs eight EventStore reads — they were all
+ * resolved during the turn — and eight small events on the stored row. The
+ * prompt budget is the reason for the low cap, and it does not apply here.
+ */
+export const MAX_KEPT_MENTIONS = 16;
 /** Per-event budget. A long-form article can be tens of thousands of chars. */
 const MENTION_CHARS = 4_000;
 /** A relay that never answers must not hold the send open. */
@@ -306,7 +314,9 @@ export interface MentionContext {
  */
 export async function buildMentionContext(
   text: string,
+  options: { limit?: number } = {},
 ): Promise<MentionContext> {
+  const limit = options.limit ?? MAX_MENTIONS;
   const seen = new Set<string>();
   const targets: NostrRefTarget[] = [];
 
@@ -315,7 +325,7 @@ export async function buildMentionContext(
     if (!target || seen.has(segment.text)) continue;
     seen.add(segment.text);
     targets.push(target);
-    if (targets.length >= MAX_MENTIONS) break;
+    if (targets.length >= limit) break;
   }
 
   if (targets.length === 0) return { events: [], pubkeys: [] };
