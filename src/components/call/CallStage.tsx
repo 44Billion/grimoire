@@ -33,7 +33,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { applyVolumes } from "@/services/concord-call";
+import { applyVolumes } from "@/services/call-room";
 import { setVolumeFor, volumeFor } from "@/services/concord-devices";
 import { VideoSurface } from "@/components/call/VideoSurface";
 import type { IdentityTracks } from "@/components/call/useRoomTracks";

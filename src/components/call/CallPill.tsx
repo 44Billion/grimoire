@@ -25,15 +25,18 @@ import { Loader2, Mic, MicOff, Phone, PhoneOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useGrimoire } from "@/core/state";
 import { cn } from "@/lib/utils";
-import { callStateAtom } from "@/services/concord-call-state";
+import { callStateAtom } from "@/services/call-state";
 
 /**
- * Acting on the call needs the service, which needs `livekit-client`. This bar
- * is in the app's first load, so the import waits for the click — by which time
- * the chunk is already in memory anyway, because a call is running.
+ * Acting on the call needs the room module, which needs `livekit-client`. This
+ * bar is in the app's first load, so the import waits for the click — by which
+ * time the chunk is already in memory anyway, because a call is running.
+ *
+ * It is also why the pill acts on the ROOM rather than on a protocol's service:
+ * whose call this is is `hangUpAny`'s problem, not the header's.
  */
-async function callService() {
-  return import("@/services/concord-call");
+async function callRoom() {
+  return import("@/services/call-room");
 }
 
 export function CallPill() {
@@ -68,7 +71,9 @@ export function CallPill() {
         ) : (
           <Loader2 className="size-3 shrink-0 animate-spin" />
         )}
-        <span className="max-w-24 truncate">{call.channelName ?? "Call"}</span>
+        <span className="max-w-24 truncate">
+          {call.channelName ?? call.groupId ?? "Call"}
+        </span>
         {connected && call.fold.present.length > 0 && (
           <span className="tabular-nums text-muted-foreground">
             {call.fold.present.length}
@@ -82,7 +87,7 @@ export function CallPill() {
         disabled={!connected}
         title={call.micEnabled ? "Mute" : "Unmute"}
         onClick={() =>
-          void callService().then((s) => s.setMicEnabled(!call.micEnabled))
+          void callRoom().then((s) => s.setMicEnabled(!call.micEnabled))
         }
       >
         {call.micEnabled ? (
@@ -96,7 +101,7 @@ export function CallPill() {
         size="icon"
         className="size-5 text-destructive"
         title="Leave the call"
-        onClick={() => void callService().then((s) => s.leaveCall())}
+        onClick={() => void callRoom().then((s) => s.hangUpAny())}
       >
         <PhoneOff className="size-3" />
       </Button>

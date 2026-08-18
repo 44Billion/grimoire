@@ -26,6 +26,13 @@ import type { GroupKey } from "@/lib/concord/derive";
 import { bytesToHex, hexToBytes, random32 } from "@/lib/concord/derive";
 import { KIND_VOICE_PRESENCE } from "@/lib/concord/kinds";
 import type { OpenedEvent } from "@/lib/concord/stream";
+import {
+  EMPTY_ROSTER,
+  verifiedAuthorOf,
+  type CallReaction,
+  type CallRoster,
+  type RosterEntry,
+} from "@/lib/call/roster";
 
 // ── Protocol constants (CORD-07) ─────────────────────────────────────────────
 
@@ -301,26 +308,15 @@ const MAX_NONCE_LEN = 128;
 const MAX_IDENTITY_LEN = 128;
 const MAX_BROKER_LEN = 512;
 
-/** A transient in-call emoji reaction, as opened from the Channel's stream. */
-export interface VoiceReactionEntry {
-  /** The verified real author (the presence rumor's seal signer). */
-  author: string;
-  /** The emoji, or a `:shortcode:` resolved by {@link custom}. */
-  emoji: string;
-  /** The sender-chosen nonce — the fire-once/dedup key. */
-  nonce: string;
-  /** Millisecond stamp (CORD-02 §4) — the decay basis. */
-  ms: number;
-  /**
-   * The NIP-30 image behind a `:shortcode:`, when the reaction named one.
-   *
-   * Carried as an ordinary `emoji` tag on the same rumor rather than stuffed
-   * into the `react` tag: NIP-30 is how every other Concord rumor spells a
-   * custom emoji, so a renderer that already understands chat understands this,
-   * and a client that does not simply shows the shortcode as written.
-   */
-  custom?: { shortcode: string; url: string };
-}
+/**
+ * A transient in-call emoji reaction, as opened from the Channel's stream.
+ *
+ * The shape is the neutral one (`src/lib/call/roster.ts`); what is Concord's is
+ * that it arrives as a NIP-30 `emoji` tag on a sealed presence rumor rather
+ * than stuffed into the `react` tag, so a renderer that already understands
+ * chat understands this too.
+ */
+export type VoiceReactionEntry = CallReaction;
 
 /**
  * The tag an in-call emoji rides — an ARMADA CLIENT EXTENSION. A reaction is
@@ -444,33 +440,19 @@ export function parsePresence(opened: OpenedEvent): VoicePresenceEntry | null {
   };
 }
 
-/** A verified-present participant: one fresh `joined` per author. */
-export interface VoicePresent {
-  author: string;
-  identity: string;
-  broker?: string;
-  /** Whether this member's latest presence has their hand raised (client ext). */
-  hand: boolean;
-  ms: number;
-}
-
-/** The folded presence view of one channel's call. */
-export interface VoicePresenceFold {
-  /** Fresh `joined` authors (per author, the latest presence won). */
-  present: VoicePresent[];
-  /**
-   * SFU identity → the authors whose fresh presence claims it. A participant
-   * renders as a member only when exactly ONE author claims its identity (§4);
-   * contested or unclaimed identities render as unverified.
-   */
-  claims: Map<string, string[]>;
-}
+/**
+ * A verified-present participant: one fresh `joined` per author.
+ *
+ * The fold's shape is protocol-neutral (`src/lib/call/roster.ts`) — the stage
+ * renders NIP-29 spaces off the same one — so it is defined there and named
+ * here. What is CORD-07's own is how the entries are PROVEN: presence rumors,
+ * a staleness window, and a claim that can be contested.
+ */
+export type VoicePresent = RosterEntry;
+export type VoicePresenceFold = CallRoster;
 
 /** The stable empty fold, so idle callers keep constant props. */
-export const EMPTY_VOICE_FOLD: VoicePresenceFold = {
-  present: [],
-  claims: new Map(),
-};
+export const EMPTY_VOICE_FOLD: VoicePresenceFold = EMPTY_ROSTER;
 
 /**
  * Fold raw presence entries: per author the latest wins (ms basis, rumor-id
@@ -519,20 +501,10 @@ export function newerPresence(
   );
 }
 
-/**
- * The author verifiably behind an SFU identity, or undefined when the identity
- * is unclaimed or CONTESTED. Identities are member-visible, so a malicious
- * member can copy a victim's into their own `joined`; a contested claim proves
- * nothing about either author, so all claimants render as unverified until the
- * stale claims age out (§4).
- */
-export function verifiedAuthorOf(
-  fold: VoicePresenceFold,
-  identity: string,
-): string | undefined {
-  const claimants = fold.claims.get(identity);
-  return claimants && claimants.length === 1 ? claimants[0] : undefined;
-}
+// The author behind an SFU identity is the neutral roster's question, not
+// CORD-07's: NIP-29 asks it too, and gets a single claimant every time because
+// the relay minted the identity. Re-exported so §4/§7 code reads unchanged.
+export { verifiedAuthorOf };
 
 /**
  * The §5 rendezvous decision: if anyone is present, their brokers (ordered by

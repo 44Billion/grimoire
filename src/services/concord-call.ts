@@ -32,7 +32,6 @@ import {
   isE2EESupported,
   Room,
   RoomEvent,
-  Track,
   VideoPresets,
   type RoomOptions,
 } from "livekit-client";
@@ -43,7 +42,14 @@ import {
   callStateAtom,
   IDLE,
   type CallState,
-} from "@/services/concord-call-state";
+} from "@/services/call-state";
+import {
+  activeRoom,
+  applyVolumes,
+  hangUpAny,
+  readPublishing,
+  setActiveRoom,
+} from "@/services/call-room";
 import { decideCallSync } from "@/lib/concord/call-sync";
 import { random32, voiceSenderKey } from "@/lib/concord/derive";
 import type { StreamSigner } from "@/lib/concord/stream";
@@ -67,15 +73,7 @@ import {
   watchChannelVoice,
 } from "@/services/concord-presence";
 import { preferredBrokers } from "@/services/concord-brokers";
-import {
-  denoiseEnabled,
-  preferredCameraId,
-  preferredMicId,
-  setPreferredCameraId,
-  setPreferredMicId,
-  volumeFor,
-} from "@/services/concord-devices";
-import { syncRnnoise } from "@/services/concord-rnnoise";
+import { preferredCameraId, preferredMicId } from "@/services/concord-devices";
 
 /** How long a reaction floats before it is aged out. */
 const REACTION_TTL_MS = 4_000;
@@ -213,11 +211,12 @@ export async function joinCall(opts: {
     });
     return;
   }
-  await leaveCall();
+  await hangUpAny();
 
   const { community, channel } = opts;
   patch({
     status: "joining",
+    protocol: "concord",
     communityIdHex: community.idHex,
     channelIdHex: channel.idHex,
     channelName: channel.name,
@@ -366,6 +365,7 @@ async function connect(
       torn: false,
     };
     active = call;
+    setActiveRoom(lkRoom);
     owned = false;
 
     // Our own key first: E2EE is only enabled once we can encrypt, or the first
@@ -387,7 +387,7 @@ async function connect(
     // otherwise the Monitor toggle stays lit over a share that ended, and
     // pressing it once only corrects the state.
     const followPublishing = () => {
-      if (active === owner) patch(readPublishing(owner));
+      if (active === owner) patch(readPublishing());
     };
     lkRoom.on(RoomEvent.LocalTrackPublished, followPublishing);
     lkRoom.on(RoomEvent.LocalTrackUnpublished, followPublishing);
@@ -560,82 +560,6 @@ function watchOwningWindow(call: ActiveCall): () => void {
   });
 }
 
-/**
- * Publish or stop publishing one of our own tracks.
- *
- * The reported state is read back off LiveKit rather than assumed from the
- * request, so a denied permission — or a screenshare dialog the member
- * cancelled — shows as off instead of a button claiming we are sending
- * something we are not.
- *
- * Video and screenshare need no new keys and no new events (CORD-07 §6): they
- * ride the same room, the same per-sender key and the same presence as the
- * audio.
- */
-async function setPublishing(
-  source: "mic" | "camera" | "screen",
-  on: boolean,
-): Promise<void> {
-  const call = active;
-  if (!call) return;
-  const local = call.room.localParticipant;
-  try {
-    if (source === "mic") {
-      await local.setMicrophoneEnabled(on);
-      // The processor attaches to the TRACK, which only exists once the mic is
-      // publishing — so this belongs here rather than in the room options.
-      if (on) await applyDenoise();
-    } else if (source === "camera") await local.setCameraEnabled(on);
-    // The screen's own audio rides with it when the member shares it; it is
-    // published as a separate track and mixed by the receiver like any other.
-    else await local.setScreenShareEnabled(on, { audio: true });
-  } catch (error) {
-    patch({
-      ...readPublishing(call),
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return;
-  }
-  patch(readPublishing(call));
-}
-
-/**
- * Match the published microphone to the noise-suppression preference.
- *
- * Never throws: a worklet that will not load costs the suppression, not the
- * call, and the raw track keeps publishing.
- */
-export async function applyDenoise(): Promise<void> {
-  const track = active?.room.localParticipant.getTrackPublication(
-    Track.Source.Microphone,
-  )?.audioTrack;
-  await syncRnnoise(track, denoiseEnabled()).catch(() => undefined);
-}
-
-function readPublishing(call: ActiveCall): Partial<CallState> {
-  const local = call.room.localParticipant;
-  return {
-    micEnabled: local.isMicrophoneEnabled,
-    cameraEnabled: local.isCameraEnabled,
-    screenEnabled: local.isScreenShareEnabled,
-  };
-}
-
-/** Mic on or off. */
-export async function setMicEnabled(on: boolean): Promise<void> {
-  await setPublishing("mic", on);
-}
-
-/** Camera on or off (§6 — the same call, the same keys). */
-export async function setCameraEnabled(on: boolean): Promise<void> {
-  await setPublishing("camera", on);
-}
-
-/** Screenshare on or off (§6). */
-export async function setScreenShareEnabled(on: boolean): Promise<void> {
-  await setPublishing("screen", on);
-}
-
 /** Raise or lower a hand — sticky state, carried on every heartbeat. */
 export function setHandRaised(raised: boolean): void {
   if (!active) return;
@@ -730,6 +654,7 @@ async function teardown(
   }
   call.room.removeAllListeners();
   call.worker.terminate();
+  if (activeRoom() === call.room) setActiveRoom(undefined);
 
   if (opts.announceLeave) {
     await Promise.race([
@@ -798,7 +723,11 @@ export async function syncCall(input: {
     signer: call.signer,
   };
   await teardown(call, { announceLeave: true });
-  patch({ status: "joining", channelIdHex: decision.channel.idHex });
+  patch({
+    status: "joining",
+    protocol: "concord",
+    channelIdHex: decision.channel.idHex,
+  });
   try {
     await connect(opts, new Set());
   } catch (error) {
@@ -806,49 +735,6 @@ export async function syncCall(input: {
       status: "failed",
       error: error instanceof Error ? error.message : String(error),
     });
-  }
-}
-
-/** The live room, for the components that render its tracks. */
-export function activeRoom(): Room | undefined {
-  return active?.room;
-}
-
-/** Switch capture device mid-call, so a choice takes effect without rejoining. */
-export async function switchCaptureDevice(
-  kind: "audioinput" | "videoinput",
-  deviceId: string,
-): Promise<void> {
-  if (kind === "audioinput") setPreferredMicId(deviceId);
-  else setPreferredCameraId(deviceId);
-  await active?.room.switchActiveDevice(kind, deviceId).catch(() => undefined);
-}
-
-/**
- * Apply this device's per-member volumes to the room (§7).
- *
- * The only moderation a blind SFU allows: nothing signed can mute anyone, so
- * what a client can do is decline to play what it receives. Local, never
- * published, and it says nothing to the member being turned down.
- *
- * Volumes are stored per PUBKEY but applied per SFU IDENTITY, and only for an
- * identity presence actually vouches for — an unverified one is playing nothing
- * decodable anyway, and matching it to a member would be the guess §4 refuses.
- */
-export function applyVolumes(): void {
-  const call = active;
-  if (!call) return;
-  const fold = currentFold(call.channel);
-  for (const participant of call.room.remoteParticipants.values()) {
-    const author = verifiedAuthorOf(fold, participant.identity);
-    const volume = author ? volumeFor(author) : 1;
-    // Both sources, and the second one is not optional: `setVolume` defaults to
-    // the MICROPHONE alone, and a shared screen's audio is a separate source
-    // with its own entry. Setting only the default leaves someone you silenced
-    // able to play a tab at you at full volume — which defeats the one lever §7
-    // leaves a client.
-    participant.setVolume(volume);
-    participant.setVolume(volume, Track.Source.ScreenShareAudio);
   }
 }
 
@@ -860,4 +746,4 @@ export {
   callStateAtom,
   type CallState,
   type CallStatus,
-} from "@/services/concord-call-state";
+} from "@/services/call-state";

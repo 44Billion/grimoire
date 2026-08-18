@@ -15,7 +15,7 @@ import { useAtomValue } from "jotai";
 import { lazy, Suspense } from "react";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { callStateAtom } from "@/services/concord-call-state";
+import { callStateAtom } from "@/services/call-state";
 
 const CallAudio = lazy(() => import("@/components/call/CallAudio"));
 

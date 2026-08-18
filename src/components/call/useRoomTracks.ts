@@ -16,7 +16,7 @@
 import { useEffect, useState } from "react";
 import { RoomEvent, Track, type Participant } from "livekit-client";
 
-import { activeRoom } from "@/services/concord-call";
+import { activeRoom } from "@/services/call-room";
 
 export interface IdentityTracks {
   camera?: Track;

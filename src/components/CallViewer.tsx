@@ -44,11 +44,13 @@ import {
   joinCall,
   leaveCall,
   sendReaction,
-  setCameraEnabled,
   setHandRaised,
+} from "@/services/concord-call";
+import {
+  setCameraEnabled,
   setMicEnabled,
   setScreenShareEnabled,
-} from "@/services/concord-call";
+} from "@/services/call-room";
 import { EmojiPickerDialog } from "@/components/chat/EmojiPickerDialog";
 import { resolveChannel } from "@/services/concord-channel-resolve";
 import { CallStage } from "@/components/call/CallStage";

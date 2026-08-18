@@ -89,7 +89,7 @@ import { useAccount } from "@/hooks/useAccount";
 import { useAtomValue } from "jotai";
 import { useAddWindow } from "@/core/state";
 import { banVerdictPostdatesMembership } from "@/lib/concord/call-sync";
-import { callStateAtom } from "@/services/concord-call-state";
+import { callStateAtom } from "@/services/call-state";
 import { readJoinedAtMs } from "@/services/concord-communities";
 import { inviteStanding } from "@/lib/concord/invite";
 import { bytesToHex } from "@/lib/concord/derive";

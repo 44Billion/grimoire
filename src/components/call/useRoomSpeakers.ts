@@ -15,7 +15,7 @@
 import { useEffect, useState } from "react";
 import { RoomEvent } from "livekit-client";
 
-import { activeRoom } from "@/services/concord-call";
+import { activeRoom } from "@/services/call-room";
 
 export interface RoomVoiceState {
   /** SFU identities currently speaking. */
