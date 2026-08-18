@@ -361,6 +361,8 @@ export default function AiViewer({
   const [sentSystem, setSentSystem] = useState<string>();
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
+  /** Set when this pane is going away, so its own abort is not reported. */
+  const tornDown = useRef(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
 
   // Availability is read once: an injector that appears later is picked up on
@@ -382,7 +384,23 @@ export default function AiViewer({
   const targetRef = useMemo(() => {
     if (!targetValue) return undefined;
     const ref = nostrRefTarget(targetValue);
-    return ref?.eventPointer || ref?.addressPointer ? ref : undefined;
+    if (!ref) return undefined;
+    if (ref.eventPointer || ref.addressPointer) return ref;
+    // An npub or nprofile: preview the person through their kind 0, so a
+    // profile question shows the profile the same way an event question shows
+    // the event — the metadata renderer already exists.
+    if (ref.pubkey) {
+      return {
+        ...ref,
+        addressPointer: {
+          kind: 0,
+          pubkey: ref.pubkey,
+          identifier: "",
+          ...(ref.relays ? { relays: ref.relays } : {}),
+        },
+      };
+    }
+    return undefined;
   }, [targetValue]);
 
   // Which request function to use, and whether it takes tools. Standard first;
@@ -616,7 +634,11 @@ export default function AiViewer({
         // not worth a write per frame.
         if (storageId) void saveConversation(storageId, settled);
       } catch (caught) {
-        setError(describeInferenceError(caught));
+        // A turn the window itself cancelled is not an error worth reporting:
+        // the request went away because this pane did, and in dev a Fast
+        // Refresh runs the same cleanup, which read as "Request cancelled."
+        // out of nowhere.
+        if (!tornDown.current) setError(describeInferenceError(caught));
         // Drop the empty pending turn; the error is shown instead.
         setTurns((previous) =>
           previous.filter(
@@ -642,8 +664,15 @@ export default function AiViewer({
     ],
   );
 
-  // Closing the window must cancel in-flight provider work.
-  useEffect(() => () => controllerRef.current?.abort(), []);
+  // Closing the window must cancel in-flight provider work — a stream nobody
+  // will read is still being paid for.
+  useEffect(
+    () => () => {
+      tornDown.current = true;
+      controllerRef.current?.abort();
+    },
+    [],
+  );
 
   /**
    * Send the command-line prompt once. Guarded on the *stored* conversation
@@ -761,15 +790,24 @@ export default function AiViewer({
         element, so an unbounded height means it never scrolls — and never
         follows the stream.
       */}
-      <Conversation className="min-h-0">
+      {/* `initial={false}` before the first turn: sticking to the bottom of a
+          window where nothing has been said scrolls past the top of the event
+          the question is about. Once there are turns, the newest is the point. */}
+      <Conversation
+        className="min-h-0"
+        initial={turns.length > 0 ? "smooth" : false}
+      >
         {/* The empty state centers itself in `size-full`, so the content box
             has to fill the pane — its default height is its content. */}
         <ConversationContent className={turns.length === 0 ? "h-full" : ""}>
           {/* What the model was actually told, before anything the user typed. */}
           {/* Configuration belongs to a conversation, not to the index: the
-              bare page is a list, and nothing has been sent from it yet. */}
+              bare page is a list, and nothing has been sent from it yet.
+              Collapsed to its header, so the subject below it stays on the
+              first screen. */}
           {!showIndex && (
             <AgentPanel
+              className="shrink-0"
               instructions={disclosedSystem}
               model={lastModel}
               toolSupport={toolSupport}
@@ -777,9 +815,13 @@ export default function AiViewer({
             />
           )}
           {/* The event under discussion, rendered as itself — the question is
-              about this, so it belongs in the conversation, not just the prompt. */}
+              about this, so it belongs in the conversation, not just the prompt.
+              `shrink-0`, because the content box is a flex column that is
+              `h-full` before the first turn: a shrinkable child gets squeezed to
+              a sliver of the note it is supposed to show. */}
           {targetRef && (
             <EmbeddedEvent
+              className="my-4 shrink-0 overflow-hidden rounded border border-muted"
               addressPointer={targetRef.addressPointer}
               eventPointer={targetRef.eventPointer}
             />
@@ -790,7 +832,10 @@ export default function AiViewer({
             showIndex ? (
               <ConversationIndex currentWindowId={storageId} />
             ) : (
-              <ConversationEmptyState>
+              // `h-auto flex-1`: takes the space left over rather than a full
+              // height of its own, so it centers in what remains beside the
+              // event above it instead of pushing it out of the pane.
+              <ConversationEmptyState className="h-auto flex-1">
                 {/* The event above says what this is about better than a line
                     naming its kind, so with a preview the copy is only the
                     openers. Without one, say what the window is. */}

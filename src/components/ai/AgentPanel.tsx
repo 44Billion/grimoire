@@ -13,8 +13,17 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { ChevronDownIcon } from "lucide-react";
+import { useState } from "react";
 
 import { HEX_NAME } from "./Hex";
+
+import { cn } from "@/lib/utils";
 
 import type { ToolSupport } from "@/services/inference";
 import type { InferenceTool } from "@/types/inference";
@@ -48,50 +57,68 @@ export function AgentPanel({
   toolSupport: ToolSupport;
   tools: InferenceTool[];
 }) {
+  const [open, setOpen] = useState(false);
+
   return (
     <Agent className={className}>
-      <AgentHeader model={model} name={HEX_NAME} />
-      <AgentContent>
-        {instructions && (
-          <Accordion collapsible type="single">
-            <AccordionItem className="border-b-0" value="instructions">
-              {/* Matches the "Tools" heading AgentTools renders. */}
-              <AccordionTrigger className="py-0 font-medium text-muted-foreground text-sm hover:no-underline">
-                Instructions
-              </AccordionTrigger>
-              <AccordionContent>
-                {/* Verbatim, not summarised: this is what was sent. */}
-                <AgentInstructions className="max-h-64 overflow-auto text-xs [&_p]:text-xs">
-                  {instructions}
-                </AgentInstructions>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        )}
+      {/* Collapsed to its header by default: who is answering is worth a line,
+          and the instructions and every tool schema underneath are worth a
+          screen — which is a screen the conversation needed. */}
+      <Collapsible onOpenChange={setOpen} open={open}>
+        <CollapsibleTrigger className="w-full cursor-pointer text-left">
+          <AgentHeader model={model} name={HEX_NAME}>
+            <ChevronDownIcon
+              className={cn(
+                "size-4 shrink-0 text-muted-foreground transition-transform",
+                open && "rotate-180",
+              )}
+            />
+          </AgentHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <AgentContent>
+            {instructions && (
+              <Accordion collapsible type="single">
+                <AccordionItem className="border-b-0" value="instructions">
+                  {/* Matches the "Tools" heading AgentTools renders. */}
+                  <AccordionTrigger className="py-0 font-medium text-muted-foreground text-sm hover:no-underline">
+                    Instructions
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    {/* Verbatim, not summarised: this is what was sent. */}
+                    <AgentInstructions className="max-h-64 overflow-auto text-xs [&_p]:text-xs">
+                      {instructions}
+                    </AgentInstructions>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            )}
 
-        {tools.length > 0 && toolSupport === "none" && (
-          <Badge className="w-fit" variant="secondary">
-            tools not sent
-          </Badge>
-        )}
+            {tools.length > 0 && toolSupport === "none" && (
+              <Badge className="w-fit" variant="secondary">
+                tools not sent
+              </Badge>
+            )}
 
-        {tools.length > 0 && (
-          <AgentTools collapsible type="single">
-            {tools.map((tool) => (
-              <AgentTool
-                key={tool.function.name}
-                tool={{
-                  // First sentence only: the whole description is several
-                  // lines, and the row is a label, not the documentation.
-                  description: `${tool.function.name} — ${firstSentence(tool.function.description)}`,
-                  jsonSchema: tool.function.parameters,
-                }}
-                value={tool.function.name}
-              />
-            ))}
-          </AgentTools>
-        )}
-      </AgentContent>
+            {tools.length > 0 && (
+              <AgentTools collapsible type="single">
+                {tools.map((tool) => (
+                  <AgentTool
+                    key={tool.function.name}
+                    tool={{
+                      // First sentence only: the whole description is several
+                      // lines, and the row is a label, not the documentation.
+                      description: `${tool.function.name} — ${firstSentence(tool.function.description)}`,
+                      jsonSchema: tool.function.parameters,
+                    }}
+                    value={tool.function.name}
+                  />
+                ))}
+              </AgentTools>
+            )}
+          </AgentContent>
+        </CollapsibleContent>
+      </Collapsible>
     </Agent>
   );
 }

@@ -40,7 +40,7 @@ export type AgentHeaderProps = ComponentProps<"div"> & {
 };
 
 export const AgentHeader = memo(
-  ({ className, name, model, ...props }: AgentHeaderProps) => (
+  ({ className, children, name, model, ...props }: AgentHeaderProps) => (
     <div
       className={cn(
         "flex w-full items-center justify-between gap-4 p-3",
@@ -68,6 +68,9 @@ export const AgentHeader = memo(
           </Badge>
         )}
       </div>
+      {/* Local: children render beside the name, which is where a disclosure
+          affordance belongs — upstream has no slot for one. */}
+      {children}
     </div>
   ),
 );

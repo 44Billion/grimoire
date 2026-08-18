@@ -10,6 +10,7 @@ import type {
   SpellbookContent,
   SpellbookEvent,
 } from "@/types/spell";
+import type { ToolRun } from "@/types/tool-part";
 
 export interface Profile extends ProfileContent {
   pubkey: string;
@@ -475,23 +476,32 @@ export interface DmKvRow {
 /** A failure nothing will retry on its own — only the reader's own Retry. */
 export const OUTBOX_NEVER = Number.MAX_SAFE_INTEGER;
 
-/** Exported for the migration tests, which open a throwaway database name. */
 /**
  * One AI conversation, keyed by the window that holds it. Windows are restored
  * from localStorage on load; this is what makes their turns come back with them.
+ *
+ * The turn shape is the whole stored record, `toolRuns` included: a row read
+ * back has to render the same as the turn that was written, and a type that
+ * omits half of it makes a reload look like a different conversation.
  */
 export interface AiConversation {
   windowId: string; // Primary key
   turns: Array<{
     role: "user" | "assistant";
     content: string;
+    /** Unix seconds. */
+    at?: number;
+    /** Written before reasoning was kept per round. */
     reasoning?: string;
+    reasoningRounds?: string[];
     model?: string;
     usage?: { inputTokens?: number; outputTokens?: number };
+    toolRuns?: ToolRun[];
   }>;
   updatedAt: number;
 }
 
+/** Exported for the migration tests, which open a throwaway database name. */
 export class GrimoireDb extends Dexie {
   profiles!: Table<Profile>;
   nip05!: Table<Nip05>;
