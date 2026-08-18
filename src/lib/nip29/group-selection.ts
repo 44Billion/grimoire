@@ -35,3 +35,27 @@ export function parseGroupSelection(input: string): GroupSelection | null {
       : `wss://${host}`;
   return { groupId: match[2], relayUrl };
 }
+
+/**
+ * The same pair, read from a command line the palette has already tokenized.
+ *
+ * `'` is a QUOTE character to `shell-quote`, so `relay.example.com'pizza`
+ * reaches a parser as two tokens with the separator gone. Rejoining them is not
+ * optional decoration: without it the documented syntax silently resolves to
+ * something else entirely. `chat` has carried this rejoin since NIP-29 landed;
+ * this is the shared version of it.
+ *
+ * A single token is tried as-is first, so a quoted argument still works.
+ */
+export function parseGroupArgs(args: readonly string[]): GroupSelection | null {
+  const first = args[0];
+  if (!first) return null;
+  const direct = parseGroupSelection(first);
+  if (direct) return direct;
+  // Only when the first token looks like a host and carries no separator of its
+  // own — otherwise a two-word community name would be read as a group.
+  if (args.length === 2 && first.includes(".") && !first.includes("'")) {
+    return parseGroupSelection(`${first}'${args[1]}`);
+  }
+  return null;
+}

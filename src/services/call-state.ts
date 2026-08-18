@@ -19,6 +19,8 @@
 
 import { atom } from "jotai";
 
+import { normalizeRelayURL } from "@/lib/relay-url";
+
 import {
   EMPTY_ROSTER,
   type CallReaction,
@@ -101,3 +103,30 @@ export const callStateAtom = atom<CallState>(IDLE);
  * floats, and is dropped.
  */
 export const callReactionsAtom = atom<CallReaction[]>([]);
+
+/**
+ * Whether the running call is a given relay group's.
+ *
+ * Both halves of the pair, always. A group id is only unique within its relay,
+ * so a window for `relayB'general` matching on the id alone reports itself
+ * connected to a call on `relayA'general`: it renders that call's roster, its
+ * media toggles drive that room, and its Leave hangs up somebody else's space.
+ *
+ * The relay is normalized on both sides. `joinGroupCall` stores a normalized
+ * URL and a window's props hold whatever the parser produced, so a bare `===`
+ * is not merely fragile — it is permanently false.
+ */
+export function isGroupCall(
+  state: CallState,
+  relayUrl: string | undefined,
+  groupId: string | undefined,
+): boolean {
+  if (state.protocol !== "nip-29") return false;
+  if (!relayUrl || !groupId || !state.relayUrl) return false;
+  if (state.groupId !== groupId) return false;
+  try {
+    return normalizeRelayURL(state.relayUrl) === normalizeRelayURL(relayUrl);
+  } catch {
+    return false;
+  }
+}

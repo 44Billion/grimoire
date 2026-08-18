@@ -32,7 +32,7 @@ import type { ChatProtocol, ProtocolIdentifier } from "@/types/chat";
 import { useState, useEffect } from "react";
 import { useAtomValue } from "jotai";
 
-import { callStateAtom } from "@/services/call-state";
+import { callStateAtom, isGroupCall } from "@/services/call-state";
 
 export interface WindowTitleData {
   title: string | ReactElement;
@@ -834,9 +834,7 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
   // not been filled in yet, which is the case right after a fresh join.
   const liveCall = useAtomValue(callStateAtom);
   const groupCallName =
-    isCall &&
-    liveCall.protocol === "nip-29" &&
-    liveCall.groupId === props.groupId
+    isCall && isGroupCall(liveCall, props.relayUrl, props.groupId)
       ? liveCall.channelName
       : undefined;
   const callChannelName =

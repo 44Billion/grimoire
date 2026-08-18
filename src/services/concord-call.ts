@@ -219,6 +219,9 @@ export async function joinCall(opts: {
     protocol: "concord",
     communityIdHex: community.idHex,
     channelIdHex: channel.idHex,
+    // See the mirror of this in `nip29-call.ts`.
+    relayUrl: undefined,
+    groupId: undefined,
     channelName: channel.name,
     error: undefined,
     micEnabled: false,
@@ -624,10 +627,12 @@ export async function leaveCall(error?: string): Promise<void> {
   // Teardown clears `active` before it announces the goodbye, and that announce
   // can take seconds — long enough for a new call to be joined and connected
   // underneath us. Writing IDLE then would report the live call as idle and,
-  // worse, leave the room slot pointing at it with no state saying so. The
-  // newer call owns the atom; this one only says it is gone if nothing replaced
-  // it.
-  if (active) return;
+  // worse, leave the room slot pointing at it with no state saying so.
+  //
+  // The test is the room SLOT, not this module's `active`: the newer call may
+  // be a NIP-29 space, whose `active` lives in another module entirely. The
+  // slot is the one thing both protocols write.
+  if (activeRoom()) return;
   store().set(callStateAtom, {
     ...IDLE,
     roomEpoch: store().get(callStateAtom).roomEpoch + 1,

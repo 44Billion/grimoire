@@ -36,7 +36,7 @@ import {
   setMicEnabled,
   setScreenShareEnabled,
 } from "@/services/call-room";
-import { callStateAtom } from "@/services/call-state";
+import { callStateAtom, isGroupCall } from "@/services/call-state";
 
 const EMPTY_REACTIONS: CallReaction[] = [];
 
@@ -61,10 +61,7 @@ export function Nip29CallViewer({
   const metadata = useGroupMetadata(groupId ?? "", relayUrl ?? "");
   const name = metadata?.name || groupId || "Space";
 
-  const isThisCall =
-    call.protocol === "nip-29" &&
-    call.relayUrl !== undefined &&
-    call.groupId === groupId;
+  const isThisCall = isGroupCall(call, relayUrl, groupId);
   const connected = call.status === "connected" && isThisCall;
   const joining = call.status === "joining" && isThisCall;
 

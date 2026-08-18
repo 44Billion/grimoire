@@ -160,6 +160,11 @@ export async function joinGroupCall(opts: {
     protocol: "nip-29",
     relayUrl,
     groupId,
+    // Cleared, not merely unset: a failed Concord join leaves these behind with
+    // no call to own them, and a Concord window matching on them would then
+    // claim to be connected to this space.
+    communityIdHex: undefined,
+    channelIdHex: undefined,
     channelName: opts.groupName ?? groupId,
     error: undefined,
     micEnabled: false,
@@ -319,9 +324,11 @@ export async function leaveGroupCall(error?: string): Promise<void> {
     return;
   }
   await teardown(call);
-  // A newer call may have taken the state while this one was tearing down; it
-  // owns the atom, and this one only says it is gone if nothing replaced it.
-  if (active) return;
+  // A newer call may have taken the state while this one was tearing down — and
+  // it may belong to the OTHER protocol, whose `active` this module cannot see.
+  // The room slot is the one thing both write, so it is what answers: anything
+  // in it means somebody else owns the atom now.
+  if (activeRoom()) return;
   store().set(callStateAtom, {
     ...IDLE,
     roomEpoch: store().get(callStateAtom).roomEpoch + 1,

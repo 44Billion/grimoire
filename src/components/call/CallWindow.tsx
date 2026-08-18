@@ -11,7 +11,10 @@
  * it was a Concord call.
  */
 
+import { useAtomValue } from "jotai";
 import { lazy } from "react";
+
+import { callStateAtom } from "@/services/call-state";
 
 const CallViewer = lazy(() =>
   import("@/components/CallViewer").then((m) => ({ default: m.CallViewer })),
@@ -39,12 +42,23 @@ export function CallWindow({
   groupId,
   windowId,
 }: CallWindowProps) {
+  const live = useAtomValue(callStateAtom);
+
+  // `call` typed with no arguments means "show the call I am in", and which
+  // window that is depends on which call is running — a window that named no
+  // room has nothing else to go on. A window that DID name one always renders
+  // what it named, even while another call is up.
+  const named = Boolean(
+    protocol || communityId || channelId || relayUrl || groupId,
+  );
+  const group = protocol === "nip-29" || (!named && live.protocol === "nip-29");
+
   // No Suspense of its own: `WindowRenderer` already wraps every window in one,
   // and a second boundary here would only swap which spinner shows.
-  return protocol === "nip-29" ? (
+  return group ? (
     <Nip29CallViewer
-      relayUrl={relayUrl}
-      groupId={groupId}
+      relayUrl={relayUrl ?? live.relayUrl}
+      groupId={groupId ?? live.groupId}
       windowId={windowId}
     />
   ) : (

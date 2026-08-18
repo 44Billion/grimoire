@@ -119,6 +119,26 @@ describe("parseCallCommand", () => {
     await expect(parseCallCommand([])).resolves.toEqual({});
   });
 
+  // THE case, and the one that was broken: `shell-quote` treats `'` as a quote
+  // character, so the palette hands a parser two tokens with the separator
+  // gone. Every documented example goes through this path.
+  it("rejoins the pair the palette split on the apostrophe", async () => {
+    await expect(
+      parseCallCommand(["relay.example.com", "bitcoin-dev"]),
+    ).resolves.toEqual({
+      protocol: "nip-29",
+      relayUrl: "wss://relay.example.com",
+      groupId: "bitcoin-dev",
+    });
+  });
+
+  // Only when the first token looks like a host: a two-word community name is
+  // not a group, and `parseConcordCommand` joins its arguments into one query.
+  it("does not rejoin two words that are a community name", async () => {
+    const parsed = await parseCallCommand(["bitcoin", "builders"]);
+    expect(parsed.protocol).toBe("concord");
+  });
+
   // A relay group has a typeable address, unlike a Concord channel, so this
   // needs no local vault lookup at all.
   it("takes a relay group's space by its address", async () => {

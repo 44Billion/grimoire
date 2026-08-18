@@ -94,7 +94,7 @@ import { useAccount } from "@/hooks/useAccount";
 import { useAtomValue } from "jotai";
 import { useAddWindow } from "@/core/state";
 import { banVerdictPostdatesMembership } from "@/lib/concord/call-sync";
-import { callStateAtom } from "@/services/call-state";
+import { callStateAtom, isGroupCall } from "@/services/call-state";
 import { readJoinedAtMs } from "@/services/concord-communities";
 import { inviteStanding } from "@/lib/concord/invite";
 import { bytesToHex } from "@/lib/concord/derive";
@@ -1358,8 +1358,11 @@ export function ConcordViewer({
                         count={groupCallCount}
                         active={
                           call.status === "connected" &&
-                          call.protocol === "nip-29" &&
-                          call.groupId === selectedGroup!.groupId
+                          isGroupCall(
+                            call,
+                            selectedGroup!.relayUrl,
+                            selectedGroup!.groupId,
+                          )
                         }
                         onOpen={openGroupCallWindow}
                         emptyTitle="Start this group's space"

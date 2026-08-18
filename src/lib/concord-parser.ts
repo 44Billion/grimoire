@@ -11,7 +11,7 @@
 import { loadStoredCommunities } from "@/services/concord-communities";
 import { readStoredState } from "@/services/concord-state";
 import accountManager from "@/services/accounts";
-import { parseGroupSelection } from "@/lib/nip29/group-selection";
+import { parseGroupArgs } from "@/lib/nip29/group-selection";
 
 export interface ConcordCommandProps {
   /** Full community_id (lowercase hex) when one was resolved. */
@@ -60,7 +60,7 @@ export async function parseCallCommand(
   // A relay group DOES have an address a person can type, unlike a Concord
   // channel — so `call relay.example.com'pizza` is unambiguous and needs no
   // local lookup at all.
-  const group = parseGroupSelection(communityQuery);
+  const group = parseGroupArgs(args);
   if (group) {
     return {
       protocol: "nip-29",

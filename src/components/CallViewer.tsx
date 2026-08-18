@@ -93,7 +93,13 @@ export function CallViewer({
     target?.channel,
   );
 
-  const isThisCall = call.channelIdHex === channelId || channelId === undefined;
+  // `protocol` first, and it is not a formality: a bare `call` window passes no
+  // channel, so without it this window adopts a running NIP-29 space — showing
+  // its roster, and offering a Leave that calls a `leaveCall` with nothing to
+  // leave.
+  const isThisCall =
+    call.protocol === "concord" &&
+    (call.channelIdHex === channelId || channelId === undefined);
   const connected = call.status === "connected" && isThisCall;
   const joining = call.status === "joining" && isThisCall;
   const fold = connected ? call.fold : watched;
