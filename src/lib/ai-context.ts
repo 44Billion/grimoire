@@ -81,6 +81,13 @@ const BASE_SYSTEM = [
     " as dead text. Same for relay URLs, pubkeys and event ids.",
   "Never state a spec detail as fact when its text is not in front of you; say" +
     " you are answering from memory instead.",
+  // Relay selection is the host's job and the host is good at it: outbox model,
+  // seen-on hints, liveness and backoff. A model that names a relay is guessing
+  // against all of that, and a guessed URL is a query that answers nothing.
+  "Never choose relays. grimoire routes every read and write itself — NIP-65" +
+    " inbox/outbox, relay hints on the pointer, and what it knows is alive — so" +
+    " leave relays out of filters and out of commands. Mention a specific relay" +
+    " only when the user named it, or when the question is about that relay.",
   // Spells and spellbooks are grimoire's own vocabulary; a model that has never
   // seen the app guesses they are something magical rather than a saved query.
   "A spell is a saved `req`: a filter someone kept, with an optional alias that" +

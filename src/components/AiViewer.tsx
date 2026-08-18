@@ -79,6 +79,8 @@ import {
   splitNostrRefs,
   type NostrRefTarget,
 } from "@/lib/open-nostr-ref";
+import { splitNipRefs } from "@/lib/nip-refs";
+import { getNIPInfo } from "@/lib/nip-icons";
 import { UserName } from "./nostr/UserName";
 import { RichText } from "./nostr/RichText";
 import { cn } from "@/lib/utils";
@@ -104,14 +106,18 @@ interface AiViewerProps {
 function LinkedText({
   children,
   onOpen,
+  onOpenNip,
 }: {
   children?: ReactNode;
   onOpen: (target: NostrRefTarget, label: string) => void;
+  onOpenNip: (number: string) => void;
 }) {
   if (typeof children !== "string") return <>{children}</>;
 
   const segments = splitNostrRefs(children);
-  if (segments.length === 1 && !segments[0].target) return <>{children}</>;
+  if (segments.length === 1 && !segments[0].target) {
+    return <NipText onOpen={onOpenNip}>{children}</NipText>;
+  }
 
   return (
     <>
@@ -119,7 +125,13 @@ function LinkedText({
         const key = `${index}-${segment.text}`;
         const target = segment.target;
 
-        if (!target) return <span key={`${index}-plain`}>{segment.text}</span>;
+        if (!target) {
+          return (
+            <span key={`${index}-plain`}>
+              <NipText onOpen={onOpenNip}>{segment.text}</NipText>
+            </span>
+          );
+        }
 
         // A person renders as a person: display name, member badge, flame.
         // UserName opens the profile itself.
@@ -159,6 +171,48 @@ function LinkedText({
           </button>
         );
       })}
+    </>
+  );
+}
+
+/**
+ * `NIP-01` in a reply, as a link to the NIP.
+ *
+ * A spec number is the most common reference in an answer about the protocol,
+ * and a model writes it as prose rather than as a `nostr:` entity — so it landed
+ * as dead text next to mentions that were live. Styled like the same reference
+ * inside a note, since that is what it is.
+ */
+function NipText({
+  children,
+  onOpen,
+}: {
+  children: string;
+  onOpen: (number: string) => void;
+}) {
+  const segments = splitNipRefs(children);
+  if (segments.length === 1 && !segments[0].number) return <>{children}</>;
+
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.number ? (
+          <button
+            className="cursor-crosshair text-muted-foreground underline decoration-dotted hover:text-foreground"
+            key={`${index}-${segment.text}`}
+            onClick={() => onOpen(segment.number!)}
+            title={
+              getNIPInfo(segment.number)?.description ??
+              `View NIP-${segment.number}`
+            }
+            type="button"
+          >
+            {segment.text}
+          </button>
+        ) : (
+          <Fragment key={`${index}-plain`}>{segment.text}</Fragment>
+        ),
+      )}
     </>
   );
 }
@@ -264,13 +318,18 @@ function containsNostrRef(children: ReactNode): boolean {
 function withLinks(
   children: ReactNode,
   onOpen: (target: NostrRefTarget, label: string) => void,
+  onOpenNip: (number: string) => void,
 ): ReactNode {
   if (typeof children === "string") {
-    return <LinkedText onOpen={onOpen}>{children}</LinkedText>;
+    return (
+      <LinkedText onOpen={onOpen} onOpenNip={onOpenNip}>
+        {children}
+      </LinkedText>
+    );
   }
   if (Array.isArray(children)) {
     return children.map((child, index) => (
-      <Fragment key={index}>{withLinks(child, onOpen)}</Fragment>
+      <Fragment key={index}>{withLinks(child, onOpen, onOpenNip)}</Fragment>
     ));
   }
   if (isValidElement(children)) {
@@ -280,14 +339,16 @@ function withLinks(
     const inner = (children.props as { children?: ReactNode }).children;
     if (inner === undefined) return children;
     // An autolinked reference loses its anchor: what replaces it is a button or
-    // an embed, and neither is valid inside an <a>.
+    // an embed, and neither is valid inside an <a>. A NIP inside a real link is
+    // left alone — the author linked it somewhere on purpose.
     if (children.type === "a" && containsNostrRef(inner)) {
-      return withLinks(inner, onOpen);
+      return withLinks(inner, onOpen, onOpenNip);
     }
+    if (children.type === "a") return children;
     return cloneElement(
       children as ReactElement<{ children?: ReactNode }>,
       undefined,
-      withLinks(inner, onOpen),
+      withLinks(inner, onOpen, onOpenNip),
     );
   }
   return children;
@@ -493,6 +554,13 @@ export default function AiViewer({
   const markdownComponents = useMemo(() => {
     const onOpen = (target: NostrRefTarget, label: string) =>
       addWindow(target.appId, target.props, `open ${label}`);
+    const onOpenNip = (number: string) =>
+      addWindow(
+        "nip",
+        { number },
+        `nip ${number}`,
+        `NIP ${number}${getNIPInfo(number)?.name ? ` - ${getNIPInfo(number)?.name}` : ""}`,
+      );
     return {
       // A ```grimoire fence is a command proposal, not code to read. Render it
       // as buttons; anything else stays a normal code block.
@@ -515,12 +583,12 @@ export default function AiViewer({
       // that browsers repair by splitting the paragraph. Swap the tag instead.
       p: ({ children }: { children?: ReactNode }) =>
         containsEventEmbed(children) ? (
-          <div className="mb-4">{withLinks(children, onOpen)}</div>
+          <div className="mb-4">{withLinks(children, onOpen, onOpenNip)}</div>
         ) : (
-          <p>{withLinks(children, onOpen)}</p>
+          <p>{withLinks(children, onOpen, onOpenNip)}</p>
         ),
       li: ({ children }: { children?: ReactNode }) => (
-        <li>{withLinks(children, onOpen)}</li>
+        <li>{withLinks(children, onOpen, onOpenNip)}</li>
       ),
       // Every other place a reference can land. Markdown only routes the tag it
       // renders through `components`, so a heading or a table cell that was not
@@ -542,7 +610,9 @@ export default function AiViewer({
           tag,
           ({ children, ...rest }: { children?: ReactNode }) => {
             const Tag = tag;
-            return <Tag {...rest}>{withLinks(children, onOpen)}</Tag>;
+            return (
+              <Tag {...rest}>{withLinks(children, onOpen, onOpenNip)}</Tag>
+            );
           },
         ]),
       ),

@@ -215,7 +215,10 @@ export const TOOL_REGISTRY: ToolDefinition[] = [
         relays: {
           type: "array",
           items: { type: "string" },
-          description: "Relay URLs. Omit to use grimoire's defaults.",
+          description:
+            "Leave this out. grimoire selects relays itself from the user's " +
+            "NIP-65 lists and the pointers involved. Pass a URL only when the " +
+            "user named one.",
         },
       },
     },
@@ -225,7 +228,9 @@ export const TOOL_REGISTRY: ToolDefinition[] = [
       " until, search, and single-letter tags — so narrow the query instead of" +
       " fetching kind 1 and sorting it in your head. `$me` and `$contacts`" +
       " work in `authors` and in the `p` tag. Answer from what came back," +
-      " quoting it.",
+      " quoting it. Leave `relays` out: grimoire picks them from the user's" +
+      " NIP-65 lists and the pointers in play, which it knows and you do not." +
+      " Name relays only when the user named them, and never invent a URL.",
   },
   {
     id: "nostr.resolve",
