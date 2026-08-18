@@ -303,6 +303,7 @@ export default function AiViewer({
   const [sentSystem, setSentSystem] = useState<string>();
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
 
   // Availability is read once: an injector that appears later is picked up on
   // the next send, which throws `unavailable` with the same message.
@@ -559,6 +560,7 @@ export default function AiViewer({
     const text = input.trim();
     if (!text || streaming) return;
     setInput("");
+    if (composerRef.current) composerRef.current.style.height = "auto";
     void send(text);
   };
 
@@ -753,7 +755,7 @@ export default function AiViewer({
                     ) : (
                       <span className="font-medium">you</span>
                     )}
-                    {turn.at !== undefined && (
+                    {turn.at !== undefined && !turn.pending && (
                       <span
                         className="shrink-0 whitespace-nowrap text-xs text-muted-foreground"
                         title={formatTimestamp(turn.at, "absolute", locale)}
