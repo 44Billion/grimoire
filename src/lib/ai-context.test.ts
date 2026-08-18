@@ -3,12 +3,14 @@ import { nip19 } from "nostr-tools";
 import { of, NEVER } from "rxjs";
 
 const getEvent = vi.fn();
+const getReplaceable = vi.fn();
 const eventLoader = vi.fn();
 const profilesGet = vi.fn();
 
 vi.mock("@/services/event-store", () => ({
   default: {
     getEvent: (...args: unknown[]) => getEvent(...args),
+    getReplaceable: (...args: unknown[]) => getReplaceable(...args),
   },
 }));
 
@@ -110,11 +112,39 @@ describe("buildMentionContext", () => {
     }
   });
 
-  it("includes cached profile metadata for a mentioned person", async () => {
-    profilesGet.mockResolvedValue({ pubkey: PUBKEY, name: "jack" });
+  it("prefers the signed kind 0 to the parsed cache for a mentioned person", async () => {
+    getReplaceable.mockReturnValue({
+      id: "f".repeat(64),
+      kind: 0,
+      pubkey: PUBKEY,
+      created_at: 1,
+      tags: [],
+      content: '{"name":"jack"}',
+      sig: "x",
+    });
     const context = await buildMentionContext(`who is ${NPUB}?`);
     expect(context).toContain("jack");
     expect(context).toContain(PUBKEY);
+    // The event, not the row: `created_at` only exists on the former.
+    expect(context).toContain("created_at");
+    expect(profilesGet).not.toHaveBeenCalled();
+  });
+
+  it("falls back to cached metadata, and says it is not the event", async () => {
+    getReplaceable.mockReturnValue(undefined);
+    profilesGet.mockResolvedValue({ pubkey: PUBKEY, name: "jack" });
+    // The relay never answers (`addressLoader` is NEVER), so this waits out the
+    // resolve deadline before falling back — the same deadline a dead relay hits.
+    vi.useFakeTimers();
+    try {
+      const pending = buildMentionContext(`who is ${NPUB}?`);
+      await vi.advanceTimersByTimeAsync(7_000);
+      const context = await pending;
+      expect(context).toContain("jack");
+      expect(context).toContain("not the signed event");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("caps how many references one question resolves", async () => {

@@ -3,12 +3,33 @@ import { Trash2 } from "lucide-react";
 
 import { HexAvatar, HEX_NAME } from "./Hex";
 
+import { RichText } from "@/components/nostr/RichText";
+
 import { useAddWindow } from "@/core/state";
 import { formatTimestamp, useLocale } from "@/hooks/useLocale";
 import {
   deleteConversation,
   listConversations,
 } from "@/services/ai-conversations";
+
+/**
+ * A conversation's first question, with its mentions as names.
+ *
+ * A title is one line, so a person becomes their name and an event becomes a
+ * short label — the block embed a reply uses would not fit, and a raw
+ * `nostr:npub1…` told the reader nothing about which conversation this was.
+ */
+function ConversationTitle({ title }: { title: string }) {
+  return (
+    <RichText
+      className="truncate"
+      content={title}
+      // A row is one line: no media, and an event reference stays a link rather
+      // than becoming the embed a reply gets.
+      options={{ showMedia: false, showEventEmbeds: false }}
+    />
+  );
+}
 
 /**
  * Every conversation Hex remembers, one line each.
@@ -43,9 +64,10 @@ export function ConversationIndex({
   }
 
   return (
-    <div className="flex flex-col">
-      <div className="flex items-center gap-2 px-3 pb-1 pt-2">
-        <HexAvatar />
+    // Centred and bounded like the composer above it: the index is a page, and
+    // a full-width tile stretches four words of title across a metre of screen.
+    <div className="mx-auto flex w-full max-w-2xl flex-col">
+      <div className="px-3 pb-1 pt-2">
         <span className="text-xs uppercase tracking-wide text-muted-foreground">
           Recent conversations
         </span>
@@ -72,7 +94,7 @@ export function ConversationIndex({
             title={row.title}
             type="button"
           >
-            {row.title}
+            <ConversationTitle title={row.title} />
           </button>
           <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
             {formatTimestamp(

@@ -27,7 +27,9 @@ import {
 } from "./ai-elements/conversation";
 import { MessageResponse } from "./ai-elements/message";
 import { Button } from "./ui/button";
-import { Textarea } from "./ui/textarea";
+import { RichEditor, type RichEditorHandle } from "./editor/RichEditor";
+import { useEmojiSearch } from "@/hooks/useEmojiSearch";
+import { useProfileSearch } from "@/hooks/useProfileSearch";
 import {
   describeInferenceError,
   isAnyInferenceReachable,
@@ -55,7 +57,7 @@ import {
 import { Suggestion, Suggestions } from "./ai-elements/suggestion";
 import { AgentPanel } from "./ai/AgentPanel";
 import { HEX_NAME, HexAvatar } from "./ai/Hex";
-import { Shimmer } from "./ai-elements/shimmer";
+import { Shimmer, SHIMMER_DURATION } from "./ai-elements/shimmer";
 import { CommandChips } from "./ai/CommandChips";
 import { ConversationIndex } from "./ai/ConversationIndex";
 import { ReplyCodeBlock } from "./ai/ReplyCodeBlock";
@@ -73,6 +75,7 @@ import {
   type NostrRefTarget,
 } from "@/lib/open-nostr-ref";
 import { UserName } from "./nostr/UserName";
+import { RichText } from "./nostr/RichText";
 import { cn } from "@/lib/utils";
 import { EmbeddedEvent } from "./nostr/EmbeddedEvent";
 
@@ -162,6 +165,14 @@ function LinkedText({
 function formatDownload(loaded: number): string {
   if (loaded <= 1) return `${Math.round(loaded * 100)}%`;
   return `${Math.round(loaded / 1_000_000)} MB`;
+}
+
+/** Questions already asked, newest first — the order mention budget is spent in. */
+function userTurnsNewestFirst(turns: Turn[]): string[] {
+  return turns
+    .filter((turn) => turn.role === "user")
+    .map((turn) => turn.content)
+    .reverse();
 }
 
 /** A turn as rendered. `pending` marks the assistant turn currently streaming. */
@@ -361,16 +372,17 @@ export default function AiViewer({
     },
     [stored],
   );
-  const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   // The exact system prompt of the last send, so the disclosure shows what was
   // sent rather than what would be sent now.
   const [sentSystem, setSentSystem] = useState<string>();
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
+  const editorRef = useRef<RichEditorHandle>(null);
+  const { searchProfiles } = useProfileSearch();
+  const { searchEmojis } = useEmojiSearch();
   /** Set when this pane is going away, so its own abort is not reported. */
   const tornDown = useRef(false);
-  const composerRef = useRef<HTMLTextAreaElement>(null);
 
   // Availability is read once: an injector that appears later is picked up on
   // the next send, which throws `unavailable` with the same message.
@@ -537,10 +549,18 @@ export default function AiViewer({
       const controller = new AbortController();
       controllerRef.current = controller;
 
-      // Resolve references named in the question — after the turn is on screen,
-      // because this can wait on a relay. An explicit --system wins over the
-      // target's context; mentions are additive to whichever applies.
-      const mentions = await buildMentionContext(text);
+      // Resolve references named in the conversation — after the turn is on
+      // screen, because this can wait on a relay. An explicit --system wins over
+      // the target's context; mentions are additive to whichever applies.
+      //
+      // Every user turn, newest first, not only the newest: someone who attaches
+      // a profile and asks a follow-up two turns later is still asking about
+      // that person, and the metadata would otherwise have fallen out of the
+      // prompt. `buildMentionContext` caps and dedupes, so the current message
+      // wins the budget.
+      const mentions = await buildMentionContext(
+        [text, ...userTurnsNewestFirst(turns)].join("\n\n"),
+      );
       const systemPrompt =
         [system ?? context?.system, toolsSystem(toolsEnabled), mentions]
           .filter(Boolean)
@@ -698,19 +718,11 @@ export default function AiViewer({
     // start a download, which the browser only allows from a user gesture, so
     // the prompt waits in the composer for the click that qualifies.
     if (!injected) {
-      setInput(prompt);
+      editorRef.current?.insertText(prompt);
       return;
     }
     void send(prompt);
   }, [available, injected, prompt, send, stored, turns.length]);
-
-  const submit = () => {
-    const text = input.trim();
-    if (!text || streaming) return;
-    setInput("");
-    if (composerRef.current) composerRef.current.style.height = "auto";
-    void send(text);
-  };
 
   if (!available) {
     return (
@@ -745,19 +757,33 @@ export default function AiViewer({
   // conversation — and trails a conversation, where it is a reply box.
   const composer = (
     <div className={cn("px-2 py-1", showIndex ? "border-b" : "border-t")}>
-      <div className="flex items-end gap-1.5">
-        <Textarea
-          className="min-h-7 max-h-40 flex-1 min-w-0 resize-none py-1 text-sm"
-          onChange={(event) => setInput(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              submit();
-            }
+      {/* On the index the composer is the page, so it is centred and bounded
+          like a page rather than stretched across a wide tile. */}
+      <div
+        className={cn(
+          "flex items-end gap-1.5",
+          showIndex && "mx-auto w-full max-w-2xl",
+        )}
+      >
+        {/* The same editor the chat and post windows use: `@` completes to a
+            profile and a pasted nostr entity becomes a preview, so a question
+            can name a person or an event the way the rest of grimoire does —
+            and what it serializes is `nostr:` URIs, which is exactly what the
+            prompt builder resolves and the reply renderer links. */}
+        <RichEditor
+          className="min-w-0 flex-1"
+          maxHeight={160}
+          minHeight={28}
+          onSubmit={(content) => {
+            const text = content.trim();
+            if (!text || streaming) return;
+            editorRef.current?.clear();
+            void send(text);
           }}
           placeholder={`Ask ${HEX_NAME}...`}
-          rows={1}
-          value={input}
+          ref={editorRef}
+          searchEmojis={searchEmojis}
+          searchProfiles={searchProfiles}
         />
         {streaming ? (
           <Button
@@ -773,8 +799,7 @@ export default function AiViewer({
         ) : (
           <Button
             className="h-7 flex-shrink-0 px-2 text-xs"
-            disabled={!input.trim()}
-            onClick={submit}
+            onClick={() => editorRef.current?.submit()}
             size="sm"
             type="button"
             variant="secondary"
@@ -874,7 +899,6 @@ export default function AiViewer({
                         key={suggestion}
                         onClick={(text) => {
                           if (streaming) return;
-                          setInput("");
                           void send(text);
                         }}
                         suggestion={suggestion}
@@ -912,7 +936,7 @@ export default function AiViewer({
                           <Shimmer
                             as="span"
                             className="font-medium"
-                            duration={1.5}
+                            duration={SHIMMER_DURATION}
                           >
                             {HEX_NAME}
                           </Shimmer>
@@ -962,12 +986,24 @@ export default function AiViewer({
                   }
                   toolRuns={turn.toolRuns ?? []}
                 />
-                <MessageResponse
-                  className="max-w-full break-words"
-                  components={markdownComponents}
-                >
-                  {turn.content}
-                </MessageResponse>
+                {turn.role === "user" ? (
+                  // What the user wrote is Nostr content, not markdown, and
+                  // `RichText` is what renders that everywhere else: a mention
+                  // becomes a name, an attached event becomes the embed a reply
+                  // would get, hashtags and custom emoji included. The bech32
+                  // the composer serialized never shows as bech32.
+                  <RichText
+                    className="max-w-full break-words text-sm"
+                    content={turn.content}
+                  />
+                ) : (
+                  <MessageResponse
+                    className="max-w-full break-words"
+                    components={markdownComponents}
+                  >
+                    {turn.content}
+                  </MessageResponse>
+                )}
               </div>
             ))
           )}

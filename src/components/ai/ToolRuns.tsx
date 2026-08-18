@@ -51,6 +51,24 @@ function commandOf(run: ToolRun): string | undefined {
   return typeof command === "string" ? command : undefined;
 }
 
+/** What a `resolve` call turned a bech32 into, as a pointer to render. */
+function resolvedOf(
+  run: ToolRun,
+): { pubkey: string } | { id: string } | undefined {
+  if (run.name !== "resolve" || run.state !== "output-available") {
+    return undefined;
+  }
+  const output = run.output as
+    { type?: unknown; pubkey?: unknown; event?: { id?: unknown } } | undefined;
+  if (output?.type === "profile" && typeof output.pubkey === "string") {
+    return { pubkey: output.pubkey };
+  }
+  if (output?.type === "event" && typeof output.event?.id === "string") {
+    return { id: output.event.id };
+  }
+  return undefined;
+}
+
 interface Lookup {
   nip?: string;
   kind?: number;
@@ -277,6 +295,34 @@ export function ToolRuns({ runs }: { runs: ToolRun[] }) {
         // What Hex read renders as what it read: badges that open the NIP, the
         // kind, or the manual page. The NIP text itself is thousands of words
         // and is already in the answer.
+        // What a bech32 turned out to be, rendered as itself: a person through
+        // the kind 0 renderer, an event through the feed's. The JSON says the
+        // same thing in a form nobody reads.
+        const resolved = resolvedOf(run);
+        if (resolved) {
+          return (
+            <div className="my-2" key={`${run.name}-${index}`}>
+              <ToolHeading
+                className="rounded-t border border-b-0 border-border"
+                icon={BookOpenIcon}
+                name={run.name}
+              />
+              <EmbeddedEvent
+                className="overflow-hidden rounded-b border border-border"
+                {...("pubkey" in resolved
+                  ? {
+                      addressPointer: {
+                        kind: 0,
+                        pubkey: resolved.pubkey,
+                        identifier: "",
+                      },
+                    }
+                  : { eventPointer: { id: resolved.id } })}
+              />
+            </div>
+          );
+        }
+
         const lookup = lookupOf(run);
         if (lookup) {
           return (

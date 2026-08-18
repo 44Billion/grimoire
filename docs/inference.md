@@ -75,9 +75,9 @@ that led to a call above it and the reasoning that followed below.
 - A failing tool becomes an `output-error` run **and** an error result fed back
   to the model. A turn does not die because one relay did.
 
-## The three tools
+## The tools
 
-Deliberately three: IPA's permission UI lists every function name and re-prompts
+Deliberately few: IPA's permission UI lists every function name and re-prompts
 whenever the set widens, so a large surface costs the user a dialog full of names
 and a fresh prompt every time it grows.
 
@@ -91,6 +91,10 @@ and a fresh prompt every time it grows.
   truncated, plus the `npub` and `nevent` to quote: handed only hex, a model
   invents bech32 with a bad checksum, and an undecodable reference renders as
   dead text.
+- **`resolve`** (`src/lib/resolve-entity.ts`) — a bech32 entity as the thing it
+  names: the kind 0 for a person, the event for a note/nevent/naddr, EventStore
+  first and relays second. Without it a model that meets an entity in a tag or a
+  question can only repeat it, since bech32 is not readable by inspection.
 - **`open_window`** — runs a read-only grimoire command. `post`, `zap` and
   `wallet` are refused and must be proposed for the user to click.
 
@@ -109,6 +113,11 @@ prompt (`buildAiContext`). `buildMentionContext` does the same for up to three
 `ai` takes an event, a profile, a kind or a NIP as its subject, and every one of
 those has an entry point in the UI (the event menu, the profile header, the kind
 and NIP windows) through `AskHexButton`.
+
+The composer is `RichEditor`, the same editor the chat and post windows use: `@`
+completes to a profile and a pasted entity becomes a preview. What it serializes
+is `nostr:` URIs, which is exactly what `buildMentionContext` resolves and what
+the reply renderer links — so a mention is a mention all the way through.
 
 ## Testing
 

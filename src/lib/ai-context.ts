@@ -100,9 +100,15 @@ const PROPOSAL_RULES =
 const TOOLS_SYSTEM = [
   "You have tools, and they beat recall. `lookup_spec` returns a NIP's text, a" +
     " kind's definition, or a command's manual page with its flags described." +
-    " `query_nostr` runs a REQ and hands you the events. `open_window` runs a" +
+    " `query_nostr` runs a REQ and hands you the events. `resolve` turns a" +
+    " bech32 entity into the person or event it names. `open_window` runs a" +
     " read-only command. Read before you write: a command you are unsure of has" +
     " a manual page, and a question about the network has events behind it.",
+  // A model cannot decode bech32 by looking at it, so without this it either
+  // repeats the entity back or guesses at who it is.
+  "An `npub`, `nprofile`, `note`, `nevent` or `naddr` is opaque until you" +
+    " `resolve` it. Never guess at what one contains, and never answer about a" +
+    " person or an event you have only seen as bech32.",
   "`query_nostr` takes a whole NIP-01 filter — ids, authors, kinds, since," +
     " until, search, and single-letter tags — so narrow the query instead of" +
     " fetching kind 1 and sorting it in your head. `$me` and `$contacts` work in" +
@@ -292,12 +298,7 @@ async function describeTarget(
   target: NostrRefTarget,
 ): Promise<string | undefined> {
   if (target.pubkey) {
-    const profile = await db.profiles.get(target.pubkey).catch(() => undefined);
-    return `User ${target.pubkey}:\n${
-      profile
-        ? truncate(JSON.stringify(profile, null, 2))
-        : "(no cached profile metadata)"
-    }`;
+    return `User ${target.pubkey}:\n${await describeProfile(target.pubkey)}`;
   }
 
   const event = await resolveEvent(target);
@@ -305,6 +306,32 @@ async function describeTarget(
     return `A referenced event could not be loaded. Say so rather than inventing its contents.`;
   }
   return `${describeKind(event.kind)}\n${truncate(JSON.stringify(event, null, 2))}`;
+}
+
+/**
+ * A person as the kind 0 the relays hold, or the cached metadata if the event
+ * itself has not been seen.
+ *
+ * The event is the better answer: it carries `created_at` and any tags the
+ * parsed row drops, and a question about someone's profile is often a question
+ * about the record rather than the name in it.
+ */
+async function describeProfile(pubkey: string): Promise<string> {
+  const event = eventStore.getReplaceable(0, pubkey);
+  if (event) return truncate(JSON.stringify(event, null, 2));
+
+  const pointer = { kind: 0, pubkey, identifier: "" };
+  const loaded = await resolveEvent({
+    appId: "profile",
+    props: { pubkey },
+    addressPointer: pointer,
+  });
+  if (loaded) return truncate(JSON.stringify(loaded, null, 2));
+
+  const profile = await db.profiles.get(pubkey).catch(() => undefined);
+  return profile
+    ? `(from cache, not the signed event)\n${truncate(JSON.stringify(profile, null, 2))}`
+    : "(no cached profile metadata)";
 }
 
 /** EventStore first, relays second. Undefined rather than throwing on failure. */

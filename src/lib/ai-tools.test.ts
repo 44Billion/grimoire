@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { nip19 } from "nostr-tools";
+import { EMPTY } from "rxjs";
 
 const requestEvents = vi.fn();
 const getNipText = vi.fn();
@@ -15,7 +16,10 @@ vi.mock("@/services/nip-text", () => ({
 vi.mock("@/services/loaders", () => ({
   AGGREGATOR_RELAYS: ["wss://default.example"],
   addressLoader: (...args: unknown[]) => addressLoader(...args),
+  eventLoader: (...args: unknown[]) => eventLoader(...args),
 }));
+
+const eventLoader = vi.fn();
 
 const addressLoader = vi.fn();
 const accounts: { active?: { pubkey: string } } = {};
@@ -23,8 +27,13 @@ const getReplaceable = vi.fn();
 
 vi.mock("@/services/accounts", () => ({ default: accounts }));
 vi.mock("@/services/event-store", () => ({
-  default: { getReplaceable: (...args: unknown[]) => getReplaceable(...args) },
+  default: {
+    getReplaceable: (...args: unknown[]) => getReplaceable(...args),
+    getEvent: (...args: unknown[]) => getEvent(...args),
+  },
 }));
+
+const getEvent = vi.fn();
 
 const { AI_TOOLS, createToolExecutors, refuseIfNeeded } =
   await import("./ai-tools");
@@ -49,7 +58,9 @@ beforeEach(() => {
   getNipText.mockReset();
   openWindow.mockReset();
   getReplaceable.mockReset();
+  getEvent.mockReset();
   addressLoader.mockReset();
+  eventLoader.mockReset();
   accounts.active = undefined;
   requestEvents.mockResolvedValue([]);
   getNipText.mockResolvedValue(undefined);
@@ -60,6 +71,7 @@ describe("the tool surface", () => {
     expect(AI_TOOLS.map((tool) => tool.function.name)).toEqual([
       "lookup_spec",
       "query_nostr",
+      "resolve",
       "open_window",
     ]);
   });
@@ -286,5 +298,75 @@ describe("open_window", () => {
 
   it("permits a read-only command", () => {
     expect(refuseIfNeeded("nip 65")).toBeUndefined();
+  });
+});
+
+describe("resolve", () => {
+  const PUBKEY = "a".repeat(64);
+  const NPUB = nip19.npubEncode(PUBKEY);
+
+  it("turns an npub into the person's kind 0", async () => {
+    getReplaceable.mockReturnValue({
+      id: "d".repeat(64),
+      kind: 0,
+      pubkey: PUBKEY,
+      created_at: 7,
+      tags: [],
+      content: '{"name":"jack"}',
+      sig: "x",
+    });
+
+    const result = (await executors.resolve({ entity: NPUB })) as {
+      type: string;
+      npub: string;
+      metadata: { name: string };
+    };
+    expect(result.type).toBe("profile");
+    expect(result.npub).toBe(NPUB);
+    // Parsed, because a model reads metadata and not a JSON string.
+    expect(result.metadata.name).toBe("jack");
+  });
+
+  it("turns an nevent into the event, with the bech32 rebuilt", async () => {
+    const id = "c".repeat(64);
+    getEvent.mockReturnValue(eventFor(id, "hello"));
+
+    const result = (await executors.resolve({
+      entity: nip19.neventEncode({ id }),
+    })) as { type: string; nevent: string; event: { content: string } };
+
+    expect(result.type).toBe("event");
+    expect(result.event.content).toBe("hello");
+    // Kind and author travel with the id, whatever the input carried.
+    expect(nip19.decode(result.nevent).data).toMatchObject({
+      id,
+      kind: 1,
+      author: "a".repeat(64),
+    });
+  });
+
+  it("truncates a long event, same as a query", async () => {
+    const id = "c".repeat(64);
+    getEvent.mockReturnValue(eventFor(id, "x".repeat(9000)));
+    const result = (await executors.resolve({
+      entity: nip19.neventEncode({ id }),
+    })) as { event: { content: string } };
+    expect(result.event.content).toMatch(/\[truncated\]$/);
+  });
+
+  it("rejects something that is not an entity", async () => {
+    expect(await executors.resolve({ entity: "jack" })).toMatchObject({
+      error: expect.stringContaining("Not a Nostr entity"),
+    });
+  });
+
+  it("says an event could not be loaded rather than letting one be invented", async () => {
+    const id = "e".repeat(64);
+    getEvent.mockReturnValue(undefined);
+    eventLoader.mockReturnValue(EMPTY);
+
+    expect(
+      await executors.resolve({ entity: nip19.neventEncode({ id }) }),
+    ).toMatchObject({ error: expect.stringContaining("no relay returned it") });
   });
 });

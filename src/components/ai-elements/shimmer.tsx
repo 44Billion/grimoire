@@ -23,6 +23,15 @@ const getMotionComponent = (element: keyof JSX.IntrinsicElements) => {
   return component;
 };
 
+/**
+ * Local: one period for every shimmer in a turn.
+ *
+ * Hex's name and the "Thinking..." trigger appear together and ran at different
+ * speeds, which read as two unrelated animations rather than one state. Same
+ * duration, same mount, so they stay in phase.
+ */
+export const SHIMMER_DURATION = 1.5;
+
 export interface TextShimmerProps {
   children: string;
   as?: ElementType;

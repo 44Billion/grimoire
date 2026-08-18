@@ -2,6 +2,7 @@ import { nip19 } from "nostr-tools";
 
 import { PROPOSAL_DENIED, proposeCommand } from "./ai-commands";
 import { MAX_QUERY_LIMIT, resolveAliases, sanitizeFilter } from "./ai-filter";
+import { resolveEntity } from "./resolve-entity";
 import { requestEvents } from "./relay-subscription";
 
 import { getKindInfo } from "@/constants/kinds";
@@ -12,7 +13,7 @@ import type { InferenceTool } from "@/types/inference";
 /**
  * Function tools for the `ai` window.
  *
- * Deliberately three. IPA's permission UI must list every function name and
+ * Deliberately few. IPA's permission UI must list every function name and
  * re-prompts whenever the set widens, so a large surface costs the user a
  * dialog full of names and a fresh prompt every time it grows.
  *
@@ -134,6 +135,29 @@ export const AI_TOOLS: InferenceTool[] = [
   {
     type: "function",
     function: {
+      name: "resolve",
+      description:
+        "Turn a bech32 entity into what it names: a person's profile for an " +
+        "npub or nprofile, the event itself for a note, nevent or naddr. " +
+        "Bech32 cannot be read by inspection, so resolve one before answering " +
+        "a question about it.",
+      parameters: {
+        type: "object",
+        properties: {
+          entity: {
+            type: "string",
+            description:
+              "An npub, nprofile, note, nevent or naddr, with or without the " +
+              "`nostr:` prefix.",
+          },
+        },
+        required: ["entity"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "open_window",
       description:
         "Open a grimoire window by running one of its commands. Read-only " +
@@ -163,6 +187,7 @@ export function createToolExecutors(openWindow: ToolExecutor) {
   return {
     lookup_spec: lookupSpec,
     query_nostr: queryNostr,
+    resolve: resolveTool,
     open_window: openWindow,
   } satisfies Record<string, ToolExecutor>;
 }
@@ -276,6 +301,29 @@ async function queryNostr(args: unknown): Promise<unknown> {
           ? `${event.content.slice(0, MAX_CONTENT_CHARS)}…[truncated]`
           : event.content,
     })),
+  };
+}
+
+async function resolveTool(args: unknown): Promise<unknown> {
+  const entity = (args as { entity?: unknown })?.entity;
+  if (typeof entity !== "string" || !entity.trim()) {
+    return { error: "Pass a bech32 entity as `entity`." };
+  }
+
+  const resolved = await resolveEntity(entity);
+  if ("error" in resolved || resolved.type === "profile") return resolved;
+
+  // Same cap as a query: one long article should not fill the window here
+  // either, and the model asked what this is, not for every word of it.
+  return {
+    ...resolved,
+    event: {
+      ...resolved.event,
+      content:
+        resolved.event.content.length > MAX_CONTENT_CHARS
+          ? `${resolved.event.content.slice(0, MAX_CONTENT_CHARS)}…[truncated]`
+          : resolved.event.content,
+    },
   };
 }
 
