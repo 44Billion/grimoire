@@ -1,7 +1,8 @@
 import { nip19 } from "nostr-tools";
 
-import { PROPOSAL_DENIED, proposeCommand } from "./ai-commands";
-import { MAX_QUERY_LIMIT, resolveAliases, sanitizeFilter } from "./ai-filter";
+import { READABLE_COMMANDS, proposeCommand } from "./ai-commands";
+import { resolveAliases, sanitizeFilter } from "./ai-filter";
+import { sanitizeDraft } from "./ai-draft";
 import { resolveEntity } from "./resolve-entity";
 import { requestEvents } from "./relay-subscription";
 
@@ -9,220 +10,26 @@ import { getKindInfo } from "@/constants/kinds";
 import db, { type LocalSpell } from "@/services/db";
 import { manPages } from "@/types/man";
 import { getNipText } from "@/services/nip-text";
-import type { InferenceTool } from "@/types/inference";
 
 /**
- * Function tools for the `ai` window.
+ * What the registry's tools actually do.
  *
- * Deliberately few. IPA's permission UI must list every function name and
- * re-prompts whenever the set widens, so a large surface costs the user a
- * dialog full of names and a fresh prompt every time it grows.
+ * Schemas, ids and prompt lines live in `ai-registry.ts`; this file is the
+ * implementations, so a tool's contract and its behaviour are not the same edit.
  *
  * None of them sign, publish, spend, or follow. Tool arguments are shaped by
  * whatever the model read — including note text, which is untrusted — so the
- * only writes available are windows the user then drives themselves.
+ * only side effects available are a window the user then drives themselves and
+ * a draft they must press a button to sign.
  */
 
 /** Cap on returned content, so one long article cannot eat the window. */
 const MAX_CONTENT_CHARS = 2_000;
 
-/** Commands whose manual page Hex may read: the ones it may also propose. */
-const READABLE_COMMANDS = Object.keys(manPages)
-  .filter((name) => !PROPOSAL_DENIED.has(manPages[name].appId))
-  .sort();
+/** Most commands one suggestion carries; a reply is not a menu. */
+const MAX_PROPOSED = 5;
 
-export const AI_TOOLS: InferenceTool[] = [
-  {
-    type: "function",
-    function: {
-      name: "lookup_spec",
-      description:
-        "Look up a NIP's text, an event kind's definition, or a grimoire " +
-        "command's manual page, from grimoire's own registry and cache. Use " +
-        "this instead of recalling spec details or guessing at a command's " +
-        "flags.",
-      parameters: {
-        type: "object",
-        properties: {
-          nip: {
-            type: "string",
-            description: 'NIP id, e.g. "01" or "65".',
-          },
-          kind: {
-            type: "number",
-            description: "Event kind number.",
-          },
-          spells: {
-            type: "boolean",
-            description:
-              "List the user's saved spells: alias, name and the command each " +
-              "one runs.",
-          },
-          spell: {
-            type: "string",
-            description: "One spell by alias or name, for its command.",
-          },
-          command: {
-            type: "string",
-            // Enumerated, because the whole set is two dozen names: a model
-            // that has to guess spends a round finding out it guessed wrong,
-            // and a provider that enforces schemas will not let it guess.
-            // Same exclusions as the prompt's catalogue — a command Hex is not
-            // told about is not one it should be able to read up on.
-            enum: READABLE_COMMANDS,
-            description:
-              'A grimoire command name, e.g. "req" — returns its synopsis, ' +
-              "flags with descriptions, examples, and related commands.",
-          },
-        },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "query_nostr",
-      description:
-        "Run a REQ against relays and read what comes back. Read-only. " +
-        "Takes a full NIP-01 filter; returns at most " +
-        `${MAX_QUERY_LIMIT} events with content truncated.`,
-      parameters: {
-        type: "object",
-        properties: {
-          kinds: {
-            type: "array",
-            items: { type: "number" },
-            description: "Event kinds to request.",
-          },
-          authors: {
-            type: "array",
-            items: { type: "string" },
-            description:
-              'Hex pubkeys, not npubs. "$me" and "$contacts" resolve to the ' +
-              "active account and the people it follows.",
-          },
-          ids: {
-            type: "array",
-            items: { type: "string" },
-            description: "Hex event ids, not note1 or nevent.",
-          },
-          since: {
-            type: "number",
-            description: "Unix seconds; only events at or after this time.",
-          },
-          until: {
-            type: "number",
-            description: "Unix seconds; only events at or before this time.",
-          },
-          search: {
-            type: "string",
-            description:
-              "NIP-50 full-text query. Only some relays implement it.",
-          },
-          tags: {
-            type: "object",
-            description:
-              'Single-letter tag filters: {"t": ["nostr"]} for a hashtag, ' +
-              '{"e": ["<hex>"]} for replies to an event, {"p": ["$me"]} for ' +
-              "events tagging the active account.",
-            additionalProperties: {
-              type: "array",
-              items: { type: "string" },
-            },
-          },
-          limit: {
-            type: "number",
-            description: `Maximum events, capped at ${MAX_QUERY_LIMIT}.`,
-          },
-          relays: {
-            type: "array",
-            items: { type: "string" },
-            description: "Relay URLs. Omit to use grimoire's defaults.",
-          },
-        },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "list_spells",
-      description:
-        "The user's saved spells: each one's alias, name and the `req` command " +
-        "it runs. Read-only — nothing here saves, publishes or deletes a spell.",
-      parameters: {
-        type: "object",
-        properties: {
-          alias: {
-            type: "string",
-            description: "One spell by alias or name. Omit for all of them.",
-          },
-        },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "resolve",
-      description:
-        "Turn a bech32 entity into what it names: a person's profile for an " +
-        "npub or nprofile, the event itself for a note, nevent or naddr. " +
-        "Bech32 cannot be read by inspection, so resolve one before answering " +
-        "a question about it.",
-      parameters: {
-        type: "object",
-        properties: {
-          entity: {
-            type: "string",
-            description:
-              "An npub, nprofile, note, nevent or naddr, with or without the " +
-              "`nostr:` prefix.",
-          },
-        },
-        required: ["entity"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "open_window",
-      description:
-        "Open a grimoire window by running one of its commands. Read-only " +
-        "commands only: post, zap, and wallet are refused and must be " +
-        "proposed to the user instead.",
-      parameters: {
-        type: "object",
-        properties: {
-          command: {
-            type: "string",
-            description: 'A grimoire command line, e.g. "nip 65".',
-          },
-        },
-        required: ["command"],
-      },
-    },
-  },
-];
-
-export type ToolExecutor = (args: unknown) => Promise<unknown>;
-
-/**
- * Executors for the read-only tools. `open_window` needs React state, so the
- * viewer supplies it — see `openWindow`.
- */
-export function createToolExecutors(openWindow: ToolExecutor) {
-  return {
-    lookup_spec: lookupSpec,
-    list_spells: listSpellsTool,
-    query_nostr: queryNostr,
-    resolve: resolveTool,
-    open_window: openWindow,
-  } satisfies Record<string, ToolExecutor>;
-}
-
-async function lookupSpec(args: unknown): Promise<unknown> {
+export async function lookupSpec(args: unknown): Promise<unknown> {
   const { nip, kind, command } = (args ?? {}) as {
     nip?: unknown;
     kind?: unknown;
@@ -295,7 +102,7 @@ function manPage(name: string): unknown {
   };
 }
 
-async function listSpellsTool(args: unknown): Promise<unknown> {
+export async function listSpellsTool(args: unknown): Promise<unknown> {
   const alias = (args as { alias?: unknown })?.alias;
   return typeof alias === "string" && alias.trim()
     ? findSpell(alias)
@@ -346,7 +153,7 @@ async function findSpell(query: string): Promise<unknown> {
       (found && describeSpell(found)) ?? {
         query: wanted,
         error:
-          "No spell with that alias or name. Ask for spells: true to see them.",
+          "No spell with that alias or name. Call it with no alias to see them all.",
       }
     );
   } catch {
@@ -364,7 +171,7 @@ function describeSpell(row: LocalSpell): unknown {
   };
 }
 
-async function queryNostr(args: unknown): Promise<unknown> {
+export async function queryNostr(args: unknown): Promise<unknown> {
   const sanitized = sanitizeFilter(args);
   if ("error" in sanitized) return sanitized;
 
@@ -403,7 +210,7 @@ async function queryNostr(args: unknown): Promise<unknown> {
   };
 }
 
-async function resolveTool(args: unknown): Promise<unknown> {
+export async function resolveTool(args: unknown): Promise<unknown> {
   const entity = (args as { entity?: unknown })?.entity;
   if (typeof entity !== "string" || !entity.trim()) {
     return { error: "Pass a bech32 entity as `entity`." };
@@ -431,4 +238,66 @@ export function refuseIfNeeded(command: string): string | undefined {
   const proposed = proposeCommand(command);
   if (!proposed) return `Not a grimoire command: ${command}`;
   return proposed.refusal;
+}
+
+/**
+ * Commands offered to the user, validated the way a fenced proposal is.
+ *
+ * The fence still works and is the whole story on a provider with no tools, but
+ * a model that has tools should not have to remember a fence language to hand
+ * something over. Same validator either way: an invented command is dropped
+ * here rather than rendered as a dead button, and one that acts on the user's
+ * behalf is reported back so the model can say so instead of stopping.
+ */
+export async function proposeCommandTool(args: unknown): Promise<unknown> {
+  const { commands, reason } = (args ?? {}) as {
+    commands?: unknown;
+    reason?: unknown;
+  };
+  const lines = Array.isArray(commands)
+    ? commands.filter((line): line is string => typeof line === "string")
+    : typeof commands === "string"
+      ? [commands]
+      : [];
+  if (lines.length === 0) {
+    return { error: "Pass one or more command lines as `commands`." };
+  }
+
+  const offered: string[] = [];
+  const rejected: { command: string; error: string }[] = [];
+  for (const line of lines.slice(0, MAX_PROPOSED)) {
+    const refusal = refuseIfNeeded(line);
+    if (refusal) rejected.push({ command: line, error: refusal });
+    else offered.push(line);
+  }
+
+  return {
+    // The offer is the render, not the return value: the rows in the transcript
+    // are what the user presses, and nothing has run.
+    offered,
+    ...(typeof reason === "string" && reason.trim() ? { reason } : {}),
+    ...(rejected.length ? { rejected } : {}),
+    ...(offered.length === 0
+      ? { error: "None of those are commands the user can be offered." }
+      : {}),
+  };
+}
+
+/**
+ * An event drafted for the user to sign.
+ *
+ * Returns the draft and nothing else — the signer is asked by the button on the
+ * card, from a real click. `sanitizeDraft` refuses the kinds that would let one
+ * click rewrite the user's own state.
+ */
+export async function draftEvent(args: unknown): Promise<unknown> {
+  const draft = sanitizeDraft(args);
+  if ("error" in draft) return draft;
+  return {
+    drafted: true,
+    // Said plainly, because a model told only "drafted" reports back that it
+    // published something.
+    note: "Not published. The user sees this draft with a button, and their signer is only asked if they press it.",
+    ...draft,
+  };
 }

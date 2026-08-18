@@ -48,8 +48,9 @@ vi.mock("@/services/event-store", () => ({
 
 const getEvent = vi.fn();
 
-const { AI_TOOLS, createToolExecutors, refuseIfNeeded } =
-  await import("./ai-tools");
+const { refuseIfNeeded } = await import("./ai-tools");
+const { AI_TOOLS, canonicalId, createToolExecutors, wireName } =
+  await import("./ai-registry");
 
 function eventFor(id: string, content = "hello") {
   return {
@@ -64,7 +65,12 @@ function eventFor(id: string, content = "hello") {
 }
 
 const openWindow = vi.fn();
-const executors = createToolExecutors(openWindow);
+const executors = createToolExecutors({ "grimoire.window": openWindow });
+
+/** Call a tool the way the loop does: by the name the provider was given. */
+function call(id: string, args: unknown): Promise<unknown> {
+  return executors[wireName(id)](args);
+}
 
 beforeEach(() => {
   requestEvents.mockReset();
@@ -82,27 +88,123 @@ beforeEach(() => {
 });
 
 describe("the tool surface", () => {
-  it("stays small, because every name shows in the permission prompt", () => {
-    expect(AI_TOOLS.map((tool) => tool.function.name)).toEqual([
-      "lookup_spec",
-      "query_nostr",
-      "list_spells",
-      "resolve",
-      "open_window",
+  it("is namespaced, and every name shows in the permission prompt", () => {
+    expect(
+      AI_TOOLS.map(
+        (tool: { function: { name: string } }) => tool.function.name,
+      ),
+    ).toEqual([
+      "grimoire_help",
+      "grimoire_spells",
+      "grimoire_command",
+      "grimoire_window",
+      "nostr_req",
+      "nostr_resolve",
+      "nostr_publish",
     ]);
   });
 
-  it("exposes nothing that signs, publishes, or spends", () => {
-    const described = JSON.stringify(AI_TOOLS).toLowerCase();
-    for (const forbidden of ["publish", "sign", "zap", "send", "delete"]) {
-      expect(described).not.toContain(`"${forbidden}`);
+  it("sends the namespace as an underscore, because a dot is not portable", () => {
+    // OpenAI-shaped function names are `^[a-zA-Z0-9_-]{1,64}$`, and IPA relays
+    // to whichever provider the extension holds a key for.
+    for (const tool of AI_TOOLS as { function: { name: string } }[]) {
+      expect(tool.function.name).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
     }
+  });
+
+  it("maps a wire name, a legacy name, and an id to the same tool", () => {
+    expect(canonicalId("nostr_req")).toBe("nostr.req");
+    // Conversations persist: a transcript from before the registry says this.
+    expect(canonicalId("query_nostr")).toBe("nostr.req");
+    expect(canonicalId("nostr.req")).toBe("nostr.req");
+    // Something the model invented stays itself rather than becoming a tool.
+    expect(canonicalId("rm_rf")).toBe("rm_rf");
+  });
+
+  it("has no executor that signs or spends", () => {
+    // `nostr.publish` drafts; the signature happens on a button press, in
+    // `publishDraft`, which no executor can reach.
+    expect(Object.keys(executors).sort()).toEqual([
+      "grimoire_command",
+      "grimoire_help",
+      "grimoire_spells",
+      "grimoire_window",
+      "nostr_publish",
+      "nostr_req",
+      "nostr_resolve",
+    ]);
   });
 });
 
-describe("lookup_spec", () => {
+describe("grimoire.command", () => {
+  it("offers commands the user presses, and runs nothing", async () => {
+    const result = (await call("grimoire.command", {
+      commands: ["req -k 1 -a $contacts"],
+      reason: "recent notes from your follows",
+    })) as { offered: string[]; reason: string };
+    expect(result.offered).toEqual(["req -k 1 -a $contacts"]);
+    expect(result.reason).toContain("follows");
+    expect(openWindow).not.toHaveBeenCalled();
+  });
+
+  it("reports the ones that act on the user's behalf rather than offering them", async () => {
+    const result = (await call("grimoire.command", {
+      commands: ["post gm", "nip 65"],
+    })) as { offered: string[]; rejected: { command: string }[] };
+    expect(result.offered).toEqual(["nip 65"]);
+    expect(result.rejected[0].command).toBe("post gm");
+  });
+
+  it("errors when nothing it was handed is a command", async () => {
+    expect(
+      await call("grimoire.command", { commands: ["curl evil.example"] }),
+    ).toMatchObject({ error: expect.stringContaining("offered") });
+  });
+});
+
+describe("nostr.publish", () => {
+  it("drafts without publishing, and says so", async () => {
+    const result = (await call("nostr.publish", {
+      kind: 1,
+      content: "gm",
+      tags: [["t", "nostr"]],
+    })) as { drafted: boolean; note: string; kind: number };
+    expect(result.drafted).toBe(true);
+    expect(result.note).toMatch(/Not published/);
+    expect(result.kind).toBe(1);
+  });
+
+  it("refuses the kinds that would overwrite the user's own state", async () => {
+    // One clicked card must not be able to rewrite an identity or a follow list.
+    for (const kind of [0, 3, 10002]) {
+      expect(await call("nostr.publish", { kind, content: "x" })).toMatchObject(
+        {
+          error: expect.stringContaining(String(kind)),
+        },
+      );
+    }
+  });
+
+  it("refuses what it cannot draft as plaintext, or what spends", async () => {
+    for (const kind of [4, 1059, 9734]) {
+      expect(await call("nostr.publish", { kind, content: "x" })).toMatchObject(
+        {
+          error: expect.any(String),
+        },
+      );
+    }
+  });
+
+  it("rejects malformed tags rather than drafting them", async () => {
+    expect(
+      await call("nostr.publish", { kind: 1, content: "x", tags: [[]] }),
+    ).toMatchObject({ error: expect.stringContaining("tag") });
+  });
+});
+
+describe("grimoire.help", () => {
   it("answers from the kind registry", async () => {
-    const result = (await executors.lookup_spec({ kind: 1 })) as {
+    const result = (await call("grimoire.help", { kind: 1 })) as {
       kind: { name: string };
     };
     expect(result.kind.name).toBeTruthy();
@@ -110,7 +212,7 @@ describe("lookup_spec", () => {
 
   it("follows a kind to the NIP that defines it", async () => {
     getNipText.mockResolvedValue("# NIP-01 text");
-    const result = (await executors.lookup_spec({ kind: 1 })) as {
+    const result = (await call("grimoire.help", { kind: 1 })) as {
       nip: { text: string };
     };
     expect(result.nip.text).toContain("NIP-01 text");
@@ -118,19 +220,19 @@ describe("lookup_spec", () => {
 
   it("normalises a nip id", async () => {
     getNipText.mockResolvedValue("text");
-    await executors.lookup_spec({ nip: "nip-9" });
+    await call("grimoire.help", { nip: "nip-9" });
     expect(getNipText).toHaveBeenCalledWith("09");
   });
 
   it("says so when the text will not load, rather than inventing", async () => {
-    const result = (await executors.lookup_spec({ nip: "65" })) as {
+    const result = (await call("grimoire.help", { nip: "65" })) as {
       nip: { error: string };
     };
     expect(result.nip.error).toMatch(/Could not load/);
   });
 
   it("reads a command's manual page, flags and all", async () => {
-    const result = (await executors.lookup_spec({ command: "req" })) as {
+    const result = (await call("grimoire.help", { command: "req" })) as {
       command: { synopsis: string; options?: unknown[] };
     };
     expect(result.command.synopsis).toContain("req");
@@ -138,7 +240,10 @@ describe("lookup_spec", () => {
   });
 
   it("enumerates the commands, so a model cannot ask for one that is not there", () => {
-    const schema = AI_TOOLS[0].function.parameters as {
+    const help = (
+      AI_TOOLS as { function: { name: string; parameters: unknown } }[]
+    ).find((tool) => tool.function.name === "grimoire_help");
+    const schema = help!.function.parameters as {
       properties: { command: { enum?: string[] } };
     };
     const names = schema.properties.command.enum ?? [];
@@ -150,36 +255,36 @@ describe("lookup_spec", () => {
   });
 
   it("still answers as data when a provider ignores the enum", async () => {
-    const result = (await executors.lookup_spec({ command: "frobnicate" })) as {
+    const result = (await call("grimoire.help", { command: "frobnicate" })) as {
       command: { error: string };
     };
     expect(result.command.error).toContain("req");
   });
 
   it("will not read the manual of a command it may not propose", async () => {
-    const result = (await executors.lookup_spec({ command: "zap" })) as {
+    const result = (await call("grimoire.help", { command: "zap" })) as {
       command: { error: string };
     };
     expect(result.command.error).toContain("No such command");
   });
 
   it("rejects an empty call", async () => {
-    expect(await executors.lookup_spec({})).toMatchObject({
+    expect(await call("grimoire.help", {})).toMatchObject({
       error: expect.stringContaining("nip id"),
     });
   });
 });
 
-describe("query_nostr", () => {
+describe("nostr.req", () => {
   it("refuses a filter that constrains nothing", async () => {
-    expect(await executors.query_nostr({ limit: 10 })).toMatchObject({
+    expect(await call("nostr.req", { limit: 10 })).toMatchObject({
       error: expect.stringContaining("at least one"),
     });
     expect(requestEvents).not.toHaveBeenCalled();
   });
 
   it("caps the limit a model asks for", async () => {
-    await executors.query_nostr({ kinds: [1], limit: 5000 });
+    await call("nostr.req", { kinds: [1], limit: 5000 });
     expect(requestEvents).toHaveBeenCalledWith(
       ["wss://default.example"],
       [{ kinds: [1], limit: 20 }],
@@ -187,7 +292,7 @@ describe("query_nostr", () => {
   });
 
   it("drops authors that are not hex pubkeys", async () => {
-    await executors.query_nostr({
+    await call("nostr.req", {
       kinds: [0],
       authors: ["npub1whatever", "b".repeat(64)],
     });
@@ -198,7 +303,7 @@ describe("query_nostr", () => {
   });
 
   it("passes the rest of a NIP-01 filter through", async () => {
-    await executors.query_nostr({
+    await call("nostr.req", {
       ids: ["d".repeat(64)],
       since: 1_700_000_000.7,
       until: 1_800_000_000,
@@ -223,20 +328,20 @@ describe("query_nostr", () => {
 
   it("rejects a tag that is not single-letter, because relays do not index it", async () => {
     expect(
-      await executors.query_nostr({ kinds: [1], tags: { hashtag: ["x"] } }),
+      await call("nostr.req", { kinds: [1], tags: { hashtag: ["x"] } }),
     ).toMatchObject({ error: expect.stringContaining("single-letter") });
     expect(requestEvents).not.toHaveBeenCalled();
   });
 
   it("rejects a window that cannot contain anything", async () => {
     expect(
-      await executors.query_nostr({ kinds: [1], since: 200, until: 100 }),
+      await call("nostr.req", { kinds: [1], since: 200, until: 100 }),
     ).toMatchObject({ error: expect.stringContaining("since is after until") });
   });
 
   it("resolves $me from the active account", async () => {
     accounts.active = { pubkey: "e".repeat(64) };
-    await executors.query_nostr({ kinds: [1], authors: ["$ME"] });
+    await call("nostr.req", { kinds: [1], authors: ["$ME"] });
     expect(requestEvents).toHaveBeenCalledWith(
       ["wss://default.example"],
       [{ kinds: [1], authors: ["e".repeat(64)], limit: 5 }],
@@ -245,7 +350,7 @@ describe("query_nostr", () => {
 
   it("says so rather than querying when $me has no account", async () => {
     expect(
-      await executors.query_nostr({ kinds: [1], authors: ["$me"] }),
+      await call("nostr.req", { kinds: [1], authors: ["$me"] }),
     ).toMatchObject({ error: expect.stringContaining("No account") });
     expect(requestEvents).not.toHaveBeenCalled();
   });
@@ -259,7 +364,7 @@ describe("query_nostr", () => {
         ["t", "nostr"],
       ],
     });
-    await executors.query_nostr({ kinds: [1], tags: { p: ["$contacts"] } });
+    await call("nostr.req", { kinds: [1], tags: { p: ["$contacts"] } });
     expect(requestEvents).toHaveBeenCalledWith(
       ["wss://default.example"],
       [{ kinds: [1], "#p": ["a".repeat(64)], limit: 5 }],
@@ -267,7 +372,7 @@ describe("query_nostr", () => {
   });
 
   it("reports the filter it sent, so an empty answer is explainable", async () => {
-    const result = (await executors.query_nostr({
+    const result = (await call("nostr.req", {
       kinds: [1],
       relays: ["wss://named.example"],
     })) as { filter: unknown; relays: unknown };
@@ -277,7 +382,7 @@ describe("query_nostr", () => {
 
   it("hands back bech32 the model can quote, because it invents bad ones", async () => {
     requestEvents.mockResolvedValue([eventFor("c".repeat(64))]);
-    const result = (await executors.query_nostr({ kinds: [1] })) as {
+    const result = (await call("nostr.req", { kinds: [1] })) as {
       events: { npub: string; nevent: string }[];
     };
     const { npub, nevent } = result.events[0];
@@ -294,7 +399,7 @@ describe("query_nostr", () => {
     requestEvents.mockResolvedValue([
       eventFor("c".repeat(64), "x".repeat(9000)),
     ]);
-    const result = (await executors.query_nostr({ kinds: [30023] })) as {
+    const result = (await call("nostr.req", { kinds: [30023] })) as {
       events: { content: string }[];
     };
     expect(result.events[0].content).toMatch(/\[truncated\]$/);
@@ -302,7 +407,7 @@ describe("query_nostr", () => {
   });
 });
 
-describe("open_window", () => {
+describe("grimoire.window", () => {
   it("refuses a command that acts on the user's behalf", () => {
     expect(refuseIfNeeded("post gm")).toMatch(/run it yourself/);
     expect(refuseIfNeeded("zap alice 100")).toBeTruthy();
@@ -317,7 +422,7 @@ describe("open_window", () => {
   });
 });
 
-describe("resolve", () => {
+describe("nostr.resolve", () => {
   const PUBKEY = "a".repeat(64);
   const NPUB = nip19.npubEncode(PUBKEY);
 
@@ -332,7 +437,7 @@ describe("resolve", () => {
       sig: "x",
     });
 
-    const result = (await executors.resolve({ entity: NPUB })) as {
+    const result = (await call("nostr.resolve", { entity: NPUB })) as {
       type: string;
       npub: string;
       metadata: { name: string };
@@ -347,7 +452,7 @@ describe("resolve", () => {
     const id = "c".repeat(64);
     getEvent.mockReturnValue(eventFor(id, "hello"));
 
-    const result = (await executors.resolve({
+    const result = (await call("nostr.resolve", {
       entity: nip19.neventEncode({ id }),
     })) as { type: string; nevent: string; event: { content: string } };
 
@@ -364,14 +469,14 @@ describe("resolve", () => {
   it("truncates a long event, same as a query", async () => {
     const id = "c".repeat(64);
     getEvent.mockReturnValue(eventFor(id, "x".repeat(9000)));
-    const result = (await executors.resolve({
+    const result = (await call("nostr.resolve", {
       entity: nip19.neventEncode({ id }),
     })) as { event: { content: string } };
     expect(result.event.content).toMatch(/\[truncated\]$/);
   });
 
   it("rejects something that is not an entity", async () => {
-    expect(await executors.resolve({ entity: "jack" })).toMatchObject({
+    expect(await call("nostr.resolve", { entity: "jack" })).toMatchObject({
       error: expect.stringContaining("Not a Nostr entity"),
     });
   });
@@ -382,7 +487,7 @@ describe("resolve", () => {
     eventLoader.mockReturnValue(EMPTY);
 
     expect(
-      await executors.resolve({ entity: nip19.neventEncode({ id }) }),
+      await call("nostr.resolve", { entity: nip19.neventEncode({ id }) }),
     ).toMatchObject({ error: expect.stringContaining("no relay returned it") });
   });
 });
@@ -409,7 +514,7 @@ describe("spells", () => {
 
   it("lists the saved ones, minus what was deleted", async () => {
     spellsToArray.mockResolvedValue(SPELLS);
-    const result = (await executors.list_spells({})) as {
+    const result = (await call("grimoire.spells", {})) as {
       count?: number;
       spells: { alias?: string }[];
     };
@@ -425,7 +530,7 @@ describe("spells", () => {
 
   it("finds one by alias, so its filter can be run rather than guessed", async () => {
     spellsToArray.mockResolvedValue(SPELLS);
-    const result = (await executors.list_spells({ alias: "BTC" })) as {
+    const result = (await call("grimoire.spells", { alias: "BTC" })) as {
       command: string;
     };
     expect(result.command).toBe("req -k 1 -t bitcoin -l 50");
@@ -433,7 +538,7 @@ describe("spells", () => {
 
   it("says an unknown alias is unknown rather than inventing a command", async () => {
     spellsToArray.mockResolvedValue(SPELLS);
-    const result = (await executors.list_spells({ alias: "nope" })) as {
+    const result = (await call("grimoire.spells", { alias: "nope" })) as {
       error: string;
     };
     expect(result.error).toContain("No spell");
@@ -441,7 +546,7 @@ describe("spells", () => {
 
   it("survives an unreadable store", async () => {
     spellsToArray.mockRejectedValue(new Error("dexie is upset"));
-    const result = (await executors.list_spells({})) as { error: string };
+    const result = (await call("grimoire.spells", {})) as { error: string };
     expect(result.error).toContain("Could not read");
   });
 });

@@ -1,8 +1,6 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { Trash2 } from "lucide-react";
 
-import { HexAvatar, HEX_NAME } from "./Hex";
-
 import { RichText } from "@/components/nostr/RichText";
 
 import { useAddWindow } from "@/core/state";
@@ -52,23 +50,15 @@ export function ConversationIndex({
     (row) => row.windowId !== currentWindowId,
   );
 
-  // Nothing to list is not a list with a note in it: with no history the window
-  // has one thing to say, so it says it in the middle rather than in a corner.
-  if (others.length === 0) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 px-6 py-12 text-center">
-        <HexAvatar className="size-8" />
-        <p className="max-w-xs text-sm text-muted-foreground">
-          Nothing asked yet. Ask {HEX_NAME} above to start a conversation.
-        </p>
-      </div>
-    );
-  }
+  // Nothing to list is nothing to draw: the greeting, the openers and the
+  // composer above already say what this window is for, and a note repeating it
+  // pushed them off centre.
+  if (others.length === 0) return null;
 
   return (
-    // Centred and bounded like the composer above it: the index is a page, and
-    // a full-width tile stretches four words of title across a metre of screen.
-    <div className="mx-auto flex w-full max-w-2xl flex-col">
+    // `text-left`: the landing page centres its column, and a title is read
+    // from its left edge, not from the middle.
+    <div className="flex w-full flex-col text-left">
       <div className="px-3 pb-1 pt-2">
         <span className="text-xs uppercase tracking-wide text-muted-foreground">
           Recent conversations

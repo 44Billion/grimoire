@@ -60,9 +60,11 @@ import { HEX_NAME, HexAvatar } from "./ai/Hex";
 import { Shimmer, SHIMMER_DURATION } from "./ai-elements/shimmer";
 import { CommandChips } from "./ai/CommandChips";
 import { ConversationIndex } from "./ai/ConversationIndex";
+import { ModelDownload } from "./ai/ModelDownload";
 import { ReplyCodeBlock } from "./ai/ReplyCodeBlock";
 import { COMMAND_FENCE, resolveCommand } from "@/lib/ai-commands";
-import { AI_TOOLS, createToolExecutors, refuseIfNeeded } from "@/lib/ai-tools";
+import { refuseIfNeeded } from "@/lib/ai-tools";
+import { AI_TOOLS, createToolExecutors } from "@/lib/ai-registry";
 import { TurnSteps } from "./ai/TurnSteps";
 import type { ToolRun } from "@/types/tool-part";
 import { useAccount } from "@/hooks/useAccount";
@@ -156,15 +158,6 @@ function LinkedText({
       })}
     </>
   );
-}
-
-/**
- * Download progress as Chrome reports it — a 0..1 fraction in current builds,
- * bytes in older ones, and there is no header saying which.
- */
-function formatDownload(loaded: number): string {
-  if (loaded <= 1) return `${Math.round(loaded * 100)}%`;
-  return `${Math.round(loaded / 1_000_000)} MB`;
 }
 
 /** Questions already asked, newest first — the order mention budget is spent in. */
@@ -452,21 +445,25 @@ export default function AiViewer({
   // executors are pure and live in the lib.
   const executors = useMemo(
     () =>
-      createToolExecutors(async (args: unknown) => {
-        const command = (args as { command?: unknown })?.command;
-        if (typeof command !== "string") {
-          return { error: "command must be a string." };
-        }
-        const refusal = refuseIfNeeded(command);
-        if (refusal) return { error: refusal };
-        const resolved = await resolveCommand(command, pubkey);
-        addWindow(
-          resolved.appId,
-          resolved.props,
-          resolved.commandString,
-          resolved.customTitle,
-        );
-        return { opened: command, appId: resolved.appId };
+      createToolExecutors({
+        // The only tool needing React state: everything else is pure and lives
+        // in the registry beside its schema.
+        "grimoire.window": async (args: unknown) => {
+          const command = (args as { command?: unknown })?.command;
+          if (typeof command !== "string") {
+            return { error: "command must be a string." };
+          }
+          const refusal = refuseIfNeeded(command);
+          if (refusal) return { error: refusal };
+          const resolved = await resolveCommand(command, pubkey);
+          addWindow(
+            resolved.appId,
+            resolved.props,
+            resolved.commandString,
+            resolved.customTitle,
+          );
+          return { opened: command, appId: resolved.appId };
+        },
       }),
     [addWindow, pubkey],
   );
@@ -767,22 +764,24 @@ export default function AiViewer({
 
   // The composer leads on the index — a bare window is a place to start a
   // conversation — and trails a conversation, where it is a reply box.
+  // `text-left`: the landing page centres its column, and centred text puts the
+  // caret in the middle of an empty box.
   const composer = (
-    <div className={cn("px-2 py-1", showIndex ? "border-b" : "border-t")}>
-      {/* On the index the composer is the page, so it is centred and bounded
-          like a page rather than stretched across a wide tile. */}
-      <div
-        className={cn(
-          "flex items-end gap-1.5",
-          showIndex && "mx-auto w-full max-w-2xl",
-        )}
-      >
+    <div
+      className={cn("px-2 py-1 text-left", showIndex ? "w-full" : "border-t")}
+    >
+      {/* On the index the composer sits in the centred column with the greeting
+          and the list, so the width is the column's. */}
+      <div className="flex items-end gap-1.5">
         {/* The same editor the chat and post windows use: `@` completes to a
             profile and a pasted nostr entity becomes a preview, so a question
             can name a person or an event the way the rest of grimoire does —
             and what it serializes is `nostr:` URIs, which is exactly what the
             prompt builder resolves and the reply renderer links. */}
         <RichEditor
+          // The window opens to be typed in — a palette command that lands on a
+          // box you then have to click is a wasted step.
+          autoFocus
           className="min-w-0 flex-1"
           maxHeight={160}
           minHeight={28}
@@ -826,7 +825,6 @@ export default function AiViewer({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      {showIndex && composer}
       {/*
         `min-h-0` is load-bearing: a flex item defaults to min-height:auto, so
         Conversation would grow past the pane and the window's own overflow-auto
@@ -871,10 +869,36 @@ export default function AiViewer({
             />
           )}
           {turns.length === 0 ? (
-            // A bare `ai` window shows what Hex already remembers; a grounded
-            // one shows openers for the thing it is grounded in.
+            // A bare `ai` window is a landing page: who is asking, three things
+            // worth asking, the box to ask in, and what was asked before —
+            // centred and bounded, because a wide tile would otherwise spread
+            // four words of title across a metre of screen.
             showIndex ? (
-              <ConversationIndex currentWindowId={storageId} />
+              <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-5 px-2 py-8 text-center">
+                <h1 className="flex flex-wrap items-baseline justify-center gap-2 text-3xl font-semibold tracking-tight">
+                  <span>GM{pubkey ? "," : ""}</span>
+                  {/* The user's own name, from their kind 0 — the same
+                      component that names them anywhere else in grimoire. */}
+                  {pubkey && (
+                    <UserName className="font-semibold" pubkey={pubkey} />
+                  )}
+                </h1>
+                {/* Three openers. Clicking sends; nothing fires on its own. */}
+                <Suggestions className="justify-center">
+                  {GENERAL_SUGGESTIONS.slice(0, 3).map((suggestion) => (
+                    <Suggestion
+                      key={suggestion}
+                      onClick={(text) => {
+                        if (streaming) return;
+                        void send(text);
+                      }}
+                      suggestion={suggestion}
+                    />
+                  ))}
+                </Suggestions>
+                {composer}
+                <ConversationIndex currentWindowId={storageId} />
+              </div>
             ) : (
               // `h-auto flex-1`: takes the space left over rather than a full
               // height of its own, so it centers in what remains beside the
@@ -1027,10 +1051,7 @@ export default function AiViewer({
 
       {/* A model download is minutes of nothing otherwise. */}
       {download !== undefined && (
-        <div className="mx-4 mb-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          Downloading the on-device model — {formatDownload(download)}. It is
-          kept for next time.
-        </div>
+        <ModelDownload className="mx-4 mb-2" loaded={download} />
       )}
 
       {error && (

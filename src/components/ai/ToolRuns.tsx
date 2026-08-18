@@ -16,25 +16,79 @@ import {
 import { useState, type ReactNode } from "react";
 
 import { CommandChips } from "./CommandChips";
+import { DraftEvent } from "./DraftEvent";
 import { ReplyCodeBlock } from "./ReplyCodeBlock";
 
 import { KindBadge } from "@/components/KindBadge";
 import { NIPBadge } from "@/components/NIPBadge";
 import { EmbeddedEvent } from "@/components/nostr/EmbeddedEvent";
 import { useAddWindow } from "@/core/state";
+import { canonicalId } from "@/lib/ai-registry";
+import { sanitizeDraft, type EventDraft } from "@/lib/ai-draft";
 import { cn } from "@/lib/utils";
 
 import type { ToolRun } from "@/types/tool-part";
 
 /**
- * Event ids a `query_nostr` call returned.
+ * A run's canonical tool id.
+ *
+ * Runs are stamped with the name the provider used, and conversations persist —
+ * so a transcript from before the registry says `query_nostr` and one from after
+ * says `nostr_req`. Both mean the same tool, and the registry is what knows it.
+ */
+function idOf(run: ToolRun): string {
+  return canonicalId(run.name);
+}
+
+/**
+ * Commands a `grimoire.command` call offered, and why.
+ *
+ * The rows are the point: nothing ran, and the user pressing one is the whole
+ * mechanism. Rendered from the output rather than the input, because the tool
+ * already dropped the lines grimoire does not have.
+ */
+function proposalOf(
+  run: ToolRun,
+): { commands: string[]; reason?: string } | undefined {
+  if (idOf(run) !== "grimoire.command" || run.state !== "output-available") {
+    return undefined;
+  }
+  const output = run.output as
+    { offered?: unknown; reason?: unknown } | undefined;
+  const commands = Array.isArray(output?.offered)
+    ? output.offered.filter((line): line is string => typeof line === "string")
+    : [];
+  if (commands.length === 0) return undefined;
+  return {
+    commands,
+    ...(typeof output?.reason === "string" ? { reason: output.reason } : {}),
+  };
+}
+
+/**
+ * The event a `nostr.publish` call drafted.
+ *
+ * Re-validated here rather than trusted: this render is the thing with a
+ * signing button on it, and the output travelled through a stored conversation
+ * to reach it.
+ */
+function draftOf(run: ToolRun): EventDraft | undefined {
+  if (idOf(run) !== "nostr.publish" || run.state !== "output-available") {
+    return undefined;
+  }
+  const draft = sanitizeDraft(run.output);
+  return "error" in draft ? undefined : draft;
+}
+
+/**
+ * Event ids a `nostr.req` call returned.
  *
  * `requestEvents` puts everything it fetches in the EventStore, so the ids are
  * enough — the feed renders from the store rather than from a JSON copy of it,
  * which is also why the result does not need to carry signatures.
  */
 function feedOf(run: ToolRun): string[] | undefined {
-  if (run.name !== "query_nostr" || run.state !== "output-available") {
+  if (idOf(run) !== "nostr.req" || run.state !== "output-available") {
     return undefined;
   }
   const events = (run.output as { events?: unknown })?.events;
@@ -47,7 +101,7 @@ function feedOf(run: ToolRun): string[] | undefined {
 
 /** The command an `open_window` call ran, if it looks like one. */
 function commandOf(run: ToolRun): string | undefined {
-  if (run.name !== "open_window") return undefined;
+  if (idOf(run) !== "grimoire.window") return undefined;
   const command = (run.input as { command?: unknown })?.command;
   return typeof command === "string" ? command : undefined;
 }
@@ -56,7 +110,7 @@ function commandOf(run: ToolRun): string | undefined {
 function resolvedOf(
   run: ToolRun,
 ): { pubkey: string } | { id: string } | undefined {
-  if (run.name !== "resolve" || run.state !== "output-available") {
+  if (idOf(run) !== "nostr.resolve" || run.state !== "output-available") {
     return undefined;
   }
   const output = run.output as
@@ -79,7 +133,7 @@ function resolvedOf(
 function spellsOf(
   run: ToolRun,
 ): { names: string[]; commands: string[] } | undefined {
-  if (run.name !== "list_spells" || run.state !== "output-available") {
+  if (idOf(run) !== "grimoire.spells" || run.state !== "output-available") {
     return undefined;
   }
   const output = run.output as
@@ -124,7 +178,7 @@ interface Lookup {
  * kind to the NIP that defines it, so the result names what was actually read.
  */
 function lookupOf(run: ToolRun): Lookup | undefined {
-  if (run.name !== "lookup_spec" || run.state !== "output-available") {
+  if (idOf(run) !== "grimoire.help" || run.state !== "output-available") {
     return undefined;
   }
   const output = run.output as
@@ -159,8 +213,8 @@ function lookupOf(run: ToolRun): Lookup | undefined {
 
 /**
  * The strip every tool result wears: an icon, the tool's own name, then
- * whatever that tool has to show on the right. Shared so `lookup_spec` and
- * `query_nostr` line up — they sit next to each other in one turn.
+ * whatever that tool has to show on the right. Shared so `grimoire.help` and
+ * `nostr.req` line up — they sit next to each other in one turn.
  */
 function ToolHeading({
   children,
@@ -269,7 +323,7 @@ function ToolFeed({ ids, run }: { ids: string[]; run: ToolRun }) {
       <ToolHeading
         className="border-b border-border"
         icon={WrenchIcon}
-        name={run.name}
+        name={idOf(run)}
       >
         <button
           className={cn(
@@ -325,6 +379,30 @@ export function ToolRuns({ runs }: { runs: ToolRun[] }) {
           return <CommandChips block={command} key={`${run.name}-${index}`} />;
         }
 
+        // What Hex offered renders as rows the user presses — the same
+        // component a fenced proposal uses, because it is the same offer made
+        // through a tool instead of a fence.
+        const proposal = proposalOf(run);
+        if (proposal) {
+          return (
+            <div key={`${run.name}-${index}`}>
+              {proposal.reason && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {proposal.reason}
+                </p>
+              )}
+              <CommandChips block={proposal.commands.join("\n")} />
+            </div>
+          );
+        }
+
+        // A drafted event renders as the event it would be, with the button
+        // that signs it. Nothing here has been signed.
+        const draft = draftOf(run);
+        if (draft) {
+          return <DraftEvent draft={draft} key={`${run.name}-${index}`} />;
+        }
+
         // What Hex fetched renders as a feed, the way the same events render
         // anywhere else in grimoire. A JSON dump of them says less and is long.
         const feed = feedOf(run);
@@ -345,7 +423,7 @@ export function ToolRuns({ runs }: { runs: ToolRun[] }) {
               <ToolHeading
                 className="rounded-t border border-b-0 border-border"
                 icon={BookOpenIcon}
-                name={run.name}
+                name={idOf(run)}
               />
               <EmbeddedEvent
                 className="overflow-hidden rounded-b border border-border"
@@ -374,7 +452,7 @@ export function ToolRuns({ runs }: { runs: ToolRun[] }) {
               <ToolHeading
                 className="rounded border border-border"
                 icon={WandSparklesIcon}
-                name={run.name}
+                name={idOf(run)}
               >
                 {spells.names.length > 0 ? (
                   <span className="font-mono text-foreground">
@@ -397,14 +475,14 @@ export function ToolRuns({ runs }: { runs: ToolRun[] }) {
             <ToolLookup
               key={`${run.name}-${index}`}
               lookup={lookup}
-              name={run.name}
+              name={idOf(run)}
             />
           );
         }
 
         return (
           <Tool className="mb-0" key={`${run.name}-${index}`}>
-            <ToolHeader state={run.state} type={`tool-${run.name}`} />
+            <ToolHeader state={run.state} type={`tool-${idOf(run)}`} />
             <ToolContent>
               {/* A command Hex ran renders as a command, the way the palette and
                 its proposals do — the JSON of `{command: "..."}` says less than

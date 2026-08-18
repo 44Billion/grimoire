@@ -8,6 +8,7 @@ import {
 } from "./open-nostr-ref";
 
 import { COMMAND_FENCE, PROPOSAL_DENIED } from "./ai-commands";
+import { describeTools } from "./ai-registry";
 import type { AiTarget } from "./ai-target";
 
 import { getKindInfo } from "@/constants/kinds";
@@ -93,10 +94,11 @@ const BASE_SYSTEM = [
 
 /** How to write a command the user runs, rather than one Hex runs. */
 const PROPOSAL_RULES =
-  "A command the user should run goes in a fenced block whose language is" +
+  "A command the user should run goes to `grimoire.command`, or — with no tools" +
+  " — in a fenced block whose language is" +
   ` exactly \`${COMMAND_FENCE}\`, one per line, with a sentence saying what it` +
-  " shows — that fence is what makes it a button, and an unlabelled fence is" +
-  " just text. Write it so it runs as typed: `$me` and `$contacts` instead of" +
+  " shows — either way it renders as a button the user presses, and an" +
+  " unlabelled fence is just text. Write it so it runs as typed: `$me` and `$contacts` instead of" +
   " placeholder pubkeys, and no relay unless the user named one, because" +
   " grimoire selects relays itself via NIP-65.";
 
@@ -106,26 +108,17 @@ const PROPOSAL_RULES =
  * itself, and without them a claim to have opened anything is a lie.
  */
 const TOOLS_SYSTEM = [
-  "You have tools, and they beat recall. `lookup_spec` returns a NIP's text, a" +
-    " kind's definition, or a command's manual page with its flags described." +
-    " `list_spells` returns the user's saved spells. `query_nostr` runs a REQ" +
-    " and hands you the events. `resolve` turns a bech32 entity into the person" +
-    " or event it names. `open_window` runs a read-only command. Read before you" +
+  // The per-tool sentences come from the registry, so a tool cannot be renamed
+  // or added without the prompt saying so. Everything below is the part no
+  // single tool owns: how they combine, and what may not be claimed.
+  `You have tools, and they beat recall. ${describeTools()} Read before you` +
     " write: a command you are unsure of has a manual page, and a question" +
     " about the network has events behind it.",
   // A model cannot decode bech32 by looking at it, so without this it either
   // repeats the entity back or guesses at who it is.
   "An `npub`, `nprofile`, `note`, `nevent` or `naddr` is opaque until you" +
-    " `resolve` it. Never guess at what one contains, and never answer about a" +
+    " resolve it. Never guess at what one contains, and never answer about a" +
     " person or an event you have only seen as bech32.",
-  "`list_spells` gives each spell's `req` command, so you can open it as a" +
-    " window with `open_window` or run the same filter yourself with" +
-    " `query_nostr` and answer from the events. Never guess at what a spell" +
-    " runs, and never invent an alias the list did not contain.",
-  "`query_nostr` takes a whole NIP-01 filter — ids, authors, kinds, since," +
-    " until, search, and single-letter tags — so narrow the query instead of" +
-    " fetching kind 1 and sorting it in your head. `$me` and `$contacts` work in" +
-    " `authors` and in the `p` tag. Answer from what came back, quoting it.",
   // Every npub in one reply was invented from the hex the tool returned, and
   // every one of them failed its checksum and rendered as dead text.
   "Each returned event carries an `npub` and an `nevent`. Use those exact" +
@@ -134,8 +127,8 @@ const TOOLS_SYSTEM = [
     " rather than guessing at the replies. To hand it over, `chat <nevent>`" +
     " opens the discussion (NIP-10 replies for kind 1, NIP-22 comments" +
     " otherwise), which beats `open` when they want to read it.",
-  `Open a window yourself only when the user asked for one. ${PROPOSAL_RULES}`,
-  "Never claim to have opened something no tool reported opening.",
+  PROPOSAL_RULES,
+  "Never claim to have opened, published, or sent anything no tool reported.",
 ].join("\n\n");
 
 const NO_TOOLS_SYSTEM = [

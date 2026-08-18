@@ -13,7 +13,10 @@ The page never sees a key, never names a provider, and never chooses a model.
 | `src/services/inference.ts` | Lookup, error helpers, `resolveRequest()`, the fallback client, `probeInference()` |
 | `src/services/prompt-api.ts` | Chrome's Prompt API as an `ipa-tools` fallback backend |
 | `src/services/tool-loop.ts` | The page-side multi-round tool loop |
-| `src/lib/ai-tools.ts` | The three tools and their executors |
+| `src/lib/ai-registry.ts` | The tool registry: ids, schemas, prompt lines, name mapping |
+| `src/lib/ai-tools.ts` | What those tools do |
+| `src/lib/ai-draft.ts` | A drafted event, checked before it can be signed |
+| `src/actions/publish-draft.ts` | Signing and publishing a draft — from a button, never a tool |
 | `src/lib/ai-filter.ts` | A model's arguments as a NIP-01 filter, aliases resolved |
 | `src/lib/ai-context.ts` | The system prompt, built from what grimoire already holds |
 | `src/components/AiViewer.tsx` | The window: turns, streaming, persistence |
@@ -52,8 +55,12 @@ model and neither should we.
 
 **The on-device model downloads on first use**, which needs a user gesture. That
 is why `ai "prompt"` prefills instead of auto-sending when there is no injector,
-and why progress is surfaced — a silent multi-hundred-megabyte wait is the hang
-class this repo keeps shipping.
+and why progress is surfaced as a bar (`ModelDownload`) — a silent
+multi-hundred-megabyte wait is the hang class this repo keeps shipping. Chrome
+reports progress as a 0..1 fraction in current builds and as bytes loaded in
+older ones, with no total either way: a fraction gets a real bar, bytes get a
+moving one, because a byte count with no denominator cannot honestly be drawn as
+a percentage.
 
 **Chrome has shipped `promptStreaming` chunks both ways** — deltas and
 whole-answer-so-far — with nothing in the API to distinguish them. The adapter
@@ -77,36 +84,58 @@ that led to a call above it and the reasoning that followed below.
 
 ## The tools
 
-Deliberately few: IPA's permission UI lists every function name and re-prompts
-whenever the set widens, so a large surface costs the user a dialog full of names
-and a fresh prompt every time it grows.
+Every capability lives in one registry (`TOOL_REGISTRY`), named
+`<namespace>.<action>`: `grimoire.*` acts on the application, `nostr.*` on the
+network. The wire schema, the executor table, the system prompt's tool paragraph
+and the transcript's renderers are all derived from it, so a tool's name exists
+once.
 
-- **`lookup_spec`** — a NIP's text, a kind's definition, or a command's manual
+**A dot is not portable.** OpenAI-shaped function names are
+`^[a-zA-Z0-9_-]{1,64}$`, and IPA relays to whichever provider the user's
+extension holds a key for — so the namespace travels as an underscore
+(`nostr_req`) and the canonical id keeps its dot (`nostr.req`). `wireName()` and
+`canonicalId()` are the only two functions that know this. `canonicalId()` also
+maps the pre-registry names, because conversations persist and a stored
+transcript still says `query_nostr`.
+
+The surface stays small on purpose: IPA's permission UI lists every function name
+and re-prompts whenever the set widens.
+
+- **`grimoire.help`** — a NIP's text, a kind's definition, or a command's manual
   page, from grimoire's own registry and cache. The command name is an enum of
   the commands Hex may also propose; `post`, `zap` and `wallet` are absent from
   both.
-- **`list_spells`** — the user's saved spells, as alias plus the `req` each one
-  runs, so Hex can open one with `open_window` or run its filter through
-  `query_nostr` rather than guessing what a spell does. Local rows only; nothing
-  here saves, publishes or deletes. Its own tool rather than a parameter on
-  `lookup_spec`, which is documentation — and not in the system prompt, which
-  would pay for the list on every turn to use it on few.
-- **`query_nostr`** — a full NIP-01 filter (`ids`, `authors`, `kinds`, `since`,
+- **`grimoire.spells`** — the user's saved spells, as alias plus the `req` each
+  one runs, so Hex can open one or run its filter rather than guessing what a
+  spell does. Local rows only; nothing here saves, publishes or deletes.
+- **`grimoire.command`** — commands offered as buttons the user presses. The same
+  validator as a ```grimoire fence, which still works and is the whole story on a
+  provider with no tools. Nothing runs until a click.
+- **`grimoire.window`** — runs a read-only grimoire command. The only tool
+  needing React state, so the viewer supplies its executor. `post`, `zap` and
+  `wallet` are refused and must be offered instead.
+- **`nostr.req`** — a full NIP-01 filter (`ids`, `authors`, `kinds`, `since`,
   `until`, `search`, single-letter tags via a `tags` object), `$me` and
   `$contacts` expanded page-side. Returns at most 20 events with content
   truncated, plus the `npub` and `nevent` to quote: handed only hex, a model
   invents bech32 with a bad checksum, and an undecodable reference renders as
   dead text.
-- **`resolve`** (`src/lib/resolve-entity.ts`) — a bech32 entity as the thing it
-  names: the kind 0 for a person, the event for a note/nevent/naddr, EventStore
-  first and relays second. Without it a model that meets an entity in a tag or a
-  question can only repeat it, since bech32 is not readable by inspection.
-- **`open_window`** — runs a read-only grimoire command. `post`, `zap` and
-  `wallet` are refused and must be proposed for the user to click.
+- **`nostr.resolve`** (`src/lib/resolve-entity.ts`) — a bech32 entity as the
+  thing it names: the kind 0 for a person, the event for a note/nevent/naddr,
+  EventStore first and relays second. Without it a model that meets an entity in
+  a tag or a question can only repeat it, since bech32 is not readable by
+  inspection.
+- **`nostr.publish`** — drafts an event and stops. The card in the transcript
+  carries the button, and the signer is asked from that click; `publishDraft()`
+  is not reachable from the loop. `sanitizeDraft` refuses the kinds one click
+  must not be able to rewrite — 0, 3, anything replaceable or addressable — plus
+  what spends or must be encrypted. The kind is checked again in the action,
+  because that is the function that signs.
 
-None of them sign, publish, spend or follow. Tool arguments are shaped by
+No tool signs, publishes, spends or follows. Tool arguments are shaped by
 whatever the model read — including note text, which is untrusted — so the only
-writes available are windows the user then drives themselves.
+side effects available are a window the user drives themselves and a draft they
+press a button to sign.
 
 ## Grounding
 

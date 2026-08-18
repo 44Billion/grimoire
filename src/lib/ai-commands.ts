@@ -23,6 +23,15 @@ export const PROPOSAL_DENIED: ReadonlySet<AppId> = new Set([
   "wallet",
 ]);
 
+/**
+ * Commands a model may read up on, open, or offer — everything but the ones
+ * that act on the user's behalf. Sorted, because it is also a schema enum and a
+ * stable order keeps prompt caches warm.
+ */
+export const READABLE_COMMANDS: string[] = Object.keys(manPages)
+  .filter((name) => !PROPOSAL_DENIED.has(manPages[name].appId))
+  .sort();
+
 /** Fence language a model uses to propose commands. */
 export const COMMAND_FENCE = "grimoire";
 
