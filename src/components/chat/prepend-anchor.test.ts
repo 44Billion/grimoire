@@ -109,9 +109,24 @@ describe("computeFirstItemIndexDelta", () => {
     expect(computeFirstItemIndexDelta(prev, next)).toBe(-1);
   });
 
-  it("asks for a reset when the anchor row itself was deleted", () => {
+  it("drops to the next surviving row when the top one was evicted", () => {
+    // An adapter holding a window of the newest N rows sheds its oldest on the
+    // very repaint that appended a new one. Resetting here re-keyed every row
+    // under a reader who had done nothing but receive a message.
     expect(computeFirstItemIndexDelta([msg("a"), msg("b")], [msg("b")])).toBe(
-      null,
+      -1,
     );
+  });
+
+  it("anchors below an eviction that a prepend happened to accompany", () => {
+    const prev = [msg("a"), msg("b"), msg("c")];
+    const next = [msg("x"), msg("y"), msg("b"), msg("c")];
+    expect(computeFirstItemIndexDelta(prev, next)).toBe(1);
+  });
+
+  it("still asks for a reset when nothing from prev survived", () => {
+    const prev = [msg("a"), msg("b")];
+    const next = [msg("x"), msg("y")];
+    expect(computeFirstItemIndexDelta(prev, next)).toBe(null);
   });
 });

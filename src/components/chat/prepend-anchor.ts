@@ -37,50 +37,65 @@ export type AnchorItem =
  */
 export const FIRST_ITEM_INDEX_BASE = 100_000;
 
-/** The topmost row that has an id — day markers and the divider have none. */
-function firstIdentified(
+/** Every row that carries an id, top down — day markers and the divider have none. */
+function* identified(
   items: readonly AnchorItem[],
-): { id: string; index: number } | undefined {
+): Generator<{ id: string; index: number }> {
   for (let index = 0; index < items.length; index++) {
     const item = items[index];
-    if (item.type === "message") return { id: item.data.id, index };
-    if (item.type === "grouped-system" && item.data.messageIds.length > 0) {
-      return { id: item.data.messageIds[0], index };
+    if (item.type === "message") yield { id: item.data.id, index };
+    else if (
+      item.type === "grouped-system" &&
+      item.data.messageIds.length > 0
+    ) {
+      yield { id: item.data.messageIds[0], index };
     }
   }
-  return undefined;
 }
 
-/** Where that same row sits now, or -1 if this is a different timeline. */
-function indexOfId(items: readonly AnchorItem[], id: string): number {
-  return items.findIndex(
-    (item) =>
-      (item.type === "message" && item.data.id === id) ||
-      (item.type === "grouped-system" && item.data.messageIds.includes(id)),
-  );
+/** Row index by every id it carries, so a lookup is one map hit, not a scan. */
+function indexById(items: readonly AnchorItem[]): Map<string, number> {
+  const index = new Map<string, number>();
+  items.forEach((item, at) => {
+    if (item.type === "message") index.set(item.data.id, at);
+    else if (item.type === "grouped-system") {
+      for (const id of item.data.messageIds) index.set(id, at);
+    }
+  });
+  return index;
 }
 
 /**
  * How many rows appeared above the previous top row — subtract this from
  * `firstItemIndex`.
  *
- * `null` means "start over": either side empty, or the old top row is gone
- * entirely, which is a different conversation or a timeline replaced rather
- * than extended. Reset rather than guess — a wrong offset is a permanently
- * mis-keyed list, while a reset costs one un-anchored repaint.
+ * The old TOP row is not enough to anchor on. An adapter that keeps a window of
+ * the newest N rows drops its oldest one every time a new message arrives, so in
+ * any channel busy enough to sit at that cap the top row is gone on the very
+ * repaint that appended at the bottom. Anchoring on it alone answered "different
+ * timeline" and reset the offset, re-keying every row under the reader — the
+ * flicker was a message ARRIVING, which is the one moment the list must not move.
+ * So it walks down prev's identified rows and anchors on the topmost one that
+ * survived.
+ *
+ * `null` still means "start over": either side empty, or NOTHING in prev is in
+ * next, which is a different conversation or a timeline replaced rather than
+ * extended. Reset rather than guess — a wrong offset is a permanently mis-keyed
+ * list, while a reset costs one un-anchored repaint.
  *
  * A negative answer is possible and correct (rows removed above the anchor, as
- * a delete or an expiry can do), so the caller must handle `firstItemIndex`
- * moving back up.
+ * an eviction, a delete or an expiry can do), so the caller must handle
+ * `firstItemIndex` moving back up.
  */
 export function computeFirstItemIndexDelta(
   prev: readonly AnchorItem[],
   next: readonly AnchorItem[],
 ): number | null {
   if (prev.length === 0 || next.length === 0) return null;
-  const anchor = firstIdentified(prev);
-  if (!anchor) return null;
-  const at = indexOfId(next, anchor.id);
-  if (at === -1) return null;
-  return at - anchor.index;
+  const nextIndex = indexById(next);
+  for (const anchor of identified(prev)) {
+    const at = nextIndex.get(anchor.id);
+    if (at !== undefined) return at - anchor.index;
+  }
+  return null;
 }
