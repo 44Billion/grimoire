@@ -40,15 +40,21 @@ export interface ToolLoopOptions {
    * would end up with text the finished turn does not contain.
    */
   onDelta?: (content: string) => void;
-  /** The reasoning so far, across every round. */
-  onReasoningDelta?: (reasoning: string) => void;
+  /**
+   * Reasoning per round, in order. An array rather than one string so the UI
+   * can interleave it with the calls each round made.
+   */
+  onReasoningDelta?: (rounds: string[]) => void;
   /** Called whenever a run starts or finishes, with a snapshot. */
   onToolRuns?: (runs: ToolRun[]) => void;
 }
 
 export interface ToolLoopResult {
   content: string;
+  /** Every round's reasoning, joined. */
   reasoning?: string;
+  /** Every round's reasoning, kept apart so it can be shown in order. */
+  reasoningRounds: string[];
   model?: string;
   usage?: Usage;
   toolRuns: ToolRun[];
@@ -80,8 +86,10 @@ export async function runToolLoop(
   // thought, which is exactly the part that explains a tool call.
   const priorReasoning: string[] = [];
   let roundReasoning = "";
-  const reasoningSoFar = () =>
-    [...priorReasoning, roundReasoning].filter(Boolean).join("\n\n");
+  // Positional: a round that thought nothing keeps its empty slot, so a run's
+  // `round` still indexes the reasoning that preceded it.
+  const reasoningRounds = () => [...priorReasoning, roundReasoning];
+  const reasoningSoFar = () => reasoningRounds().filter(Boolean).join("\n\n");
 
   const report = () => onToolRuns?.(toolRuns.map((run) => ({ ...run })));
 
@@ -106,7 +114,7 @@ export async function runToolLoop(
           break;
         case "reasoning_delta":
           roundReasoning += chunk.content;
-          onReasoningDelta?.(reasoningSoFar());
+          onReasoningDelta?.(reasoningRounds());
           break;
         case "done":
           done = chunk;
@@ -116,7 +124,7 @@ export async function runToolLoop(
             content = chunk.message.content ?? content;
             if (chunk.message.reasoning) {
               roundReasoning = chunk.message.reasoning;
-              onReasoningDelta?.(reasoningSoFar());
+              onReasoningDelta?.(reasoningRounds());
             }
           }
           break;
@@ -143,6 +151,7 @@ export async function runToolLoop(
       return {
         content,
         ...(reasoning ? { reasoning } : {}),
+        reasoningRounds: reasoningRounds(),
         ...(model ? { model } : {}),
         ...(usage ? { usage } : {}),
         toolRuns,
@@ -155,6 +164,7 @@ export async function runToolLoop(
       name: call.function.name,
       input: parseToolArguments(call.function.arguments),
       state: "input-available",
+      round,
     }));
     toolRuns.push(...started);
     report();
@@ -208,7 +218,7 @@ export async function runToolLoop(
     content = "";
     onDelta?.(content);
     // Close this round's reasoning so the next one appends rather than replaces.
-    if (roundReasoning) priorReasoning.push(roundReasoning);
+    priorReasoning.push(roundReasoning);
     roundReasoning = "";
   }
 

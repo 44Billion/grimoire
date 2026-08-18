@@ -17,6 +17,11 @@ export interface ToolRun {
   output?: unknown;
   errorText?: string;
   state: ToolCallState;
+  /**
+   * Which loop round asked for it, so the UI can put the reasoning that led to
+   * a call before it and the reasoning that followed after.
+   */
+  round?: number;
 }
 
 export type ToolCallState =

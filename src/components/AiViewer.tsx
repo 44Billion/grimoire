@@ -19,11 +19,6 @@ import {
   ConversationScrollButton,
 } from "./ai-elements/conversation";
 import { MessageResponse } from "./ai-elements/message";
-import {
-  Reasoning,
-  ReasoningContent,
-  ReasoningTrigger,
-} from "./ai-elements/reasoning";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 import {
@@ -56,7 +51,7 @@ import { ConversationIndex } from "./ai/ConversationIndex";
 import { ReplyCodeBlock } from "./ai/ReplyCodeBlock";
 import { COMMAND_FENCE, resolveCommand } from "@/lib/ai-commands";
 import { AI_TOOLS, createToolExecutors, refuseIfNeeded } from "@/lib/ai-tools";
-import { ToolRuns } from "./ai/ToolRuns";
+import { TurnSteps } from "./ai/TurnSteps";
 import type { ToolRun } from "@/types/tool-part";
 import { useAccount } from "@/hooks/useAccount";
 import { ProviderLogo, providerFromModel } from "./ai/ProviderLogo";
@@ -156,7 +151,10 @@ interface Turn {
   content: string;
   /** Unix seconds, for the row's relative time. */
   at?: number;
+  /** Kept for turns stored before reasoning was split per round. */
   reasoning?: string;
+  /** Each round's reasoning, so it renders around the calls it explains. */
+  reasoningRounds?: string[];
   pending?: boolean;
   /** From the `done` chunk. The model is the extension's choice, not ours. */
   model?: string;
@@ -514,7 +512,7 @@ export default function AiViewer({
       // Accumulate off-state and flush on a frame so a token-per-render
       // stream does not thrash the tree.
       let content = "";
-      let reasoning = "";
+      let reasoningRounds: string[] = [];
       let model: string | undefined;
       let usage: Usage | undefined;
       let queued = false;
@@ -526,7 +524,7 @@ export default function AiViewer({
               ? {
                   ...turn,
                   content,
-                  ...(reasoning ? { reasoning } : {}),
+                  ...(reasoningRounds.length ? { reasoningRounds } : {}),
                 }
               : turn,
           ),
@@ -559,8 +557,8 @@ export default function AiViewer({
             content = text;
             schedule();
           },
-          onReasoningDelta: (text) => {
-            reasoning = text;
+          onReasoningDelta: (rounds) => {
+            reasoningRounds = rounds;
             schedule();
           },
           onToolRuns: flushToolRuns,
@@ -569,7 +567,7 @@ export default function AiViewer({
           ...(toolsEnabled ? { tools: AI_TOOLS } : {}),
         });
         content = loop.content;
-        reasoning = loop.reasoning ?? "";
+        reasoningRounds = loop.reasoningRounds;
         model = loop.model;
         usage = loop.usage;
         const toolRuns = loop.toolRuns;
@@ -583,7 +581,7 @@ export default function AiViewer({
             role: "assistant",
             at: Math.floor(Date.now() / 1000),
             content,
-            ...(reasoning ? { reasoning } : {}),
+            ...(reasoningRounds.some(Boolean) ? { reasoningRounds } : {}),
             ...(model ? { model } : {}),
             ...(usage ? { usage } : {}),
             ...(toolRuns.length ? { toolRuns } : {}),
@@ -759,22 +757,29 @@ export default function AiViewer({
               <ConversationIndex currentWindowId={storageId} />
             ) : (
               <ConversationEmptyState>
-                <HexAvatar className="size-8" />
-                <div className="space-y-1">
-                  <h3 className="text-sm font-medium">
-                    {context?.label
-                      ? `Ask ${HEX_NAME} about ${context.label}`
-                      : `Ask ${HEX_NAME}`}
-                  </h3>
-                  <p className="max-w-sm text-sm text-muted-foreground">
-                    {context?.label
-                      ? "Grounded in the local copy — no data leaves except the prompt."
-                      : "Your extension picks the provider and model."}
-                  </p>
-                </div>
+                {/* The event above says what this is about better than a line
+                    naming its kind, so with a preview the copy is only the
+                    openers. Without one, say what the window is. */}
+                {!targetRef && (
+                  <>
+                    <HexAvatar className="size-8" />
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-medium">
+                        {context?.label
+                          ? `Ask ${HEX_NAME} about ${context.label}`
+                          : `Ask ${HEX_NAME}`}
+                      </h3>
+                      <p className="max-w-sm text-sm text-muted-foreground">
+                        {context?.label
+                          ? "Grounded in the local copy — no data leaves except the prompt."
+                          : "Your extension picks the provider and model."}
+                      </p>
+                    </div>
+                  </>
+                )}
                 {/* Openers, tailored to whatever this window is grounded in.
                     Clicking sends; nothing fires on its own. */}
-                <Suggestions className="flex-wrap justify-center pt-2">
+                <Suggestions className="justify-center pt-2">
                   {(context?.suggestions ?? GENERAL_SUGGESTIONS).map(
                     (suggestion) => (
                       <Suggestion
@@ -853,13 +858,16 @@ export default function AiViewer({
                     />
                   )}
                 </div>
-                {turn.reasoning && (
-                  <Reasoning isStreaming={Boolean(turn.pending)}>
-                    <ReasoningTrigger />
-                    <ReasoningContent>{turn.reasoning}</ReasoningContent>
-                  </Reasoning>
-                )}
-                {turn.toolRuns && <ToolRuns runs={turn.toolRuns} />}
+                {/* Thinking and calls in the order they happened. A stored turn
+                    from before rounds were kept has one block of reasoning. */}
+                <TurnSteps
+                  pending={turn.pending}
+                  reasoningRounds={
+                    turn.reasoningRounds ??
+                    (turn.reasoning ? [turn.reasoning] : [])
+                  }
+                  toolRuns={turn.toolRuns ?? []}
+                />
                 <MessageResponse
                   className="max-w-full break-words"
                   components={markdownComponents}

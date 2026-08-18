@@ -19,6 +19,12 @@ import { HEX_NAME } from "./Hex";
 import type { ToolSupport } from "@/services/inference";
 import type { InferenceTool } from "@/types/inference";
 
+function firstSentence(text?: string): string {
+  if (!text) return "";
+  const end = text.indexOf(". ");
+  return end === -1 ? text : `${text.slice(0, end)}.`;
+}
+
 /**
  * Who is answering, with which instructions and tools — ai-elements' `Agent`,
  * fed from IPA.
@@ -75,7 +81,9 @@ export function AgentPanel({
               <AgentTool
                 key={tool.function.name}
                 tool={{
-                  description: `${tool.function.name} — ${tool.function.description ?? ""}`,
+                  // First sentence only: the whole description is several
+                  // lines, and the row is a label, not the documentation.
+                  description: `${tool.function.name} — ${firstSentence(tool.function.description)}`,
                   jsonSchema: tool.function.parameters,
                 }}
                 value={tool.function.name}

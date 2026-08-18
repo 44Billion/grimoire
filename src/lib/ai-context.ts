@@ -117,6 +117,8 @@ const TOOLS_SYSTEM = [
   "Each returned event carries an `npub` and an `nevent`. Reference people and" +
     " events with those exact strings — never build bech32 from a hex id or" +
     " pubkey, because a wrong checksum renders as plain text, not as a person.",
+  'To read a thread, query the events that tag its root — `{"e": ["<id>"]}`' +
+    " — rather than guessing what the replies say.",
   "Use `open_window` when the user asked for a window; otherwise hand them a" +
     ` \`${COMMAND_FENCE}\` fence and let them click. Never claim to have opened` +
     " something a tool did not report opening.",
@@ -157,6 +159,9 @@ export async function buildAiContext(target?: AiTarget): Promise<AiContext> {
   }
 }
 
+/** Kinds whose replies hang off an `e` tag, so a thread can be gathered. */
+const THREADED_KINDS = new Set([1, 11, 1111, 1244, 9802]);
+
 async function eventContext(bech32: string): Promise<AiContext> {
   const ref = nostrRefTarget(bech32);
   if (!ref) return baseContext();
@@ -192,6 +197,9 @@ async function eventContext(bech32: string): Promise<AiContext> {
     system: `${BASE_SYSTEM}\n\nThe user is asking about this event.\n${describeKind(event.kind)}\n\nRaw event:\n${JSON.stringify(event, null, 2)}`,
     suggestions: [
       "Summarize this",
+      // Only where a thread exists: the replies are fetchable with an `e` tag
+      // filter, so this is an opener Hex can actually answer.
+      ...(THREADED_KINDS.has(event.kind) ? ["Summarize this thread"] : []),
       "Translate this to English",
       "What do its tags mean?",
       `Why kind ${event.kind} and not something else?`,

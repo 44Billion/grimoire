@@ -120,7 +120,9 @@ export const AgentTool = memo(
         value={value}
         {...props}
       >
-        <AccordionTrigger className="px-3 py-2 text-sm hover:no-underline">
+        {/* Local: `text-left`, because grimoire's button styling centers it and
+            a wrapped tool description reads as a caption. */}
+        <AccordionTrigger className="px-3 py-2 text-left text-sm hover:no-underline">
           {tool.description ?? "No description"}
         </AccordionTrigger>
         <AccordionContent className="px-3 pb-3">

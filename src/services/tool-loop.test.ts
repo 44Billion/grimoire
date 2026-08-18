@@ -50,6 +50,7 @@ describe("runToolLoop", () => {
         input: { nip: "01" },
         output: { text: "spec" },
         state: "output-available",
+        round: 0,
       },
     ]);
 
@@ -203,19 +204,41 @@ describe("runToolLoop", () => {
       reasoning: ["I should look this up", "Now I can answer"],
       text: "answered",
     });
-    const seen: string[] = [];
+    const seen: string[][] = [];
 
     const result = await runToolLoop({
       messages,
       request: mock.request,
       tools,
       executors: { lookup: () => Promise.resolve("ok") },
-      onReasoningDelta: (text) => seen.push(text),
+      onReasoningDelta: (rounds) => seen.push([...rounds]),
     });
 
     expect(result.reasoning).toBe("I should look this up\n\nNow I can answer");
+    // Kept per round, so each block can render beside the call it explains.
+    expect(result.reasoningRounds).toEqual([
+      "I should look this up",
+      "Now I can answer",
+    ]);
     // And the thinking was on screen before the tool ran, not only after.
-    expect(seen[0]).toBe("I should look this up");
+    expect(seen[0]).toEqual(["I should look this up"]);
+  });
+
+  it("stamps each run with the round that asked for it", async () => {
+    const mock = createMockInference({
+      kind: "tool-calls",
+      rounds: [[{ name: "lookup" }], [{ name: "lookup" }], []],
+      text: "done",
+    });
+
+    const result = await runToolLoop({
+      messages,
+      request: mock.request,
+      tools,
+      executors: { lookup: () => Promise.resolve("ok") },
+    });
+
+    expect(result.toolRuns.map((run) => run.round)).toEqual([0, 1]);
   });
 
   it("clears the preamble a tool round emitted, matching the settled turn", async () => {
