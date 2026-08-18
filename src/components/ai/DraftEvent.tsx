@@ -17,7 +17,6 @@ import { EmbeddedEvent } from "@/components/nostr/EmbeddedEvent";
 import { RelayLink } from "@/components/nostr/RelayLink";
 import { RichText } from "@/components/nostr/RichText";
 import { UserName } from "@/components/nostr/UserName";
-import { Label } from "@/components/ui/label";
 import { draftRelays, publishDraft } from "@/actions/publish-draft";
 import { useAccount } from "@/hooks/useAccount";
 import { useRelayState } from "@/hooks/useRelayState";
@@ -156,16 +155,10 @@ export function DraftEvent({ draft }: { draft: EventDraft }) {
           nor an id to act on. */}
       <div className="space-y-1 px-3 py-2">
         {pubkey && <UserName className="font-medium" pubkey={pubkey} />}
+        {/* Body only. The kind is in the header because it decides what this
+            event *is*; the tags are machinery, and a wall of them buried the one
+            thing the user is being asked to approve. */}
         <RichText className="text-sm" content={draft.content} event={preview} />
-        {draft.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 pt-1">
-            {draft.tags.map((tag, index) => (
-              <Label key={`${tag[0]}-${index}`} size="sm">
-                {tag.join(" ")}
-              </Label>
-            ))}
-          </div>
-        )}
       </div>
 
       {relays.length > 0 && (

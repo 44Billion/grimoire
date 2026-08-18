@@ -220,14 +220,6 @@ function NipText({
   );
 }
 
-/** The submit modifier as this platform draws it. */
-function modifierKey(): string {
-  return typeof navigator !== "undefined" &&
-    /Mac|iP(hone|ad)/.test(navigator.platform)
-    ? "Cmd"
-    : "Ctrl";
-}
-
 /** Questions already asked, newest first — the order mention budget is spent in. */
 function userTurnsNewestFirst(turns: Turn[]): string[] {
   return turns
@@ -964,8 +956,10 @@ export default function AiViewer({
           conversation, which is what should be read there. */}
       {showIndex && !streaming && (
         <div className="flex items-center justify-end gap-1 pt-1 pr-1 text-xs text-muted-foreground">
+          {/* `Ctrl`, not the platform modifier: both are bound, and this is the
+              one that works everywhere and the one people try first. */}
           <KbdGroup>
-            <Kbd>{modifierKey()}</Kbd>
+            <Kbd>Ctrl</Kbd>
             <Kbd>↵</Kbd>
           </KbdGroup>
           <span>to send, Enter for a new line</span>

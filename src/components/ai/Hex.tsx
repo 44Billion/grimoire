@@ -55,9 +55,12 @@ export function HexIcon({ className }: { className?: string }) {
 export function HexHoverAvatar({ className }: { className?: string }) {
   return (
     <span className={cn("relative inline-flex size-4 shrink-0", className)}>
-      <HexAvatar className="absolute inset-0 group-hover:opacity-0" />
+      {/* `size-full`, not the avatar's own `size-4`: the wrapper is what a caller
+          sizes, and an explicit width on a replaced element beats `inset-0`, so
+          a `size-3` button was drawing a 16px face inside a 12px box. */}
+      <HexAvatar className="absolute inset-0 size-full group-hover:opacity-0" />
       <HexAvatar
-        className="absolute inset-0 opacity-0 group-hover:opacity-100"
+        className="absolute inset-0 size-full opacity-0 group-hover:opacity-100"
         face="laser"
       />
     </span>
