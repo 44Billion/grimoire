@@ -55,6 +55,7 @@ function channel(id: Uint8Array, name: string, isPrivate = false): Channel {
     idHex: bytesToHex(id),
     name,
     isPrivate,
+    repositories: [],
     streams: [{ epoch: 0n, group }],
     current: { epoch: 0n, group },
     voice: voiceKeysOf(root, id, 0n),

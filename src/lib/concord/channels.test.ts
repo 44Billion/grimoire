@@ -276,6 +276,66 @@ describe("channelsView", () => {
     expect(view[0].position).toBe(0);
   });
 
+  it("carries a channel's live git repository, newest attachment first", () => {
+    const repo = (d: string) => `30617:${bytesToHex(random32())}:${d}`;
+    const attached = [
+      { address: repo("old"), relayHints: [], attachedAt: 1, detachedAt: 2 },
+      {
+        address: repo("live"),
+        relayHints: ["wss://ngit.example"],
+        attachedAt: 3,
+      },
+    ];
+    const def = channelDef("code", {
+      metadata: {
+        name: "code",
+        private: false,
+        custom: { "armada.git": { repositories: attached } },
+      },
+    });
+    const [channel] = channelsView(community(), folded([def]));
+    expect(channel.repositories.map((r) => r.address.identifier)).toEqual([
+      "live",
+    ]);
+    expect(channel.repositories[0].relayHints).toEqual(["wss://ngit.example"]);
+  });
+
+  it("carries a PRIVATE channel's repository too, and none for an unfolded one", () => {
+    const channelId = random32();
+    const idHex = bytesToHex(channelId);
+    const c = community({
+      privateChannels: [
+        { id: channelId, key: random32(), epoch: 1n, name: "secret" },
+      ],
+    });
+    const def = channelDef("secret", {
+      channelIdHex: idHex,
+      isPrivate: true,
+      metadata: {
+        name: "secret",
+        private: true,
+        custom: {
+          "armada.git": {
+            repositories: [
+              {
+                address: `30617:${bytesToHex(random32())}:hush`,
+                relayHints: [],
+                attachedAt: 4,
+              },
+            ],
+          },
+        },
+      },
+    });
+    const [folded1] = channelsView(c, folded([def]));
+    expect(folded1.repositories.map((r) => r.address.identifier)).toEqual([
+      "hush",
+    ]);
+    // The held-but-unfolded fallback has no metadata to read one out of.
+    const [unfolded] = channelsView(c, folded([]));
+    expect(unfolded.repositories).toEqual([]);
+  });
+
   it("renders nothing when there is no fold and no held key", () => {
     expect(channelsView(community(), undefined)).toEqual([]);
   });

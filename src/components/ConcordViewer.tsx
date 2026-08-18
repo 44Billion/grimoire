@@ -20,6 +20,7 @@ import {
 } from "./concord/ConcordChannelList";
 import { NoCommunitiesEmpty, StrandedBanner } from "./concord/ArmadaHandoff";
 import { ConcordPinsList, PinsHeaderButton } from "@/components/ConcordPinsBar";
+import { ChannelRepoBadge } from "@/components/concord/ChannelRepoBadge";
 import { CallHeaderButton } from "@/components/call/CallHeaderButton";
 import {
   ConcordInvitesPanel,
@@ -1397,6 +1398,14 @@ export function ConcordViewer({
                   headerPrefix={headerPrefix}
                   headerExtra={
                     <>
+                      {/* Only the newest still-attached repository: a channel
+                          carries intervals, and a header naming a detached one
+                          would point at history. */}
+                      {openChannel?.repositories[0] && (
+                        <ChannelRepoBadge
+                          attachment={openChannel.repositories[0]}
+                        />
+                      )}
                       <CallHeaderButton
                         count={openCall.present.length}
                         active={

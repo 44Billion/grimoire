@@ -49,6 +49,7 @@ const channel: Channel = {
   idHex: CHANNEL,
   name: "#general",
   isPrivate: false,
+  repositories: [],
   streams: [{ epoch: 0n, group: chatKey }],
   current: { epoch: 0n, group: chatKey },
   voice: voiceKeysOf(root, channelId, 0n),
