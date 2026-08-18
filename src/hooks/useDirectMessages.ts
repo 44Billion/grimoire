@@ -16,23 +16,20 @@ import { use$ } from "applesauce-react/hooks";
 import accountManager from "@/services/accounts";
 import { DM_LIST_SCOPE, onDmScope } from "@/services/dm-bus";
 import {
-  backfillDmHistory,
   grantDecryptConsent,
   hasDecryptConsent,
-  isHistoryExhausted,
   resetHistoryWalk,
-  syncDmInbox,
-  watchDmInbox,
   type BackfillProgress,
 } from "@/services/dm-inbox";
+import {
+  dmBackfillProgress,
+  joinDmInbox,
+  restartDmInbox,
+  topUpDmInbox,
+} from "@/services/dm-pipeline";
 import { dmUnreadSummary, listDmConversations } from "@/services/dm-store";
 import { markAllDmsRead, readDmLastRead } from "@/services/dm-reads";
-import { followedPubkeys, ownDmReadRelays } from "@/lib/dm/relays";
-import {
-  hasImportedLegacyDms,
-  importLegacyDms,
-  resetLegacyImport,
-} from "@/services/dm-legacy-inbox";
+import { resetLegacyImport } from "@/services/dm-legacy-inbox";
 import type { DmConversationRow } from "@/services/db";
 
 /**
@@ -129,6 +126,10 @@ export function useDirectMessages(
     // half-answer that made them press it.
     await resetHistoryWalk(pubkey);
     await resetLegacyImport(pubkey);
+    // The pipeline is shared and long-lived, so clearing the walk's state is
+    // not enough to make it walk again — nothing would re-read it until the
+    // last pane closed. Say so directly.
+    restartDmInbox(pubkey);
     refresh();
   }, [pubkey, refresh]);
 
@@ -138,6 +139,14 @@ export function useDirectMessages(
     refresh();
   }, [pubkey, refresh]);
 
+  // The walk belongs to the account, so its progress does too — a second window
+  // opened mid-walk shows the same bar as the one that started it.
+  useEffect(() => {
+    if (!enabled || !pubkey) return;
+    const subscription = dmBackfillProgress(pubkey).subscribe(setBackfill);
+    return () => subscription.unsubscribe();
+  }, [enabled, pubkey]);
+
   useEffect(() => {
     // No clearing on the way out: what was loaded is already keyed by viewer,
     // and the render below discards a value belonging to another account. A
@@ -145,10 +154,9 @@ export function useDirectMessages(
     if (!enabled || !pubkey) return;
 
     let cancelled = false;
-    // A long walk must stop when the pane closes or the account changes, not
-    // grind on against relays nobody is reading from any more.
-    const abort = new AbortController();
-    let stopWatching: (() => void) | undefined;
+    // Dropped on the way out. A long walk stops when the LAST pane watching it
+    // closes, not when this one does — the pipeline is refcounted.
+    let release: (() => void) | undefined;
 
     const read = async (status: DirectMessagesStatus) => {
       const rows = await listDmConversations(pubkey);
@@ -209,96 +217,19 @@ export function useDirectMessages(
       if (!signer.nip44) return read("no-nip44");
       if (!(await hasDecryptConsent(pubkey))) return read("needs-consent");
 
-      // Paint what is already on disk before touching a relay.
+      // Paint what is already on disk before touching a relay. Everything the
+      // relays then have to say arrives through `dm-bus`, which is what the
+      // effect below listens to — this hook reads the local mirror and nothing
+      // else, and the pipeline it joins belongs to the account rather than to
+      // any one pane. See `dm-pipeline.ts`.
       await read("ready");
-
-      // Resolved once and shared by the sync, the watch and the backfill: the
-      // three disagreeing is how a wrap lands on a relay only one of them was
-      // reading, and how the walk's relay-set signature records a set that no
-      // read actually used.
-      const relays = await ownDmReadRelays(pubkey);
       if (cancelled) return;
-
-      // The live wire goes up FIRST, and outside the try below.
-      //
-      // It used to be started after the catch-up sync, two awaits deep inside
-      // that try — so a sync that threw (one relay erroring, one page failing)
-      // took the standing subscription with it, and the session ran on with a
-      // list that only ever moved when something remounted the hook. The
-      // symptom is the worst kind: every message already on disk is there, so
-      // nothing looks broken until someone tells you they wrote.
-      //
-      // It is also the right order on its own terms. A wrap arriving DURING
-      // the catch-up is caught rather than missed, and the seen-wrap memo
-      // makes the overlap with the sync free.
-      stopWatching = watchDmInbox(pubkey, signer, relays);
-
-      try {
-        // Then the fresh end: whatever arrived since last time, so a reader
-        // who opens the pane sees today's mail before a long walk starts.
-        await syncDmInbox(pubkey, signer, { relays, pages: 2 });
-        if (cancelled) return;
-        await read("ready");
-
-        // Then the whole history, once PER RELAY SET. A wrap says nothing
-        // about whose conversation it belongs to until it is open, so a
-        // complete conversation list has no cheaper answer than opening
-        // everything — and every wrap is opened once, ever, so this is a
-        // first-run cost. Passing the relays is what makes adding one re-walk
-        // instead of silently doing nothing.
-        if (!(await isHistoryExhausted(pubkey, relays))) {
-          await backfillDmHistory(pubkey, signer, {
-            relays,
-            signal: abort.signal,
-            onProgress: (progress) => {
-              if (!cancelled)
-                setBackfill(progress.exhausted ? undefined : progress);
-            },
-          });
-        }
-        if (cancelled) return;
-
-        // Then the legacy plane, once. NIP-17 is young — most clients shipped
-        // it in 2026 — so for anyone with history, the kind-4 messages ARE the
-        // conversation list. They land in the same conversations, because a
-        // kind-4 exchange with someone is the same conversation as the
-        // gift-wrapped one.
-        //
-        // Skipped entirely without a follow list: the received direction is
-        // scoped to follows, so importing with none would fetch your own half
-        // of every conversation and nobody's replies — a stranger half-view is
-        // worse than waiting for the list to load.
-        if (signer.nip04 && !(await hasImportedLegacyDms(pubkey))) {
-          const follows = await followedPubkeys(pubkey);
-          if (follows.length > 0)
-            await importLegacyDms(pubkey, signer, {
-              follows,
-              relays,
-              signal: abort.signal,
-              onProgress: (progress) => {
-                if (!cancelled)
-                  setBackfill({
-                    pages: 0,
-                    fetched: progress.fetched,
-                    written: progress.written,
-                    exhausted: progress.exhausted,
-                  });
-              },
-            });
-        }
-      } catch (error) {
-        console.warn("[dm] could not sync the inbox:", error);
-      }
-      if (!cancelled) {
-        setBackfill(undefined);
-        await read("ready");
-      }
+      release = joinDmInbox(pubkey, signer);
     })();
 
     return () => {
       cancelled = true;
-      abort.abort();
-      stopWatching?.();
+      release?.();
     };
   }, [enabled, pubkey, signer, nonce]);
 
@@ -317,24 +248,30 @@ export function useDirectMessages(
    * symptom is a conversation list that stopped growing. Armada learned the
    * same thing and lands on the same three triggers.
    *
-   * `refresh` re-runs the effect above, which re-reads the store and tops up
-   * two pages. Cheap: every wrap it sees again is already in the seen memo, so
-   * the cost is a REQ, not a decryption.
+   * Two halves: re-read the local mirror, and ask the relays for anything the
+   * wedged socket missed. The second is deduplicated across every open pane —
+   * three of them asking on the same timer is three times the REQs for one
+   * answer — and cheap even so, because every wrap it sees again is already in
+   * the seen memo, so the cost is a REQ rather than a decryption.
    */
   useEffect(() => {
     if (!enabled || !pubkey) return;
 
-    const timer = setInterval(refresh, LIST_REFRESH_MS);
+    const heal = () => {
+      refresh();
+      void topUpDmInbox(pubkey);
+    };
+    const timer = setInterval(heal, LIST_REFRESH_MS);
     const onVisible = () => {
-      if (document.visibilityState === "visible") refresh();
+      if (document.visibilityState === "visible") heal();
     };
     document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("online", refresh);
+    window.addEventListener("online", heal);
 
     return () => {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("online", refresh);
+      window.removeEventListener("online", heal);
     };
   }, [enabled, pubkey, refresh]);
 

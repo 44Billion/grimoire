@@ -9,8 +9,8 @@
  * session that lost it looked perfectly healthy while never receiving another
  * message.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { BehaviorSubject } from "rxjs";
 
 const VIEWER = "aa".repeat(32);
@@ -68,13 +68,21 @@ vi.mock("@/services/dm-bus", () => ({
 }));
 
 const { useDirectMessages } = await import("./useDirectMessages");
+const { resetDmPipelines, TEARDOWN_GRACE_MS } =
+  await import("@/services/dm-pipeline");
 
 describe("useDirectMessages: the live wire", () => {
   beforeEach(() => {
+    resetDmPipelines();
     watchDmInbox.mockClear();
     stopWatching.mockClear();
     syncDmInbox.mockClear();
     syncDmInbox.mockImplementation(async () => {});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    resetDmPipelines();
   });
 
   it("watches the inbox on the relays the sync and the walk use", async () => {
@@ -93,10 +101,38 @@ describe("useDirectMessages: the live wire", () => {
     await waitFor(() => expect(watchDmInbox).toHaveBeenCalledTimes(1));
   });
 
-  it("takes the wire down when the pane closes", async () => {
+  it("opens ONE wire for however many panes are watching", async () => {
+    // Three panes is an ordinary session — a chat browser, a second window, a
+    // NIP-17 conversation — and each used to run the whole pipeline itself.
+    const panes = [
+      renderHook(() => useDirectMessages()),
+      renderHook(() => useDirectMessages()),
+      renderHook(() => useDirectMessages()),
+    ];
+    await waitFor(() => expect(watchDmInbox).toHaveBeenCalledTimes(1));
+    expect(syncDmInbox).toHaveBeenCalledTimes(1);
+    panes.forEach((pane) => pane.unmount());
+  });
+
+  it("keeps the wire up while any pane is still open", async () => {
+    const first = renderHook(() => useDirectMessages());
+    const second = renderHook(() => useDirectMessages());
+    await waitFor(() => expect(watchDmInbox).toHaveBeenCalledTimes(1));
+    first.unmount();
+    expect(stopWatching).not.toHaveBeenCalled();
+    second.unmount();
+  });
+
+  it("takes the wire down once the last pane has been gone a while", async () => {
+    // The grace period is what makes a re-render cheap: the hook releases and
+    // rejoins on every list refresh, and tearing the walk down each time would
+    // be worse than the duplication the pipeline removes.
     const { unmount } = renderHook(() => useDirectMessages());
     await waitFor(() => expect(watchDmInbox).toHaveBeenCalledTimes(1));
+    vi.useFakeTimers();
     unmount();
+    expect(stopWatching).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(TEARDOWN_GRACE_MS + 1));
     expect(stopWatching).toHaveBeenCalledTimes(1);
   });
 
