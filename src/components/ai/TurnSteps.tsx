@@ -48,11 +48,16 @@ export function TurnSteps({
               // he is thinking, and an expanding trace shoves the answer down
               // the pane while it is being written.
               <Reasoning
+                className="mb-1"
                 defaultOpen={false}
                 isStreaming={Boolean(pending) && round === rounds - 1}
               >
                 <ReasoningTrigger />
-                <ReasoningContent>{thought}</ReasoningContent>
+                {/* Quoted and smaller: a trace is something Hex said to itself,
+                    and it should not compete with the answer for weight. */}
+                <ReasoningContent className="mt-2 border-l-2 border-border pl-3 text-xs [&_li]:text-xs [&_p]:text-xs">
+                  {thought}
+                </ReasoningContent>
               </Reasoning>
             )}
             {runs.length > 0 && <ToolRuns runs={runs} />}

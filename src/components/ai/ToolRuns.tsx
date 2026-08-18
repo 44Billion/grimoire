@@ -5,13 +5,22 @@ import {
   ToolInput,
   ToolOutput,
 } from "@/components/ai-elements/tool";
-import { BracesIcon, FileTextIcon, WrenchIcon } from "lucide-react";
-import { useState } from "react";
+import {
+  BookOpenIcon,
+  BracesIcon,
+  FileTextIcon,
+  WrenchIcon,
+  type LucideIcon,
+} from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 import { CommandChips } from "./CommandChips";
 import { ReplyCodeBlock } from "./ReplyCodeBlock";
 
+import { KindBadge } from "@/components/KindBadge";
+import { NIPBadge } from "@/components/NIPBadge";
 import { EmbeddedEvent } from "@/components/nostr/EmbeddedEvent";
+import { useAddWindow } from "@/core/state";
 import { cn } from "@/lib/utils";
 
 import type { ToolRun } from "@/types/tool-part";
@@ -42,6 +51,135 @@ function commandOf(run: ToolRun): string | undefined {
   return typeof command === "string" ? command : undefined;
 }
 
+interface Lookup {
+  nip?: string;
+  kind?: number;
+  command?: string;
+  /** What could not be read, when the answer was a refusal. */
+  missing?: string;
+}
+
+/**
+ * What a `lookup_spec` call read.
+ *
+ * From the output, not the input: the tool normalises a nip id and follows a
+ * kind to the NIP that defines it, so the result names what was actually read.
+ */
+function lookupOf(run: ToolRun): Lookup | undefined {
+  if (run.name !== "lookup_spec" || run.state !== "output-available") {
+    return undefined;
+  }
+  const output = run.output as
+    | {
+        nip?: { id?: unknown; error?: unknown };
+        kind?: { kind?: unknown; known?: unknown };
+        command?: { name?: unknown; error?: unknown };
+        error?: unknown;
+      }
+    | undefined;
+  if (!output) return undefined;
+
+  const lookup: Lookup = {};
+  if (typeof output.nip?.id === "string") lookup.nip = output.nip.id;
+  if (typeof output.kind?.kind === "number") lookup.kind = output.kind.kind;
+  if (typeof output.command?.name === "string") {
+    lookup.command = output.command.name;
+  }
+
+  const missing = [
+    typeof output.error === "string" ? output.error : undefined,
+    typeof output.nip?.error === "string" ? output.nip.error : undefined,
+    typeof output.command?.error === "string"
+      ? output.command.error
+      : undefined,
+    output.kind?.known === false ? "Not in the kind registry." : undefined,
+  ].filter(Boolean)[0];
+  if (missing) lookup.missing = missing;
+
+  return Object.keys(lookup).length > 0 ? lookup : undefined;
+}
+
+/**
+ * The strip every tool result wears: an icon, the tool's own name, then
+ * whatever that tool has to show on the right. Shared so `lookup_spec` and
+ * `query_nostr` line up — they sit next to each other in one turn.
+ */
+function ToolHeading({
+  children,
+  className,
+  icon: Icon,
+  name,
+}: {
+  children?: ReactNode;
+  className?: string;
+  icon: LucideIcon;
+  name: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-x-3 gap-y-1 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground",
+        className,
+      )}
+    >
+      <span className="flex items-center gap-1.5">
+        <Icon className="size-3" />
+        <span className="font-mono">{name}</span>
+      </span>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * What Hex read, as the things grimoire already renders: a NIP badge, a kind
+ * badge, a command that opens its manual page. Each is clickable, so the answer
+ * is one click from the source it came from — which is the point of a lookup
+ * whose whole job was to avoid recall.
+ */
+function ToolLookup({ lookup, name }: { lookup: Lookup; name: string }) {
+  const addWindow = useAddWindow();
+
+  return (
+    <ToolHeading
+      className="my-2 rounded border border-border"
+      icon={BookOpenIcon}
+      name={name}
+    >
+      {lookup.nip && <NIPBadge className="text-xs" nipNumber={lookup.nip} />}
+      {lookup.kind !== undefined && (
+        <KindBadge
+          className="text-xs"
+          clickable
+          kind={lookup.kind}
+          variant="full"
+        />
+      )}
+      {lookup.command && (
+        <button
+          className="flex items-center gap-1 font-mono text-foreground hover:underline"
+          onClick={() =>
+            addWindow(
+              "man",
+              { cmd: lookup.command },
+              `man ${lookup.command}`,
+              `MAN ${lookup.command?.toUpperCase()}`,
+            )
+          }
+          title={`Open the manual page for ${lookup.command}`}
+          type="button"
+        >
+          {lookup.command}
+          <span className="text-muted-foreground">(1)</span>
+        </button>
+      )}
+      {lookup.missing && (
+        <span className="italic">{lookup.missing.toLowerCase()}</span>
+      )}
+    </ToolHeading>
+  );
+}
+
 /** The REQ a query actually sent, aliases expanded — not what was asked for. */
 function reqOf(run: ToolRun): string {
   const output = run.output as
@@ -70,11 +208,11 @@ function ToolFeed({ ids, run }: { ids: string[]; run: ToolRun }) {
 
   return (
     <div className="my-2 overflow-hidden rounded border border-border">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1.5">
-          <WrenchIcon className="size-3" />
-          <span className="font-mono">{run.name}</span>
-        </span>
+      <ToolHeading
+        className="border-b border-border"
+        icon={WrenchIcon}
+        name={run.name}
+      >
         <button
           className={cn(
             "ml-auto flex items-center gap-1 rounded px-1 py-0.5 hover:text-foreground",
@@ -90,7 +228,7 @@ function ToolFeed({ ids, run }: { ids: string[]; run: ToolRun }) {
           <FileTextIcon className="size-3" />
           {ids.length}
         </span>
-      </div>
+      </ToolHeading>
       {showReq && (
         <div className="border-b border-border bg-muted/10 p-2">
           <ReplyCodeBlock code={reqOf(run)} language="json" />
@@ -131,6 +269,20 @@ export function ToolRuns({ runs }: { runs: ToolRun[] }) {
         const feed = feedOf(run);
         if (feed) {
           return <ToolFeed ids={feed} key={`${run.name}-${index}`} run={run} />;
+        }
+
+        // What Hex read renders as what it read: badges that open the NIP, the
+        // kind, or the manual page. The NIP text itself is thousands of words
+        // and is already in the answer.
+        const lookup = lookupOf(run);
+        if (lookup) {
+          return (
+            <ToolLookup
+              key={`${run.name}-${index}`}
+              lookup={lookup}
+              name={run.name}
+            />
+          );
         }
 
         return (

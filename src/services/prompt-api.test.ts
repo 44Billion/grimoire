@@ -209,7 +209,9 @@ describe("message mapping", () => {
     expect(mock.creates[mock.creates.length - 1]?.initialPrompts).toEqual([
       { role: "system", content: "you are Hex" },
     ]);
-    expect(mock.prompts[mock.prompts.length - 1]).toEqual([{ role: "user", content: "hi" }]);
+    expect(mock.prompts[mock.prompts.length - 1]).toEqual([
+      { role: "user", content: "hi" },
+    ]);
   });
 
   it("labels tool traffic as text, because the API knows three roles", () => {
