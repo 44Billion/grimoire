@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { gitActivityRows, MAX_GIT_ROWS } from "@/lib/concord/git-activity";
+import {
+  gitActivityRows,
+  MAX_GIT_ROWS,
+  MIN_GIT_ROWS,
+} from "@/lib/concord/git-activity";
 import { parseGitRepositoryAddress } from "@/lib/concord/git";
 import type { GitRepositoryAttachment } from "@/lib/concord/git";
 import type { NostrEvent } from "@/types/nostr";
@@ -88,17 +92,44 @@ describe("gitActivityRows", () => {
     ).toEqual([]);
   });
 
-  it("drops activity older than the loaded page", () => {
+  it("drops activity older than the loaded page, once the page has enough", () => {
+    const older = Array.from({ length: MIN_GIT_ROWS }, (_, i) =>
+      issue({ created_at: 400 + i }),
+    );
     const rows = gitActivityRows(
-      [issue({ created_at: 150 }), issue({ created_at: 400 })],
+      [issue({ created_at: 150 }), ...older],
       [attachment()],
       "conv",
       300,
     );
-    expect(rows.map((r) => r.timestamp)).toEqual([400]);
+    expect(rows.map((r) => r.timestamp)).toEqual(
+      older.map((e) => e.created_at),
+    );
   });
 
-  it("drops an event written outside the attachment interval", () => {
+  it("keeps the newest few whatever their age, so a quiet repository shows", () => {
+    // The ordinary case: a channel attached last week, a repository whose last
+    // patch landed months before any of the chat on screen.
+    const rows = gitActivityRows(
+      [issue({ created_at: 150 })],
+      [attachment()],
+      "conv",
+      100_000,
+    );
+    expect(rows.map((r) => r.timestamp)).toEqual([150]);
+  });
+
+  it("keeps work that predates the attachment", () => {
+    const rows = gitActivityRows(
+      [issue({ created_at: 50 })],
+      [attachment({ attachedAt: 100 })],
+      "conv",
+      1,
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  it("drops an event written after the repository was detached", () => {
     const detached = attachment({ attachedAt: 100, detachedAt: 300 });
     const rows = gitActivityRows(
       [issue({ created_at: 250 }), issue({ created_at: 350 })],
@@ -107,16 +138,6 @@ describe("gitActivityRows", () => {
       100,
     );
     expect(rows.map((r) => r.timestamp)).toEqual([250]);
-  });
-
-  it("keeps history from a repository that has since been detached", () => {
-    const rows = gitActivityRows(
-      [issue({ created_at: 150 })],
-      [attachment({ attachedAt: 100, detachedAt: 200 })],
-      "conv",
-      100,
-    );
-    expect(rows).toHaveLength(1);
   });
 
   it("ignores an event naming a repository this channel never attached", () => {

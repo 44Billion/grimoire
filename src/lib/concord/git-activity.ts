@@ -7,14 +7,17 @@
  *
  * Three filters, each answering a way the feature turns hostile:
  *
- * - the ATTACHMENT INTERVAL: a repository was attached at a time and possibly
- *   detached later, so an event belongs to the channel only if it was written
- *   while the attachment was live. History from a detached repository stays,
- *   because it WAS the channel's context when it happened;
+ * - DETACHMENT ends a repository's claim on the channel: nothing written after
+ *   it belongs. What came BEFORE the attachment does belong — a channel
+ *   attached to a repository is about that repository, and the work that led up
+ *   to the attachment is the context a new member most needs. Filtering to the
+ *   interval instead showed nothing at all for the ordinary case: a channel
+ *   created last week against a repository whose last patch landed in April;
  * - the LOADED WINDOW: a repository with three hundred issues would otherwise
- *   render as an issue tracker with chat sprinkled in. Activity older than the
- *   oldest chat row on screen is not shown, and a channel showing no chat shows
- *   no activity at all;
+ *   render as an issue tracker with chat sprinkled in, so a row must be no
+ *   older than the oldest chat row on screen — except that a quiet repository
+ *   would then never appear at all, so the newest {@link MIN_GIT_ROWS} are kept
+ *   whatever their age. A channel showing no chat still shows no activity;
  * - a STATUS NEEDS ITS TICKET: "closed something" is noise. A status whose
  *   issue or patch is not in hand is dropped rather than rendered anonymously.
  */
@@ -29,15 +32,19 @@ import {
   getStatusRootEventId,
   isStatusKind,
 } from "@/lib/nip34-helpers";
-import {
-  isGitRepositoryAttachedAt,
-  type GitRepositoryAttachment,
-} from "@/lib/concord/git";
+import type { GitRepositoryAttachment } from "@/lib/concord/git";
 import type { Message } from "@/types/chat";
 import type { NostrEvent } from "@/types/nostr";
 
 /** Most activity rows one timeline read will add, newest kept. */
 export const MAX_GIT_ROWS = 50;
+
+/**
+ * Rows kept regardless of age, so a repository quieter than the conversation is
+ * still visible. Below the loaded window they sort above the oldest chat row,
+ * which is where they belong: earlier.
+ */
+export const MIN_GIT_ROWS = 5;
 
 /** What a row says happened. */
 export type GitActivityAction =
@@ -78,9 +85,9 @@ function ticketAction(kind: number): GitActivityAction {
 }
 
 /**
- * True when the event names a repository the channel held at the time it was
- * written. Relays answer filters loosely, so the `a` tag is re-checked here
- * rather than trusted from the REQ.
+ * True when the event names a repository this channel is attached to, and was
+ * not written after that attachment ended. Relays answer filters loosely, so
+ * the `a` tag is re-checked here rather than trusted from the REQ.
  */
 export function belongsToChannel(
   event: NostrEvent,
@@ -90,7 +97,8 @@ export function belongsToChannel(
   return attachments.some(
     (attachment) =>
       coordinates.has(attachment.address.coordinate) &&
-      isGitRepositoryAttachedAt(attachment, event.created_at),
+      (attachment.detachedAt === undefined ||
+        event.created_at < attachment.detachedAt),
   );
 }
 
@@ -133,9 +141,8 @@ export function gitActivityRows(
 ): Message[] {
   if (attachments.length === 0 || since === undefined) return [];
 
-  const inChannel = events.filter(
-    (event) =>
-      event.created_at >= since && belongsToChannel(event, attachments),
+  const inChannel = events.filter((event) =>
+    belongsToChannel(event, attachments),
   );
   // Tickets first, so a status in the same batch can find the one it names.
   const tickets = new Map(
@@ -174,7 +181,11 @@ export function gitActivityRows(
 
   // Newest kept, then back into reading order: a clamp that dropped the RECENT
   // activity would leave the channel showing only what nobody is doing now.
-  return rows.sort((a, b) => a.timestamp - b.timestamp).slice(-MAX_GIT_ROWS);
+  const ordered = rows.sort((a, b) => a.timestamp - b.timestamp);
+  const onPage = ordered.filter((row) => row.timestamp >= since);
+  const shown =
+    onPage.length >= MIN_GIT_ROWS ? onPage : ordered.slice(-MIN_GIT_ROWS);
+  return shown.slice(-MAX_GIT_ROWS);
 }
 
 function row(
