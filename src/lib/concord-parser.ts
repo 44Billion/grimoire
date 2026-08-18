@@ -74,6 +74,44 @@ export async function parseCallCommand(
   };
 }
 
+/**
+ * A community this account actually holds, or nothing.
+ *
+ * Split out from {@link parseConcordCommand} because `chat` needs to tell a
+ * HIT from a miss, and that parser deliberately cannot: it carries an
+ * unresolved query through as an id prefix. `chat` shares its argument with
+ * every NIP-19 identifier there is, so it may only claim a query the vault can
+ * vouch for — a miss has to go on and be tried as a note, a profile or a group.
+ */
+export async function resolveStoredCommunity(
+  query: string,
+): Promise<Required<ConcordCommandProps> | undefined> {
+  const pubkey = accountManager.active$.value?.pubkey;
+  if (!pubkey || !query.trim()) return undefined;
+
+  const communities = await loadStoredCommunities(pubkey);
+  const lower = query.trim().toLowerCase();
+
+  // `undefined` rather than `false` when the query is not hex-shaped: `??`
+  // only falls through on null and undefined, so a `false` here swallowed the
+  // name-prefix match behind it — `concord bitcoin`, this command's own
+  // documented example, resolved to nothing.
+  const byId = /^[0-9a-f]{4,64}$/.test(lower)
+    ? communities.find((c) => c.idHex.startsWith(lower))
+    : undefined;
+  const byExactName = communities.find((c) => c.name.toLowerCase() === lower);
+  const byNamePrefix = communities.find((c) =>
+    c.name.toLowerCase().startsWith(lower),
+  );
+
+  const hit = byExactName ?? byId ?? byNamePrefix;
+  if (!hit) return undefined;
+  return {
+    communityId: hit.idHex,
+    dynamicTitle: hit.name || hit.idHex.slice(0, 8),
+  };
+}
+
 export async function parseConcordCommand(
   args: string[],
 ): Promise<ConcordCommandProps> {
@@ -86,25 +124,8 @@ export async function parseConcordCommand(
   // lands on the right community once a signer arrives.
   if (!pubkey) return { communityId: query.toLowerCase() };
 
-  const communities = await loadStoredCommunities(pubkey);
-  const lower = query.toLowerCase();
-
-  const byId =
-    /^[0-9a-f]{4,64}$/.test(lower) &&
-    communities.find((c) => c.idHex.startsWith(lower));
-  const byExactName = communities.find((c) => c.name.toLowerCase() === lower);
-  const byNamePrefix = communities.find((c) =>
-    c.name.toLowerCase().startsWith(lower),
-  );
-
-  const hit = byExactName ?? byId ?? byNamePrefix;
-  if (!hit) {
-    // Not found is not an error: the vault may simply not have synced yet, and
-    // the viewer shows what it does have. Carry the query as a prefix.
-    return { communityId: lower };
-  }
-  return {
-    communityId: hit.idHex,
-    dynamicTitle: hit.name || hit.idHex.slice(0, 8),
-  };
+  const hit = await resolveStoredCommunity(query);
+  // Not found is not an error: the vault may simply not have synced yet, and
+  // the viewer shows what it does have. Carry the query as a prefix.
+  return hit ?? { communityId: query.toLowerCase() };
 }
