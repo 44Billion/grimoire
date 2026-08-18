@@ -35,7 +35,7 @@ import { EventJsonDialog } from "@/components/EventJsonDialog";
 import { EmojiPickerDialog } from "@/components/chat/EmojiPickerDialog";
 import { formatTimestamp } from "@/hooks/useLocale";
 import { nip19 } from "nostr-tools";
-import { isInferenceAvailable } from "@/services/inference";
+import { isAnyInferenceReachable } from "@/services/inference";
 import { HexHoverAvatar } from "@/components/ai/Hex";
 import { getTagValue } from "applesauce-core/helpers";
 import { parseAddressPointer } from "@/lib/nip89-helpers";
@@ -295,7 +295,7 @@ function useEventActions(event: NostrEvent) {
     viewEventJson,
     askAi,
     // Read once per render: an injector that appears later shows up on the next.
-    aiAvailable: isInferenceAvailable(),
+    aiAvailable: isAnyInferenceReachable(),
     zapEvent,
     openChatWindow,
     handleToggleFavorite,

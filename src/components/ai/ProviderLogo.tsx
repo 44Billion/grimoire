@@ -56,6 +56,8 @@ const ALIASES: Record<string, keyof typeof MARKS> = {
   gpt: "openai",
   "azure-openai": "openai",
   gemini: "google",
+  // Chrome's built-in model is Google's; the mark is a hint, not a claim.
+  chrome: "google",
   "google-vertex": "google",
   llama: "ollama",
 };

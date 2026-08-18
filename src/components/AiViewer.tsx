@@ -23,10 +23,13 @@ import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 import {
   describeInferenceError,
+  isAnyInferenceReachable,
   isInferenceAvailable,
+  onModelDownloadProgress,
   resolveRequest,
   type ToolSupport,
 } from "@/services/inference";
+import { PROMPT_API_MODEL } from "@/services/prompt-api";
 import { runToolLoop } from "@/services/tool-loop";
 import type { InferenceMessage, Usage } from "@/types/inference";
 import { formatTimestamp, useLocale } from "@/hooks/useLocale";
@@ -143,6 +146,15 @@ function LinkedText({
       })}
     </>
   );
+}
+
+/**
+ * Download progress as Chrome reports it — a 0..1 fraction in current builds,
+ * bytes in older ones, and there is no header saying which.
+ */
+function formatDownload(loaded: number): string {
+  if (loaded <= 1) return `${Math.round(loaded * 100)}%`;
+  return `${Math.round(loaded / 1_000_000)} MB`;
 }
 
 /** A turn as rendered. `pending` marks the assistant turn currently streaming. */
@@ -353,7 +365,12 @@ export default function AiViewer({
 
   // Availability is read once: an injector that appears later is picked up on
   // the next send, which throws `unavailable` with the same message.
-  const available = isInferenceAvailable();
+  // `isAnyInferenceReachable` also counts the browser's own model, so a user
+  // with no extension is not told nothing can answer.
+  const available = isAnyInferenceReachable();
+  const injected = isInferenceAvailable();
+  /** Bytes (or fraction) of the on-device model downloaded, while it is. */
+  const [download, setDownload] = useState<number>();
 
   // Before the first send, mentions are unknown, so show the grounding that is
   // already decided. After, show exactly what went out.
@@ -376,10 +393,13 @@ export default function AiViewer({
   );
   const toolsEnabled = toolSupport !== "none";
 
-  // The model that answered most recently, for the agent header.
+  // The model that answered most recently, for the agent header. On the
+  // on-device path nothing has answered yet but the model is already known.
   const lastModel = useMemo(
-    () => [...turns].reverse().find((turn) => turn.model !== undefined)?.model,
-    [turns],
+    () =>
+      [...turns].reverse().find((turn) => turn.model !== undefined)?.model ??
+      (injected ? undefined : PROMPT_API_MODEL),
+    [injected, turns],
   );
 
   // `open_window` needs the window state, so it is built here; the read-only
@@ -547,6 +567,10 @@ export default function AiViewer({
         );
       };
 
+      // The on-device model downloads on first use, which is large enough that
+      // a silent wait reads as a hang.
+      onModelDownloadProgress(setDownload);
+
       try {
         const loop = await runToolLoop({
           executors,
@@ -603,6 +627,8 @@ export default function AiViewer({
       } finally {
         controllerRef.current = null;
         setStreaming(false);
+        onModelDownloadProgress(undefined);
+        setDownload(undefined);
       }
     },
     [
@@ -632,8 +658,15 @@ export default function AiViewer({
     }
     autoSent.current = true;
     if (stored.length > 0 || turns.length > 0) return;
+    // Only an injector answers unprompted. Opening the on-device model can
+    // start a download, which the browser only allows from a user gesture, so
+    // the prompt waits in the composer for the click that qualifies.
+    if (!injected) {
+      setInput(prompt);
+      return;
+    }
     void send(prompt);
-  }, [available, prompt, send, stored, turns.length]);
+  }, [available, injected, prompt, send, stored, turns.length]);
 
   const submit = () => {
     const text = input.trim();
@@ -652,7 +685,8 @@ export default function AiViewer({
           <p className="max-w-sm text-sm text-muted-foreground">
             Inference comes from an extension that injects{" "}
             <code className="text-xs">window.inference</code>. It keeps your API
-            keys — grimoire never sees them, and asks nothing of them.
+            keys — grimoire never sees them, and asks nothing of them. This
+            browser has no built-in model to fall back to either.
           </p>
           <a
             className="inline-flex items-center gap-1.5 text-sm text-primary underline underline-offset-2 hover:text-primary/80"
@@ -772,7 +806,9 @@ export default function AiViewer({
                       <p className="max-w-sm text-sm text-muted-foreground">
                         {context?.label
                           ? "Grounded in the local copy — no data leaves except the prompt."
-                          : "Your extension picks the provider and model."}
+                          : injected
+                            ? "Your extension picks the provider and model."
+                            : "No extension found, so this runs on the browser's own model — nothing leaves the machine. The first answer downloads it."}
                       </p>
                     </div>
                   </>
@@ -880,6 +916,14 @@ export default function AiViewer({
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
+
+      {/* A model download is minutes of nothing otherwise. */}
+      {download !== undefined && (
+        <div className="mx-4 mb-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          Downloading the on-device model — {formatDownload(download)}. It is
+          kept for next time.
+        </div>
+      )}
 
       {error && (
         <div className="mx-4 mb-2 rounded-md border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">

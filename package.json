@@ -83,6 +83,7 @@
     "hash-sum": "^2.0.0",
     "hls-video-element": "^1.5.11",
     "hls.js": "^1.6.17",
+    "ipa-tools": "^0.3.1",
     "jotai": "^2.20.2",
     "js-yaml": "^5.2.3",
     "livekit-client": "^2.21.0",

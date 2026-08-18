@@ -5,19 +5,31 @@ import {
   describeInferenceError,
   getInference,
   getInferenceFeatures,
+  isAnyInferenceReachable,
   isInferenceAvailable,
   isInferenceError,
+  probeInference,
+  resolveRequest,
 } from "./inference";
 import {
   createMockInference,
   installMockInference,
 } from "@/test/mock-inference";
+import {
+  createMockPromptApi,
+  installMockPromptApi,
+} from "@/test/mock-prompt-api";
+
+import type { InferenceChunk } from "@/types/inference";
 
 let restore: (() => void) | undefined;
+let restorePromptApi: (() => void) | undefined;
 
 afterEach(() => {
   restore?.();
   restore = undefined;
+  restorePromptApi?.();
+  restorePromptApi = undefined;
 });
 
 describe("availability", () => {
@@ -146,5 +158,61 @@ describe("complete", () => {
         signal: controller.signal,
       }),
     ).rejects.toMatchObject({ code: "aborted" });
+  });
+});
+
+describe("the on-device fallback", () => {
+  it("is not reachable when neither an injector nor the browser can answer", async () => {
+    restore = installMockInference(undefined);
+    restorePromptApi = installMockPromptApi(undefined);
+    expect(isAnyInferenceReachable()).toBe(false);
+    expect(await probeInference()).toEqual({
+      ipa: false,
+      fallback: "unavailable",
+    });
+  });
+
+  it("counts the browser's own model as reachable, injector or not", () => {
+    restore = installMockInference(undefined);
+    restorePromptApi = installMockPromptApi(createMockPromptApi());
+    expect(isInferenceAvailable()).toBe(false);
+    expect(isAnyInferenceReachable()).toBe(true);
+  });
+
+  it("answers from the browser when no injector is present, without tools", async () => {
+    restore = installMockInference(undefined);
+    restorePromptApi = installMockPromptApi(
+      createMockPromptApi({ chunks: ["on ", "device"] }),
+    );
+
+    const resolved = resolveRequest();
+    expect(resolved.tools).toBe("none");
+    expect(resolved.onDevice).toBe(true);
+
+    const chunks: InferenceChunk[] = [];
+    for await (const chunk of resolved.request({
+      method: "chat",
+      messages: [{ role: "user", content: "hi" }],
+    })) {
+      chunks.push(chunk);
+    }
+    expect(chunks[chunks.length - 1]).toMatchObject({
+      type: "done",
+      message: { content: "on device" },
+    });
+  });
+
+  it("prefers the injector when there is one, and never marks it on-device", () => {
+    restorePromptApi = installMockPromptApi(createMockPromptApi());
+    restore = installMockInference(
+      createMockInference(
+        { kind: "normal", deltas: ["x"] },
+        { toolCalling: true },
+      ),
+    );
+
+    const resolved = resolveRequest();
+    expect(resolved.tools).toBe("standard");
+    expect(resolved.onDevice).toBeUndefined();
   });
 });

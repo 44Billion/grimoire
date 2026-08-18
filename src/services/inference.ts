@@ -1,42 +1,61 @@
 /**
- * Inference Provider API access. Not a singleton — `window.inference` is
- * injected by an extension, so this is a lookup, not state we own.
+ * Inference Provider API access, plus the one fallback grimoire ships.
+ *
+ * Not a singleton — `window.inference` is injected by an extension, so IPA is a
+ * lookup, not state we own. The fallback client is a singleton, because it holds
+ * one on-device model session.
  *
  * Errors carry a `code`; match on that, never `instanceof`. Injectors
  * reconstruct the error across isolated worlds, so the prototype is lost.
  */
 
+import {
+  createInference,
+  getInference as getIpaInference,
+  isInferenceAvailable as isIpaAvailable,
+  isInferenceError,
+  makeInferenceError,
+  type InferenceClient,
+} from "ipa-tools";
+
+import {
+  createPromptApiBackend,
+  isPromptApiPresent,
+  promptApiAvailability,
+  PROMPT_API_ID,
+} from "./prompt-api";
+
+import type { BackendAvailability } from "ipa-tools";
 import type {
   DoneChunk,
   Inference,
-  InferenceError,
-  InferenceErrorCode,
   InferenceFeatures,
   InferenceRequest,
 } from "@/types/inference";
 
-const INFERENCE_ERROR_CODES: ReadonlySet<string> = new Set([
-  "permission_denied",
-  "invalid_request",
-  "unavailable",
-  "provider_error",
-  "aborted",
-]);
+// Re-exported so callers keep one import site for the whole surface.
+export {
+  isInferenceError,
+  makeInferenceError,
+  serializeToolResult,
+} from "ipa-tools";
 
-export function makeInferenceError(
-  code: InferenceErrorCode,
-  message?: string,
-): InferenceError {
-  const error = new Error(message || code) as InferenceError;
-  error.name = "InferenceError";
-  error.code = code;
-  return error;
-}
-
-export function isInferenceError(error: unknown): error is InferenceError {
-  if (error == null || typeof error !== "object") return false;
-  const code = (error as { code?: unknown }).code;
-  return typeof code === "string" && INFERENCE_ERROR_CODES.has(code);
+/**
+ * Parse a tool call's arguments. Empty means no arguments, not an error —
+ * providers send `""` for a zero-argument call.
+ *
+ * Not `ipa-tools`' version, which throws `invalid_request` on malformed JSON:
+ * that ends the turn, where the loop here hands the model an error result it
+ * can correct from. A model that mangles its own arguments should get a chance
+ * to notice.
+ */
+export function parseToolArguments(json: string | undefined): unknown {
+  if (!json) return {};
+  try {
+    return JSON.parse(json);
+  } catch {
+    return undefined;
+  }
 }
 
 /** Human-readable reason for a failed request, for surfacing in a window. */
@@ -58,26 +77,23 @@ export function describeInferenceError(error: unknown): string {
   }
 }
 
-function lookup(): Inference | undefined {
-  const inference = globalThis.window?.inference;
-  return inference != null && typeof inference.request === "function"
-    ? inference
-    : undefined;
+/**
+ * True when an injector is present. Synchronous, so it can gate a menu item —
+ * the fallback's availability is asynchronous, see {@link probeInference}.
+ */
+export function isInferenceAvailable(): boolean {
+  return isIpaAvailable();
 }
 
-export function isInferenceAvailable(): boolean {
-  return lookup() != null;
+/** True when anything can answer, injector or on-device model. */
+export function isAnyInferenceReachable(): boolean {
+  return isIpaAvailable() || isPromptApiPresent();
 }
 
 export function getInference(): Inference {
-  const inference = lookup();
-  if (!inference) {
-    throw makeInferenceError(
-      "unavailable",
-      "window.inference is not available.",
-    );
-  }
-  return inference;
+  // `ipa-tools` types `window.inference` without the experimental namespace,
+  // which is real and the only way to send tools today.
+  return getIpaInference() as Inference;
 }
 
 /**
@@ -85,31 +101,58 @@ export function getInference(): Inference {
  * never names a provider or model — the extension owns that choice.
  */
 export function getInferenceFeatures(): InferenceFeatures {
-  return lookup()?.getFeatures?.() ?? {};
+  if (!isIpaAvailable()) return {};
+  return getInference().getFeatures?.() ?? {};
+}
+
+/** Progress of the on-device model download, in bytes, while one is running. */
+let downloadProgress: ((loaded: number) => void) | undefined;
+
+/** Set the sink for on-device download progress. Replaces any previous one. */
+export function onModelDownloadProgress(
+  listener: ((loaded: number) => void) | undefined,
+): void {
+  downloadProgress = listener;
 }
 
 /**
- * Parse a tool call's arguments. Empty means no arguments, not an error —
- * providers send `""` for a zero-argument call.
+ * IPA first, on-device second — `createInference` re-checks the injector around
+ * every probe and create, so an extension that appears late still wins.
+ *
+ * One client for the app: it caches the resolved backend, and the on-device
+ * model is a download nobody wants twice.
  */
-export function parseToolArguments(json: string | undefined): unknown {
-  if (!json) return {};
-  try {
-    return JSON.parse(json);
-  } catch {
-    return undefined;
-  }
+let client: InferenceClient | undefined;
+
+function fallbackClient(): InferenceClient {
+  client ??= createInference({
+    fallbacks: [createPromptApiBackend()],
+    onDownloadProgress: (loaded) => downloadProgress?.(loaded),
+  });
+  return client;
 }
 
-/** Serialize a tool result for a `role: "tool"` message. */
-export function serializeToolResult(value: unknown): string {
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value) ?? "null";
-  } catch {
-    return JSON.stringify({ error: "Result was not serializable." });
-  }
+export interface InferenceReach {
+  /** An injector is present. */
+  ipa: boolean;
+  /** State of the on-device fallback. */
+  fallback: BackendAvailability;
 }
+
+/**
+ * What can answer right now. Asynchronous because the on-device model reports
+ * four states, one of which is a download that has not happened yet.
+ */
+export async function probeInference(): Promise<InferenceReach> {
+  const status = await fallbackClient().probe();
+  return {
+    ipa: status.ipa === "available",
+    fallback: (status[PROMPT_API_ID] as BackendAvailability) ?? "unavailable",
+  };
+}
+
+/** Availability of the on-device model alone, without probing the injector. */
+export { promptApiAvailability };
 
 /**
  * How this window may send tools, if at all.
@@ -123,13 +166,29 @@ export type ToolSupport = "standard" | "experimental" | "none";
 export interface ResolvedRequest {
   request: Inference["request"];
   tools: ToolSupport;
+  /** True when the answer will come from the page's own model, not an injector. */
+  onDevice?: boolean;
 }
 
 /**
- * Pick the request function to use. Prefers the standard path; falls back to
- * the experimental one only to gain tool calling, never for plain chat.
+ * Pick the request function to use.
+ *
+ * IPA is decided here rather than inside the client because the experimental
+ * namespace is injector-specific: the client only knows `request`, so routing
+ * an injected provider through it would silently drop tool calling.
  */
 export function resolveRequest(): ResolvedRequest {
+  if (!isIpaAvailable()) {
+    // No injector. The client resolves the fallback lazily, inside the request,
+    // and re-checks IPA on the way — so a late injection still wins.
+    const fallback = fallbackClient();
+    return {
+      request: (request) => fallback.request(request),
+      tools: "none",
+      onDevice: true,
+    };
+  }
+
   const inference = getInference();
   const standard = inference.request.bind(inference);
 
@@ -151,7 +210,7 @@ export function resolveRequest(): ResolvedRequest {
 /** Drain a stream to its single `done` chunk, ignoring deltas. */
 export async function complete(request: InferenceRequest): Promise<DoneChunk> {
   let done: DoneChunk | undefined;
-  for await (const chunk of getInference().request(request)) {
+  for await (const chunk of resolveRequest().request(request)) {
     if (chunk.type === "done") done = chunk;
   }
   if (!done) {

@@ -4,7 +4,7 @@ import type { NostrEvent } from "nostr-tools";
 
 import { Button } from "@/components/ui/button";
 import { useAddWindow } from "@/core/state";
-import { isInferenceAvailable } from "@/services/inference";
+import { isAnyInferenceReachable } from "@/services/inference";
 
 /**
  * Offer to explain an event grimoire has no renderer for.
@@ -16,7 +16,7 @@ import { isInferenceAvailable } from "@/services/inference";
 export function ExplainKindButton({ event }: { event: NostrEvent }) {
   const addWindow = useAddWindow();
 
-  if (!isInferenceAvailable()) return null;
+  if (!isAnyInferenceReachable()) return null;
 
   const open = () => {
     // Kind metadata lets the context builder describe the event without
