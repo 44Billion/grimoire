@@ -32,8 +32,7 @@ import { relayListCache } from "@/services/relay-list-cache";
 import { useEffect, useState } from "react";
 import type { Subscription } from "rxjs";
 import { useGrimoire } from "@/core/state";
-import { HEX_NAME, HexHoverAvatar } from "./ai/Hex";
-import { isAnyInferenceReachable } from "@/services/inference";
+import { AskHexButton } from "./ai/AskHexButton";
 import { USER_SERVER_LIST_KIND, getServersFromEvent } from "@/services/blossom";
 import blossomServerCache from "@/services/blossom-server-cache";
 
@@ -247,29 +246,11 @@ export function ProfileViewer({ pubkey }: ProfileViewerProps) {
 
         {/* Right: Profile icon and Relay dropdown */}
         <div className="flex items-center gap-3 flex-shrink-0">
-          {/* Ask about this person, grounded in the cached metadata. Same
-              affordance as the event menu's, gated the same way. */}
-          {isAnyInferenceReachable() && (
-            <button
-              aria-label={`Ask ${HEX_NAME} about this profile`}
-              className="group flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"
-              onClick={() =>
-                addWindow(
-                  "ai",
-                  { target: { type: "event", value: identifier } },
-                  // The full identifier, never an abbreviation: the edit box
-                  // re-runs this string.
-                  `ai ${identifier}`,
-                  `ASK ${HEX_NAME.toUpperCase()}`,
-                )
-              }
-              title={`Ask ${HEX_NAME} about this profile`}
-              type="button"
-            >
-              <HexHoverAvatar className="size-3" />
-              <span>Ask {HEX_NAME}</span>
-            </button>
-          )}
+          {/* Ask about this person, grounded in the cached metadata. */}
+          <AskHexButton
+            target={{ type: "event", value: identifier }}
+            title="Ask Hex about this profile"
+          />
           <div className="flex items-center gap-1 text-muted-foreground">
             <UserIcon className="size-3" />
             <span>Profile</span>

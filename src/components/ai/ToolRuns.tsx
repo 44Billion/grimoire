@@ -234,7 +234,10 @@ function ToolFeed({ ids, run }: { ids: string[]; run: ToolRun }) {
           <ReplyCodeBlock code={reqOf(run)} language="json" />
         </div>
       )}
-      <div className="divide-y divide-border/50">
+      {/* Scrolls inside itself: twenty events, each rendered whole and some
+          quoting their parent, is longer than the conversation that asked for
+          them — the answer was unreachable below it. */}
+      <div className="max-h-80 divide-y divide-border/50 overflow-y-auto">
         {ids.map((id) => (
           <EmbeddedEvent className="" eventPointer={{ id }} key={id} />
         ))}

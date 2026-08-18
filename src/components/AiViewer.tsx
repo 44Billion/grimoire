@@ -10,7 +10,14 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { ArrowDown, ArrowUp, ExternalLink, Send, Square } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Bot,
+  ExternalLink,
+  Send,
+  Square,
+} from "lucide-react";
 
 import {
   Conversation,
@@ -914,6 +921,12 @@ export default function AiViewer({
                             {HEX_NAME}
                           </span>
                         )}
+                        {/* The same marker an automated account wears in a
+                            member list: whoever is speaking here is a model. */}
+                        <Bot
+                          aria-label="Automated account"
+                          className="size-3 shrink-0 self-center text-muted-foreground"
+                        />
                       </>
                     ) : pubkey ? (
                       <UserName className="font-medium" pubkey={pubkey} />

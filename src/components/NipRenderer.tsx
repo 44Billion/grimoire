@@ -3,6 +3,7 @@ import { MarkdownContent } from "./nostr/MarkdownContent";
 import { KindBadge } from "./KindBadge";
 import { getKindsForNip } from "@/lib/nip-kinds";
 import { CenteredContent } from "./ui/CenteredContent";
+import { AskHexButton } from "./ai/AskHexButton";
 import { cn } from "@/lib/utils";
 
 interface NipRendererProps {
@@ -38,6 +39,15 @@ export function NipRenderer({ nipId, className = "" }: NipRendererProps) {
 
   return (
     <CenteredContent className={cn("overflow-x-hidden", className)}>
+      {/* The spec text is already cached, so a question about it costs one
+          request and no fetch. */}
+      <div className="mb-2 flex justify-end">
+        <AskHexButton
+          label={`ASK HEX NIP-${nipId}`}
+          target={{ type: "nip", value: nipId }}
+          title={`Ask Hex about NIP-${nipId}`}
+        />
+      </div>
       <MarkdownContent content={content} />
 
       {kinds.length > 0 && (

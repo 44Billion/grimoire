@@ -20,6 +20,11 @@ Check these, in this order — each has caught a real bug:
 2. **A feed reaches a settled state.** `req -k 1 --limit 5` via Cmd+K should reach `LIVE` with `n/n` relays and stream events. Stuck on `LOADING` means EOSE handling is broken.
 3. **Chat loads messages.** `chat groups.0xchat.com'NkeVhXuWHGKKJCpn`. NIP-29 is the only enabled protocol, and NIP-29 relays commonly require AUTH.
 4. **Routes render.** `/`, `/run?cmd=profile%20fiatjaf.com`, `/note1…`, `/npub1…`, `/:actor/:identifier`, and a bad path (should show the 404 page inside `AppShell`, not react-router's dev screen).
+5. **The `ai` window mounts and is grounded.** Bare `ai` lists stored conversations; `ai npub1…` previews the person through the kind 0 renderer; "Ask Hex" on an event opens a window whose embed resolves and is fully visible from the top. Every one of those has broken while the pipeline was green — twice as a crashed component that looked like an event failing to load, so read `read_console_messages` before believing what the pane shows.
+
+   **Do not send** unless the change is in the request path: each turn spends the user's own money through their extension. `ai "prompt"` auto-sends by design, so type into the composer and leave it there instead. When you must send, one turn is enough, and prefer a question that needs a tool (`summarize the last 5 notes from my contacts`) since the tool loop is where the bugs are.
+
+   To exercise the on-device fallback, disable the Inference Bridge extension first — with an injector present `resolveRequest()` never reaches it — and expect Chrome's model to download on the first send, which needs a real click.
 
 ## Gotchas that have wasted time here
 

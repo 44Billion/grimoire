@@ -21,6 +21,7 @@ deliberately omits:
 | Custom React hooks (`useAccount`, `useTimeline`, …) | `docs/hooks.md` |
 | Chat protocol adapters (NIP-29) | `docs/chat-system.md` |
 | Tailwind v4 conventions | `docs/tailwind-v4.md` |
+| Inference (`ai` window, IPA, tools, on-device fallback) | `docs/inference.md` |
 
 The official **`applesauce` skill** (`.claude/skills/applesauce`) and the
 applesauce + nostrbook **MCP servers** (`.mcp.json`) are authoritative for
