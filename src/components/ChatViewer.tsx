@@ -104,6 +104,7 @@ import {
   FIRST_ITEM_INDEX_BASE,
 } from "./chat/prepend-anchor";
 import { usePaintedContainer } from "./chat/use-painted-container";
+import { timelineState } from "./chat/timeline-state";
 import {
   clearDraft,
   draftKey,
@@ -1280,6 +1281,14 @@ export function ChatViewer({
     `${conversation?.id ?? ""}:${messagesWithMarkers.length > 0}`,
   );
 
+  // The list, a wait, or nothing — and never "nothing" while the gate above is
+  // still shut. See `chat/timeline-state.ts`.
+  const timeline = timelineState({
+    messages,
+    rows: messagesWithMarkers.length,
+    painted,
+  });
+
   /**
    * Open every channel at its NEWEST message.
    *
@@ -1982,8 +1991,9 @@ export function ChatViewer({
       >
         {/* Not mounted until the pane can be measured in a painting document —
             `use-painted-container.ts` for what mounting early does to a list
-            that opens itself at the newest message. */}
-        {painted && messagesWithMarkers && messagesWithMarkers.length > 0 ? (
+            that opens itself at the newest message, and `timeline-state.ts` for
+            why waiting behind that gate is not the same as having nothing. */}
+        {timeline === "list" ? (
           <Virtuoso
             ref={virtuosoRef}
             data={messagesWithMarkers}
@@ -2129,9 +2139,7 @@ export function ChatViewer({
             }}
             style={{ height: "100%" }}
           />
-        ) : messages === undefined ? (
-          // Adapters don't emit until EOSE, so undefined means still loading —
-          // not empty.
+        ) : timeline === "waiting" ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
             <Loader2 className="size-5 animate-spin" />
             <span className="text-xs">Loading messages...</span>
