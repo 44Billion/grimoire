@@ -14,8 +14,11 @@
 import { BellOff, Hash, Pin } from "lucide-react";
 import { useGroupMetadata } from "@/hooks/useGroupMetadata";
 import { RowMenu } from "@/components/chat/RowMenu";
+import { UnreadBadge } from "@/components/concord/ConcordChannelList";
+import type { GroupUnread } from "@/lib/nip29/unread";
 import { MutedSection } from "@/components/chat/MutedSection";
-import { useConcordPrefs, type RowRef } from "@/hooks/useConcordPrefs";
+import { useConcordPrefs } from "@/hooks/useConcordPrefs";
+import { groupRowRef } from "@/lib/nip29/row-ref";
 import { partitionPinned } from "@/lib/concord/channels";
 import { cn } from "@/lib/utils";
 import type { GroupEntry } from "@/hooks/useNip29GroupList";
@@ -25,29 +28,22 @@ function relayHost(url: string): string {
   return url.replace(/^wss?:\/\//, "").replace(/\/$/, "");
 }
 
-/**
- * How a group is named in the arrangement store.
- *
- * The relay is the CONTAINER, exactly as a Concord community is: a group id is
- * only unique within the relay hosting it, so pinning `bitcoin` on one relay
- * must not pin the unrelated `bitcoin` on another.
- */
-const groupRowRef = (group: GroupSelection): RowRef => [
-  "nip-29",
-  group.relayUrl,
-  group.groupId,
-];
-
 export function Nip29GroupList({
   groups,
   selected,
   onSelect,
   loading,
+  unread,
+  onMarkRead,
 }: {
   groups: GroupEntry[];
   selected?: GroupSelection | undefined;
   onSelect: (selection: GroupSelection) => void;
   loading?: boolean;
+  /** What each group has waiting, keyed as {@link groupKey}. */
+  unread?: Map<string, GroupUnread>;
+  /** Stamps a group read without opening it, at its newest counted message. */
+  onMarkRead?: (selection: GroupSelection, latest: number) => void;
 }) {
   const { isRowPinned, isRowMuted } = useConcordPrefs();
 
@@ -80,6 +76,10 @@ export function Nip29GroupList({
           group={group}
           selected={!!selected && groupKey(selected) === groupKey(group)}
           onSelect={onSelect}
+          {...(unread?.get(groupKey(group))
+            ? { unread: unread.get(groupKey(group)) }
+            : {})}
+          {...(onMarkRead ? { onMarkRead } : {})}
         />
       ))}
       <MutedSection count={muted.length}>
@@ -100,10 +100,15 @@ function Nip29GroupRow({
   group,
   selected,
   onSelect,
+  unread,
+  onMarkRead,
 }: {
   group: GroupEntry;
   selected: boolean;
   onSelect: (selection: GroupSelection) => void;
+  unread?: GroupUnread | undefined;
+  onMarkRead?:
+    ((selection: GroupSelection, latest: number) => void) | undefined;
 }) {
   // `_` is NIP-29's unmanaged group: every message on the relay that names no
   // group. It has no kind-39000 metadata to resolve, so the relay IS the name.
@@ -118,6 +123,10 @@ function Nip29GroupRow({
   const row = groupRowRef(group);
   const pinned = isRowPinned(row);
   const muted = isRowMuted(row);
+  const selection = { groupId: group.groupId, relayUrl: group.relayUrl };
+  // A muted row is the reader saying they do not want to be told, so it carries
+  // no badge and needs no way to clear one — same as a muted Concord channel.
+  const waiting = !muted && (unread?.count ?? 0) > 0 ? unread : undefined;
 
   return (
     <RowMenu
@@ -125,16 +134,18 @@ function Nip29GroupRow({
       onTogglePin={() => toggleRowPin(row)}
       muted={muted}
       onToggleMute={() => toggleRowMute(row)}
+      {...(waiting && waiting.latest > 0 && onMarkRead
+        ? { onMarkRead: () => onMarkRead(selection, waiting.latest) }
+        : {})}
     >
       <button
         type="button"
-        onClick={() =>
-          onSelect({ groupId: group.groupId, relayUrl: group.relayUrl })
-        }
+        onClick={() => onSelect(selection)}
         className={cn(
           "flex w-full cursor-crosshair items-center gap-1.5 px-2 py-0.5 text-left text-sm hover:bg-muted/50",
           selected && "bg-muted/70 font-medium",
           muted && "text-muted-foreground",
+          waiting && "font-semibold text-foreground",
         )}
         // The relay, because two groups can share a name and only the host
         // tells them apart — in the title rather than the row, which has no
@@ -150,6 +161,7 @@ function Nip29GroupRow({
           {muted && (
             <BellOff className="size-3 shrink-0 text-muted-foreground" />
           )}
+          {waiting && <UnreadBadge unread={waiting} />}
         </span>
       </button>
     </RowMenu>

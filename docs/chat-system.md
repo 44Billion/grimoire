@@ -174,7 +174,8 @@ Messages are kind 9, metadata kind 39000, admins kind 39001, members kind 39002.
 
 ## Read state (optional adapter surface)
 
-Two optional methods on `ChatProtocolAdapter`, implemented only by Concord:
+Two optional methods on `ChatProtocolAdapter`, implemented by Concord, NIP-17 and
+NIP-29:
 
 - `getLastRead(conversation): Promise<number>` — unix seconds, 0 for never read
 - `markRead(conversation, timestampSecs): Promise<void>` — monotonic
@@ -195,21 +196,104 @@ implementing this for another protocol:
    `max(clamped newest loaded, summary.latest)`, where `latest` is by
    construction the newest row the count counted
    (`channelUnreadSummary`, `src/services/concord-rumor-store.ts`).
+   NIP-29 has the OPPOSITE problem, and it is the one thing a reader porting this
+   should study. Its count is kind 9 alone while the timeline also renders 9000,
+   9001 and 9321, so the newest message shown can be NEWER than anything the
+   count can see — and a NIP-29 stamp has a second consumer no other protocol's
+   has: it is the `since` on the sidebar's `kinds:[9]` REQ. Stamped from the
+   reader's own join event, that REQ asks for messages newer than the join, gets
+   nothing, and the group loses its last message: a blank row in
+   `GroupListViewer` and last place in the recency sort until somebody posts
+   again. So `Nip29Adapter.markRead` caps at the newest non-future kind 9, and a
+   group holding no countable message is not stamped at all.
 3. **Bound both sides by the same clock allowance.** Message timestamps are
    author-chosen. Concord's scan and stamp both stop at
    `now + CONCORD_READ_MAX_FUTURE_SECS`; clamping one and not the other either
-   pins the badge forever or marks the conversation read for years.
+   pins the badge forever or marks the conversation read for years. NIP-17 uses
+   the same hour on both sides.
+
+   **NIP-29 deliberately does not**, for the reason in rule 2: its stamp is a
+   fetch bound. A stamp settled an hour ahead puts `since` an hour ahead, and
+   every message genuinely sent during that hour falls below it — never
+   requested, never counted, and marked read besides. So the scan keeps the hour
+   (a future-dated message still badges) while `markGroupRead` clamps at `now`
+   and `GroupUnread.latest` — what "Mark as read" writes straight through —
+   names only a message that has happened. The cost is the milder failure rule 3
+   warns about, and it is bounded: a future-dated message badges until the clock
+   reaches it, then becomes stampable and clears.
+
+   The corollary is that `nowSecs` must stay fresh. `useNip29Unread` ticks a
+   counter into its `useLiveQuery` deps because nothing else will: a live query
+   refires on a deps change or a mutation to a range it observes, and NIP-29 has
+   no local mirror to write and `markGroupRead` does not write when the stamp
+   would not move. Frozen, the ceiling drifts into the past and every arriving
+   message reads as future-dated — a window left open counts to zero and stays
+   there. Concord shares the shape and gets away with it only because its ingest
+   writes Dexie on every message.
 
 A conversation with `lastRead === 0` gets badges but no divider — flagging the
 whole history of a channel someone just joined is noise.
 
 Stamps live in the `chatReads` Dexie table, keyed
 `[pubkey+protocol+containerId+channelId]`, and are wiped on logout for every
-protocol the account holds. The table is shared by design — a NIP-29
-`(relay, group)` pair is the same row shape as a Concord `(community, channel)`
-one — but only Concord writes it today, because the COUNTING behind the badge
-scans `concordRumors` through the fold pipeline. Nothing about read state is
-ever published: no CORD document defines a read marker.
+protocol the account holds — `clearReads` (`concord-reads.ts`) deletes by the
+`pubkey` index and is deliberately not protocol-scoped, so a new protocol's rows
+are covered the day it starts writing them. Nothing about read state is ever
+published: no CORD document and no NIP defines a read marker.
+
+The table is shared by design, one small module per protocol over it:
+
+| Protocol | Module | `containerId` | `channelId` |
+| --- | --- | --- | --- |
+| `concord` | `concord-reads.ts` | community idHex | channel idHex |
+| `nip-17` | `dm-reads.ts` | constant `"dm"` | conversation id |
+| `nip-29` | `nip29-reads.ts` | normalized relay URL | group id, VERBATIM |
+
+Two keying rules that each cost a bug elsewhere:
+
+- **Normalize the relay in the module, not at the call site.** The sidebar builds
+  its URL with `new URL().toString()` (trailing slash); the adapter's
+  `parseIdentifier` only prefixes `wss://`. Written raw, the pane stamps one key
+  and the badge reads another — a badge nothing can clear. `nip29-reads.ts` runs
+  every key through `normalizeRelayURL`, and exports `groupReadKey` so the hook
+  that JOINS stamps to messages canonicalizes the same way.
+- **Do not lowercase a NIP-29 group id.** Concord lowercases its channel ids
+  because they are hex; a group id is relay-assigned and `#h` is case-sensitive,
+  so `Bitcoin` and `bitcoin` on one relay are two rooms.
+
+### Counting, which is the part that does not generalize
+
+Each protocol counts over its own substrate, and NIP-29 is the odd one:
+
+- Concord scans `concordRumors`, NIP-17 scans `dmRumors` — Dexie index ranges,
+  descending, so `latest` is the newest row counted.
+- **NIP-29 has no local mirror at all.** A kind 9 lives in the in-memory
+  EventStore and nowhere else, so the count is measured over a bounded
+  newest-first window the sidebar's own standing REQ collects
+  (`useGroupMessageWindows`, `src/hooks/useNip29GroupList.ts`), folded by
+  `mergeGroupWindow` and summarized by the pure `summarizeGroupUnread`
+  (`src/lib/nip29/unread.ts`).
+
+Three consequences of having no mirror:
+
+1. **The window is relay-scoped by construction, and has to be.** A group id is
+   only unique within its relay, so `eventStore.timeline({"#h":[id]})` would
+   merge two relays' `bitcoin` rooms. The subscription knows which relay it
+   opened; the store does not.
+2. **`since` is the reader's own stamp**, resolved once per (reader, group set)
+   and deliberately NOT a subscription dependency — a stamp only moves forward,
+   which can only shrink a client-side count, and re-subscribing per mark would
+   cost one REQ per relay per message read. A group with no stamp gets no `since`
+   at all: a time floor would return nothing for a quiet group nobody has opened,
+   erasing its last message and demoting it out of the recency sort.
+3. **The count is only as deep as the window** — beyond `NIP29_UNREAD_CAP` it
+   reports a floor and says so through `capped`, which `UnreadBadge` renders as
+   `99+`. Concord's badge has the same ceiling for the same reason.
+
+The Groups section's REQs are therefore ungated: they used to run only while the
+section was expanded, which was right while the heading carried no count, and a
+collapsed section that cannot say something is waiting is most of an unread badge
+missing.
 
 Notification levels are keyed the same way:
 `chatnotif:<protocol>|<container>[|<channel>]` in `concordKv`, which a Concord

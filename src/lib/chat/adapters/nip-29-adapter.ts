@@ -43,6 +43,7 @@ import {
   ReactionFactory,
 } from "applesauce-common/factories";
 import { resolveGroupMetadata } from "@/lib/chat/group-metadata-helpers";
+import { markGroupRead, readGroupLastRead } from "@/services/nip29-reads";
 
 /**
  * NIP-29 Adapter - Relay-Based Groups
@@ -468,6 +469,77 @@ export class Nip29Adapter extends ChatProtocolAdapter {
 
     // Publish only to the group relay
     await publishEventToRelays(event, [relayUrl]);
+  }
+
+  /**
+   * How far into this group the reader has caught up. Unix seconds, 0 for never.
+   *
+   * The pair is what `useReadMarker` drives: it captures this BEFORE the visit,
+   * places the "New" divider against the frozen value, and only then stamps. The
+   * hook is inert for an adapter that implements neither, which is what kept
+   * NIP-29 badge-less until now.
+   */
+  async getLastRead(conversation: Conversation): Promise<number> {
+    const groupId = conversation.metadata?.groupId;
+    const relayUrl = conversation.metadata?.relayUrl;
+    if (!groupId || !relayUrl) return 0;
+    const pubkey = accountManager.active$.value?.pubkey;
+    if (!pubkey) return 0;
+    return readGroupLastRead(pubkey, relayUrl, groupId);
+  }
+
+  /**
+   * Move the stamp — but never past the newest message the COUNT can see.
+   *
+   * `useReadMarker` hands over the newest of everything the pane loaded, and
+   * this timeline renders 9000, 9001 and 9321 beside the kind 9 the badge
+   * counts. Stamping that value clears the badge correctly, and it is still
+   * wrong, because a NIP-29 stamp has a second consumer the other protocols'
+   * do not: `useGroupMessageWindows` uses it as `since` on a `kinds:[9]` REQ.
+   *
+   * So a group whose newest event is a join — the reader's own kind 9000, the
+   * common case right after joining — would ask the relay for kind 9 newer than
+   * that join, get nothing, and lose its last message: a blank row in
+   * `GroupListViewer` and last place in the recency sort, until somebody posted
+   * again.
+   *
+   * Capping at the newest NON-FUTURE kind 9 fixes both halves at once. `since`
+   * is inclusive, so that message always comes back, and the stamp can never be
+   * a future fetch bound that silently excludes messages arriving under it.
+   * Everything the count counts is at or below it, so the badge still clears.
+   *
+   * A future-dated kind 9 therefore counts before it can be stamped, and the
+   * badge waits for the clock rather than for a reader — bounded by the message's
+   * own offset, and it heals itself.
+   */
+  async markRead(
+    conversation: Conversation,
+    timestampSecs: number,
+  ): Promise<void> {
+    const groupId = conversation.metadata?.groupId;
+    const relayUrl = conversation.metadata?.relayUrl;
+    if (!groupId || !relayUrl) return;
+    const pubkey = accountManager.active$.value?.pubkey;
+    if (!pubkey) return;
+    // Nothing loaded is not everything read.
+    if (!Number.isFinite(timestampSecs) || timestampSecs <= 0) return;
+
+    const nowSecs = Math.floor(Date.now() / 1000);
+    // Descending, so the first non-future one is the newest.
+    const newestCountable = eventStore
+      .getTimeline({ kinds: [9], "#h": [groupId] })
+      .find((event) => event.created_at <= nowSecs)?.created_at;
+    // A group holding no countable message has nothing to mark: stamping the
+    // join event that is all it holds would bound the REQ above every message
+    // anyone posts next.
+    if (!newestCountable) return;
+
+    await markGroupRead(
+      pubkey,
+      relayUrl,
+      groupId,
+      Math.min(timestampSecs, newestCountable),
+    );
   }
 
   /**

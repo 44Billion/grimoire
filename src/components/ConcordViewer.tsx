@@ -62,6 +62,8 @@ import {
 } from "@/lib/concord/window-props";
 import { Nip29GroupList } from "./nip29/Nip29GroupList";
 import { groupKey, type GroupSelection } from "@/lib/nip29/group-selection";
+import { groupRowRef } from "@/lib/nip29/row-ref";
+import { markGroupRead } from "@/services/nip29-reads";
 import { useNip29Groups } from "@/hooks/useNip29Groups";
 import { useConcordInvites } from "@/hooks/useConcordInvites";
 import { useConcordPins } from "@/hooks/useConcordPins";
@@ -613,16 +615,20 @@ export function ConcordViewer({
   );
 
   /**
-   * Only while the section is open, or a group is the thing on screen.
+   * Always, not only while the section is open — and the cost is stated rather
+   * than hidden: one standing REQ per group relay for as long as this window
+   * lives.
    *
-   * Listing the groups costs one standing REQ per relay for their last
-   * messages, and a `concord` window whose reader never expands the section
-   * would hold every one of them for nothing. The heading carries no count, so
-   * there is nothing a closed section needs the data for.
+   * It used to be gated on the section being expanded, which was right while the
+   * heading carried no count. It carries one now, and a collapsed section that
+   * could not tell you something was waiting would be most of an unread badge
+   * missing.
    */
-  const { groups: nip29Groups, loading: nip29Loading } = useNip29Groups(
-    groupSectionOpen || selectedGroup !== undefined,
-  );
+  const {
+    groups: nip29Groups,
+    loading: nip29Loading,
+    unread: nip29Unread,
+  } = useNip29Groups();
 
   const viewerPubkey = account?.pubkey;
 
@@ -655,6 +661,34 @@ export function ConcordViewer({
       void markChannelRead(viewerPubkey, communityIdHex, channelIdHex, atSecs);
     },
     [viewerPubkey, communityIdHex],
+  );
+
+  /**
+   * The Groups heading's number: every group added up, muted ones left out — the
+   * same rule the DM heading above it follows.
+   */
+  const groupUnreadCount = useMemo(() => {
+    let total = 0;
+    for (const [key, summary] of nip29Unread) {
+      const group = nip29Groups.find((g) => groupKey(g) === key);
+      if (!group || isRowMuted(groupRowRef(group))) continue;
+      total += summary.count;
+    }
+    return total;
+  }, [nip29Unread, nip29Groups, isRowMuted]);
+
+  /** Stamp a group read without opening it, at its newest counted message. */
+  const markGroupAllRead = useCallback(
+    (selection: GroupSelection, latest: number) => {
+      if (!viewerPubkey || latest <= 0) return;
+      void markGroupRead(
+        viewerPubkey,
+        selection.relayUrl,
+        selection.groupId,
+        latest,
+      );
+    },
+    [viewerPubkey],
   );
 
   const handleGroupSelect = useCallback(
@@ -1077,13 +1111,18 @@ export function ConcordViewer({
             className={cn(
               "flex w-full cursor-crosshair items-center gap-1.5 px-2 py-1 text-left text-sm hover:bg-muted/50",
               groupSectionOpen && "bg-muted/70 font-medium",
+              groupUnreadCount > 0 && "font-semibold text-foreground",
             )}
           >
             <Users className="size-4 shrink-0 text-muted-foreground" />
             <span className="truncate">Groups</span>
-            {/* No count. NIP-29 has no unread bookkeeping in grimoire yet, and
-                a number that only ever said how many groups you are in would
-                read as messages waiting. */}
+            {/* Messages waiting, never how many groups you are in. The count is
+                what the section total means everywhere else in this column. */}
+            {groupUnreadCount > 0 && (
+              <span className="ml-auto shrink-0 rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">
+                {groupUnreadCount}
+              </span>
+            )}
           </button>
           {groupSectionOpen && (
             <div className="pl-2">
@@ -1092,6 +1131,8 @@ export function ConcordViewer({
                 onSelect={handleGroupSelect}
                 selected={selectedGroup}
                 loading={nip29Loading}
+                unread={nip29Unread}
+                onMarkRead={markGroupAllRead}
               />
             </div>
           )}

@@ -10,6 +10,10 @@
  *
  * Kind 10009 is a plain replaceable list (NIP-51), not a parameterized one, so
  * the identifier is always `""` — there is one simple-groups list per account.
+ *
+ * Also the sidebar's unread source, because the two answers come off one REQ:
+ * the message window that says which group was written in most recently is the
+ * same window the count is measured over.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -17,10 +21,12 @@ import { use$ } from "applesauce-react/hooks";
 import accountManager from "@/services/accounts";
 import eventStore from "@/services/event-store";
 import { addressLoader } from "@/services/loaders";
+import { useNip29Unread } from "./useNip29Unread";
+import type { GroupUnread } from "@/lib/nip29/unread";
 import {
   extractGroupEntries,
   sortGroupsByRecency,
-  useGroupLastMessages,
+  useGroupMessageWindows,
   type GroupEntry,
 } from "./useNip29GroupList";
 
@@ -28,6 +34,8 @@ export function useNip29Groups(enabled = true): {
   groups: GroupEntry[];
   /** Signed out, or signed in with nothing published yet. */
   loading: boolean;
+  /** What each group has waiting, keyed `relayUrl'groupId`. */
+  unread: Map<string, GroupUnread>;
 } {
   const account = use$(accountManager.active$);
   const pubkey = enabled ? account?.pubkey : undefined;
@@ -70,13 +78,14 @@ export function useNip29Groups(enabled = true): {
     [groupListEvent],
   );
 
-  const lastMessages = useGroupLastMessages(entries);
+  const windows = useGroupMessageWindows(entries);
+  const unread = useNip29Unread(entries, windows);
 
   const groups = useMemo(
     () =>
       sortGroupsByRecency(
         entries.map((entry) => {
-          const last = lastMessages.get(`${entry.relayUrl}'${entry.groupId}`);
+          const last = windows.get(`${entry.relayUrl}'${entry.groupId}`)?.[0];
           return {
             groupId: entry.groupId,
             relayUrl: entry.relayUrl,
@@ -84,11 +93,12 @@ export function useNip29Groups(enabled = true): {
           };
         }),
       ),
-    [entries, lastMessages],
+    [entries, windows],
   );
 
   return {
     groups,
     loading: !!pubkey && !groupListEvent && settledFor !== pubkey,
+    unread,
   };
 }
