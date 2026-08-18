@@ -17,7 +17,8 @@
  *   render as an issue tracker with chat sprinkled in, so a row must be no
  *   older than the oldest chat row on screen — except that a quiet repository
  *   would then never appear at all, so the newest {@link MIN_GIT_ROWS} are kept
- *   whatever their age. A channel showing no chat still shows no activity;
+ *   whatever their age. A channel with no chat yet has nothing to drown out, so
+ *   it gets that same floor rather than an empty pane;
  * - a STATUS NEEDS ITS TICKET: "closed something" is noise. A status whose
  *   issue or patch is not in hand is dropped rather than rendered anonymously.
  */
@@ -130,8 +131,8 @@ function hintsFor(
  * Fold public git events into timeline rows for one channel.
  *
  * `since` is the oldest chat row on screen: activity above it belongs to a page
- * the reader has not asked for. Pass `undefined` when there is no chat to
- * interleave with, and nothing is returned.
+ * the reader has not asked for. Pass `undefined` when the channel has no chat
+ * at all — there is no page to stay inside, so the floor is all that applies.
  */
 export function gitActivityRows(
   events: readonly NostrEvent[],
@@ -139,7 +140,7 @@ export function gitActivityRows(
   conversationId: string,
   since: number | undefined,
 ): Message[] {
-  if (attachments.length === 0 || since === undefined) return [];
+  if (attachments.length === 0) return [];
 
   const inChannel = events.filter((event) =>
     belongsToChannel(event, attachments),
@@ -182,7 +183,8 @@ export function gitActivityRows(
   // Newest kept, then back into reading order: a clamp that dropped the RECENT
   // activity would leave the channel showing only what nobody is doing now.
   const ordered = rows.sort((a, b) => a.timestamp - b.timestamp);
-  const onPage = ordered.filter((row) => row.timestamp >= since);
+  const onPage =
+    since === undefined ? [] : ordered.filter((row) => row.timestamp >= since);
   const shown =
     onPage.length >= MIN_GIT_ROWS ? onPage : ordered.slice(-MIN_GIT_ROWS);
   return shown.slice(-MAX_GIT_ROWS);

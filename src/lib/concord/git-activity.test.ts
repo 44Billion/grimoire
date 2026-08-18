@@ -86,10 +86,11 @@ describe("gitActivityRows", () => {
     ]);
   });
 
-  it("shows nothing when the channel has no chat on screen", () => {
-    expect(
-      gitActivityRows([issue()], [attachment()], "conv", undefined),
-    ).toEqual([]);
+  it("shows the repository in a channel that has no chat yet", () => {
+    // Nothing to drown out, and an empty pane under a repo badge reads as a
+    // broken feature rather than a quiet room.
+    const rows = gitActivityRows([issue()], [attachment()], "conv", undefined);
+    expect(rows).toHaveLength(1);
   });
 
   it("drops activity older than the loaded page, once the page has enough", () => {
