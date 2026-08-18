@@ -13,6 +13,16 @@ vi.mock("@/services/nip-text", () => ({
 
 vi.mock("@/services/loaders", () => ({
   AGGREGATOR_RELAYS: ["wss://default.example"],
+  addressLoader: (...args: unknown[]) => addressLoader(...args),
+}));
+
+const addressLoader = vi.fn();
+const accounts: { active?: { pubkey: string } } = {};
+const getReplaceable = vi.fn();
+
+vi.mock("@/services/accounts", () => ({ default: accounts }));
+vi.mock("@/services/event-store", () => ({
+  default: { getReplaceable: (...args: unknown[]) => getReplaceable(...args) },
 }));
 
 const { AI_TOOLS, createToolExecutors, refuseIfNeeded } =
@@ -37,6 +47,9 @@ beforeEach(() => {
   requestEvents.mockReset();
   getNipText.mockReset();
   openWindow.mockReset();
+  getReplaceable.mockReset();
+  addressLoader.mockReset();
+  accounts.active = undefined;
   requestEvents.mockResolvedValue([]);
   getNipText.mockResolvedValue(undefined);
 });
@@ -87,6 +100,21 @@ describe("lookup_spec", () => {
     expect(result.nip.error).toMatch(/Could not load/);
   });
 
+  it("reads a command's manual page, flags and all", async () => {
+    const result = (await executors.lookup_spec({ command: "req" })) as {
+      command: { synopsis: string; options?: unknown[] };
+    };
+    expect(result.command.synopsis).toContain("req");
+    expect(result.command.options?.length).toBeGreaterThan(0);
+  });
+
+  it("names the commands that exist when asked for one that does not", async () => {
+    const result = (await executors.lookup_spec({ command: "frobnicate" })) as {
+      command: { error: string };
+    };
+    expect(result.command.error).toContain("req");
+  });
+
   it("rejects an empty call", async () => {
     expect(await executors.lookup_spec({})).toMatchObject({
       error: expect.stringContaining("nip id"),
@@ -95,9 +123,9 @@ describe("lookup_spec", () => {
 });
 
 describe("query_nostr", () => {
-  it("requires kinds", async () => {
-    expect(await executors.query_nostr({})).toMatchObject({
-      error: expect.stringContaining("kinds"),
+  it("refuses a filter that constrains nothing", async () => {
+    expect(await executors.query_nostr({ limit: 10 })).toMatchObject({
+      error: expect.stringContaining("at least one"),
     });
     expect(requestEvents).not.toHaveBeenCalled();
   });
@@ -119,6 +147,84 @@ describe("query_nostr", () => {
       ["wss://default.example"],
       [{ kinds: [0], authors: ["b".repeat(64)], limit: 5 }],
     );
+  });
+
+  it("passes the rest of a NIP-01 filter through", async () => {
+    await executors.query_nostr({
+      ids: ["d".repeat(64)],
+      since: 1_700_000_000.7,
+      until: 1_800_000_000,
+      search: "  purple  ",
+      tags: { t: ["nostr"], "#e": ["f".repeat(64)] },
+    });
+    expect(requestEvents).toHaveBeenCalledWith(
+      ["wss://default.example"],
+      [
+        {
+          ids: ["d".repeat(64)],
+          since: 1_700_000_000,
+          until: 1_800_000_000,
+          search: "purple",
+          "#t": ["nostr"],
+          "#e": ["f".repeat(64)],
+          limit: 5,
+        },
+      ],
+    );
+  });
+
+  it("rejects a tag that is not single-letter, because relays do not index it", async () => {
+    expect(
+      await executors.query_nostr({ kinds: [1], tags: { hashtag: ["x"] } }),
+    ).toMatchObject({ error: expect.stringContaining("single-letter") });
+    expect(requestEvents).not.toHaveBeenCalled();
+  });
+
+  it("rejects a window that cannot contain anything", async () => {
+    expect(
+      await executors.query_nostr({ kinds: [1], since: 200, until: 100 }),
+    ).toMatchObject({ error: expect.stringContaining("since is after until") });
+  });
+
+  it("resolves $me from the active account", async () => {
+    accounts.active = { pubkey: "e".repeat(64) };
+    await executors.query_nostr({ kinds: [1], authors: ["$ME"] });
+    expect(requestEvents).toHaveBeenCalledWith(
+      ["wss://default.example"],
+      [{ kinds: [1], authors: ["e".repeat(64)], limit: 5 }],
+    );
+  });
+
+  it("says so rather than querying when $me has no account", async () => {
+    expect(
+      await executors.query_nostr({ kinds: [1], authors: ["$me"] }),
+    ).toMatchObject({ error: expect.stringContaining("No account") });
+    expect(requestEvents).not.toHaveBeenCalled();
+  });
+
+  it("expands $contacts from the stored contact list", async () => {
+    accounts.active = { pubkey: "e".repeat(64) };
+    getReplaceable.mockReturnValue({
+      tags: [
+        ["p", "a".repeat(64)],
+        ["p", "not-hex"],
+        ["t", "nostr"],
+      ],
+    });
+    await executors.query_nostr({ kinds: [1], tags: { p: ["$contacts"] } });
+    expect(requestEvents).toHaveBeenCalledWith(
+      ["wss://default.example"],
+      [{ kinds: [1], "#p": ["a".repeat(64)], limit: 5 }],
+    );
+  });
+
+  it("reports the filter it sent, so an empty answer is explainable", async () => {
+    const result = (await executors.query_nostr({
+      kinds: [1],
+      relays: ["wss://named.example"],
+    })) as { filter: unknown; relays: unknown };
+    expect(result.filter).toEqual({ kinds: [1], limit: 5 });
+    expect(result.relays).toEqual(["wss://named.example"]);
   });
 
   it("truncates content so one long article cannot fill the window", async () => {

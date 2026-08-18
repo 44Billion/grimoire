@@ -87,8 +87,6 @@ const BASE_SYSTEM = [
     " command in an unlabelled fence or inline code — only a" +
     ` \`${COMMAND_FENCE}\` fence becomes a button the user can run. Example:` +
     `\n\n\`\`\`${COMMAND_FENCE}\nreq -k 1 -a $contacts -l 50\n\`\`\``,
-  "You cannot run commands yourself and must not claim to have opened anything;" +
-    " the user clicks to run them.",
   // Placeholders are the other half of that failure: a command the user has to
   // fill in by hand is not runnable, and a button that errors is worse than
   // prose.
@@ -98,6 +96,38 @@ const BASE_SYSTEM = [
     " URL, a pubkey, or an event id.",
   `Commands available:\n${commandCatalogue()}`,
 ].join("\n\n");
+
+/**
+ * Appended when the provider takes tools, replaced by a plainer rule when it
+ * does not. Both halves are needed: with tools Hex opens windows and runs REQs
+ * itself, and without them a claim to have opened anything is a lie.
+ */
+const TOOLS_SYSTEM = [
+  "You have tools, and they beat recall. `lookup_spec` returns a NIP's text, a" +
+    " kind's definition, or a command's manual page with its flags described —" +
+    " read it before writing a command you are unsure of. `query_nostr` runs a" +
+    " REQ and hands you the events. `open_window` runs a read-only command.",
+  "`query_nostr` takes a full NIP-01 filter — kinds, authors, ids, since," +
+    " until, search, and single-letter tags — so narrow the query instead of" +
+    " fetching kind 1 and sorting it in your head. `$me` and `$contacts` work" +
+    " in `authors` and in the `p` tag. Read what came back and answer from it," +
+    " quoting the events rather than summarising them from nothing.",
+  "Use `open_window` when the user asked for a window; otherwise hand them a" +
+    ` \`${COMMAND_FENCE}\` fence and let them click. Never claim to have opened` +
+    " something a tool did not report opening.",
+].join("\n\n");
+
+const NO_TOOLS_SYSTEM =
+  "You cannot run commands yourself and must not claim to have opened" +
+  " anything; the user clicks to run them.";
+
+/**
+ * The tool half of the prompt. Separate because tool support is only known at
+ * send time — the injector may advertise none.
+ */
+export function toolsSystem(enabled: boolean): string {
+  return enabled ? TOOLS_SYSTEM : NO_TOOLS_SYSTEM;
+}
 
 /**
  * Hex's own instructions, with no object attached. Every window gets these —

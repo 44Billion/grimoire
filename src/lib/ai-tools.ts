@@ -1,8 +1,9 @@
-import { proposeCommand } from "./ai-commands";
+import { PROPOSAL_DENIED, proposeCommand } from "./ai-commands";
+import { MAX_QUERY_LIMIT, resolveAliases, sanitizeFilter } from "./ai-filter";
 import { requestEvents } from "./relay-subscription";
 
 import { getKindInfo } from "@/constants/kinds";
-import { AGGREGATOR_RELAYS } from "@/services/loaders";
+import { manPages } from "@/types/man";
 import { getNipText } from "@/services/nip-text";
 import type { InferenceTool } from "@/types/inference";
 
@@ -18,8 +19,6 @@ import type { InferenceTool } from "@/types/inference";
  * only writes available are windows the user then drives themselves.
  */
 
-/** Cap on one query. A model will happily ask for the whole network. */
-const MAX_QUERY_LIMIT = 20;
 /** Cap on returned content, so one long article cannot eat the window. */
 const MAX_CONTENT_CHARS = 2_000;
 
@@ -29,8 +28,10 @@ export const AI_TOOLS: InferenceTool[] = [
     function: {
       name: "lookup_spec",
       description:
-        "Look up a NIP's text or an event kind's definition from grimoire's " +
-        "own registry and cache. Use this instead of recalling spec details.",
+        "Look up a NIP's text, an event kind's definition, or a grimoire " +
+        "command's manual page, from grimoire's own registry and cache. Use " +
+        "this instead of recalling spec details or guessing at a command's " +
+        "flags.",
       parameters: {
         type: "object",
         properties: {
@@ -42,6 +43,12 @@ export const AI_TOOLS: InferenceTool[] = [
             type: "number",
             description: "Event kind number.",
           },
+          command: {
+            type: "string",
+            description:
+              'A grimoire command name, e.g. "req" — returns its synopsis, ' +
+              "flags with descriptions, examples, and related commands.",
+          },
         },
       },
     },
@@ -51,7 +58,8 @@ export const AI_TOOLS: InferenceTool[] = [
     function: {
       name: "query_nostr",
       description:
-        "Fetch stored events from relays. Read-only. Returns at most " +
+        "Run a REQ against relays and read what comes back. Read-only. " +
+        "Takes a full NIP-01 filter; returns at most " +
         `${MAX_QUERY_LIMIT} events with content truncated.`,
       parameters: {
         type: "object",
@@ -64,7 +72,38 @@ export const AI_TOOLS: InferenceTool[] = [
           authors: {
             type: "array",
             items: { type: "string" },
-            description: "Hex pubkeys, not npubs.",
+            description:
+              'Hex pubkeys, not npubs. "$me" and "$contacts" resolve to the ' +
+              "active account and the people it follows.",
+          },
+          ids: {
+            type: "array",
+            items: { type: "string" },
+            description: "Hex event ids, not note1 or nevent.",
+          },
+          since: {
+            type: "number",
+            description: "Unix seconds; only events at or after this time.",
+          },
+          until: {
+            type: "number",
+            description: "Unix seconds; only events at or before this time.",
+          },
+          search: {
+            type: "string",
+            description:
+              "NIP-50 full-text query. Only some relays implement it.",
+          },
+          tags: {
+            type: "object",
+            description:
+              'Single-letter tag filters: {"t": ["nostr"]} for a hashtag, ' +
+              '{"e": ["<hex>"]} for replies to an event, {"p": ["$me"]} for ' +
+              "events tagging the active account.",
+            additionalProperties: {
+              type: "array",
+              items: { type: "string" },
+            },
           },
           limit: {
             type: "number",
@@ -76,7 +115,6 @@ export const AI_TOOLS: InferenceTool[] = [
             description: "Relay URLs. Omit to use grimoire's defaults.",
           },
         },
-        required: ["kinds"],
       },
     },
   },
@@ -117,8 +155,16 @@ export function createToolExecutors(openWindow: ToolExecutor) {
 }
 
 async function lookupSpec(args: unknown): Promise<unknown> {
-  const { nip, kind } = (args ?? {}) as { nip?: unknown; kind?: unknown };
+  const { nip, kind, command } = (args ?? {}) as {
+    nip?: unknown;
+    kind?: unknown;
+    command?: unknown;
+  };
   const result: Record<string, unknown> = {};
+
+  if (typeof command === "string" && command.trim()) {
+    result.command = manPage(command);
+  }
 
   if (typeof kind === "number" && Number.isFinite(kind)) {
     const info = getKindInfo(kind);
@@ -148,54 +194,57 @@ async function lookupSpec(args: unknown): Promise<unknown> {
   }
 
   if (Object.keys(result).length === 0) {
-    return { error: "Pass a nip id, a kind number, or both." };
+    return { error: "Pass a nip id, a kind number, or a command name." };
   }
   return result;
 }
 
-async function queryNostr(args: unknown): Promise<unknown> {
-  const { kinds, authors, limit, relays } = (args ?? {}) as {
-    kinds?: unknown;
-    authors?: unknown;
-    limit?: unknown;
-    relays?: unknown;
-  };
-
-  const kindList = Array.isArray(kinds)
-    ? kinds.filter((k): k is number => typeof k === "number")
-    : [];
-  if (kindList.length === 0) {
-    return { error: "kinds must be a non-empty array of numbers." };
+/**
+ * A command's manual page, verbatim from the registry the palette reads.
+ *
+ * The system prompt lists every command's synopsis and flag names, which is
+ * enough to pick one and not enough to write it — flag descriptions and
+ * examples live here so the prompt stays a catalogue rather than a manual.
+ */
+function manPage(name: string): unknown {
+  const key = name.trim().split(/\s+/)[0].toLowerCase();
+  const page = manPages[key];
+  if (!page) {
+    return {
+      name: key,
+      error: `No such command. Known commands: ${Object.keys(manPages).join(", ")}.`,
+    };
   }
+  return {
+    name: page.name,
+    synopsis: page.synopsis,
+    description: page.description,
+    ...(page.options?.length ? { options: page.options } : {}),
+    ...(page.examples?.length ? { examples: page.examples } : {}),
+    ...(page.seeAlso?.length ? { seeAlso: page.seeAlso } : {}),
+    ...(PROPOSAL_DENIED.has(page.appId)
+      ? { note: "grimoire refuses to run this one; propose it to the user." }
+      : {}),
+  };
+}
 
-  const authorList = Array.isArray(authors)
-    ? authors.filter(
-        (a): a is string => typeof a === "string" && /^[0-9a-f]{64}$/i.test(a),
-      )
-    : undefined;
+async function queryNostr(args: unknown): Promise<unknown> {
+  const sanitized = sanitizeFilter(args);
+  if ("error" in sanitized) return sanitized;
 
-  const relayList =
-    Array.isArray(relays) &&
-    relays.every((r): r is string => typeof r === "string")
-      ? relays
-      : AGGREGATOR_RELAYS;
+  const resolved = await resolveAliases(sanitized.filter);
+  if ("error" in resolved) return resolved;
 
-  const capped = Math.min(
-    typeof limit === "number" && limit > 0 ? limit : 5,
-    MAX_QUERY_LIMIT,
-  );
-
-  const events = await requestEvents(relayList, [
-    {
-      kinds: kindList,
-      ...(authorList?.length ? { authors: authorList } : {}),
-      limit: capped,
-    },
-  ]);
+  const events = await requestEvents(sanitized.relays, [resolved.filter]);
+  const limit = resolved.filter.limit ?? events.length;
 
   return {
+    // The filter as sent, aliases expanded: the model can see why a query came
+    // back empty, and the window shows the same REQ the relays saw.
+    filter: resolved.filter,
+    relays: sanitized.relays,
     count: events.length,
-    events: events.slice(0, capped).map((event) => ({
+    events: events.slice(0, limit).map((event) => ({
       id: event.id,
       kind: event.kind,
       pubkey: event.pubkey,

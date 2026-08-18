@@ -42,6 +42,7 @@ import {
   buildAiContext,
   buildMentionContext,
   GENERAL_SUGGESTIONS,
+  toolsSystem,
   type AiTarget,
 } from "@/lib/ai-context";
 import { Suggestion, Suggestions } from "./ai-elements/suggestion";
@@ -427,8 +428,9 @@ export default function AiViewer({
       // target's context; mentions are additive to whichever applies.
       const mentions = await buildMentionContext(text);
       const systemPrompt =
-        [system ?? context?.system, mentions].filter(Boolean).join("\n\n") ||
-        undefined;
+        [system ?? context?.system, toolsSystem(toolsEnabled), mentions]
+          .filter(Boolean)
+          .join("\n\n") || undefined;
       setSentSystem(systemPrompt);
       const history: InferenceMessage[] = [
         ...(systemPrompt

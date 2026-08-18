@@ -5,11 +5,14 @@ import {
   ToolInput,
   ToolOutput,
 } from "@/components/ai-elements/tool";
-import { FileTextIcon, WrenchIcon } from "lucide-react";
+import { BracesIcon, FileTextIcon, WrenchIcon } from "lucide-react";
+import { useState } from "react";
 
 import { CommandChips } from "./CommandChips";
+import { ReplyCodeBlock } from "./ReplyCodeBlock";
 
 import { EmbeddedEvent } from "@/components/nostr/EmbeddedEvent";
+import { cn } from "@/lib/utils";
 
 import type { ToolRun } from "@/types/tool-part";
 
@@ -39,14 +42,31 @@ function commandOf(run: ToolRun): string | undefined {
   return typeof command === "string" ? command : undefined;
 }
 
+/** The REQ a query actually sent, aliases expanded — not what was asked for. */
+function reqOf(run: ToolRun): string {
+  const output = run.output as
+    { filter?: unknown; relays?: unknown } | undefined;
+  return JSON.stringify(
+    {
+      filter: output?.filter ?? run.input,
+      ...(output?.relays ? { relays: output.relays } : {}),
+    },
+    null,
+    2,
+  );
+}
+
 /**
  * Events a tool fetched, in the shape `req` shows them: a status strip over a
  * divided list of rendered events. Rendering from the EventStore means each row
  * is the same component the feed uses, so a note looks like a note here too.
+ *
+ * The filter is behind a toggle rather than summarised in words: a full NIP-01
+ * filter does not fit in a strip, and the JSON is the thing worth reading —
+ * it is what the relays saw, `$contacts` already expanded.
  */
 function ToolFeed({ ids, run }: { ids: string[]; run: ToolRun }) {
-  const filter = run.input as
-    { kinds?: number[]; limit?: number; authors?: string[] } | undefined;
+  const [showReq, setShowReq] = useState(false);
 
   return (
     <div className="my-2 overflow-hidden rounded border border-border">
@@ -55,20 +75,27 @@ function ToolFeed({ ids, run }: { ids: string[]; run: ToolRun }) {
           <WrenchIcon className="size-3" />
           <span className="font-mono">{run.name}</span>
         </span>
-        {filter?.kinds?.length ? (
-          <span className="font-mono">kinds {filter.kinds.join(",")}</span>
-        ) : null}
-        {filter?.authors?.length ? (
-          <span>
-            {filter.authors.length} author
-            {filter.authors.length === 1 ? "" : "s"}
-          </span>
-        ) : null}
-        <span className="ml-auto flex items-center gap-1">
+        <button
+          className={cn(
+            "ml-auto flex items-center gap-1 rounded px-1 py-0.5 hover:text-foreground",
+            showReq && "bg-muted text-foreground",
+          )}
+          onClick={() => setShowReq((open) => !open)}
+          title={showReq ? "Hide the filter" : "Show the filter"}
+          type="button"
+        >
+          <BracesIcon className="size-3" />
+        </button>
+        <span className="flex items-center gap-1">
           <FileTextIcon className="size-3" />
           {ids.length}
         </span>
       </div>
+      {showReq && (
+        <div className="border-b border-border bg-muted/10 p-2">
+          <ReplyCodeBlock code={reqOf(run)} language="json" />
+        </div>
+      )}
       <div className="divide-y divide-border/50">
         {ids.map((id) => (
           <EmbeddedEvent className="" eventPointer={{ id }} key={id} />
