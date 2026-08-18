@@ -871,11 +871,11 @@ export default function AiViewer({
       context?.system,
       executors,
       local,
+      setTurns,
       storageId,
       subject,
       system,
       toolsEnabled,
-      windowId,
     ],
   );
 
