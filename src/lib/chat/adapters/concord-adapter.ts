@@ -49,6 +49,15 @@ import { filterEpochCutoff } from "@/lib/concord/chat";
 import { KIND_COMMENT } from "@/lib/concord/kinds";
 import type { BlobAttachmentMeta } from "./base-adapter";
 import type { FoldedControl } from "@/lib/concord/control";
+import { channelGitRepositories } from "@/lib/concord/git";
+import { gitActivityRows } from "@/lib/concord/git-activity";
+import {
+  GIT_ACTIVITY_KINDS,
+  startChannelGitActivity,
+  stopAllGitActivity,
+  stopChannelGitActivity,
+} from "@/services/concord-git-activity";
+import eventStore from "@/services/event-store";
 import type { Channel, Community } from "@/lib/concord/types";
 import { channelScope, onWireScope } from "@/lib/concord/wire-bus";
 import {
@@ -288,6 +297,15 @@ export class ConcordAdapter extends ChatProtocolAdapter {
     // flashes: every emission is a fresh array, which re-anchors the virtualizer.
     if (this.started.has(conversation.id)) return emitter.asObservable();
     this.started.add(conversation.id);
+
+    // Public NIP-34 activity for whatever repository the channel is attached
+    // to. It rings the same wire scope the doorbell above listens on, so an
+    // issue landing repaints the timeline exactly as a message does.
+    void this.resolve(identifier)
+      .then(({ channel }) =>
+        startChannelGitActivity(channel.idHex, channel.repositories),
+      )
+      .catch(() => undefined);
 
     // Seed the window from what this caller asked for. The repaints that follow
     // a "load older" click read with no options at all, so a caller asking for
@@ -753,6 +771,8 @@ export class ConcordAdapter extends ChatProtocolAdapter {
 
   cleanup(conversationId: string): void {
     super.cleanup(conversationId);
+    const identifier = parseConversationId(conversationId);
+    if (identifier) stopChannelGitActivity(identifier.channelId);
     this.timelines.get(conversationId)?.complete();
     this.timelines.delete(conversationId);
     this.started.delete(conversationId);
@@ -764,6 +784,7 @@ export class ConcordAdapter extends ChatProtocolAdapter {
 
   cleanupAll(): void {
     super.cleanupAll();
+    stopAllGitActivity();
     for (const subject of this.timelines.values()) subject.complete();
     for (const off of this.doorbells.values()) off();
     this.timelines.clear();
@@ -1105,9 +1126,47 @@ export class ConcordAdapter extends ChatProtocolAdapter {
       protocol: "concord" as const,
       event: toEvent({ ...target, content: "", tags: [] }) as NostrEvent,
     }));
-    if (tombstones.length === 0) return messages;
-    return [...messages, ...tombstones].sort(
+    const chat =
+      tombstones.length === 0
+        ? messages
+        : [...messages, ...tombstones].sort(
+            (a, b) => a.timestamp - b.timestamp,
+          );
+
+    return [...chat, ...this.gitRows(identifier, folded, chat)].sort(
       (a, b) => a.timestamp - b.timestamp,
+    );
+  }
+
+  /**
+   * The channel's public git activity, as rows to interleave.
+   *
+   * Read from the EventStore, which `concord-git-activity` fills — no relay in
+   * this path, exactly like the chat rows beside it. The FULL interval list is
+   * what decides membership, not `Channel.repositories`: a repository that was
+   * attached last year and detached since still owns the activity written while
+   * it was live, and hiding that would rewrite the channel's history.
+   */
+  private gitRows(
+    identifier: ConcordIdentifier,
+    folded: FoldedControl,
+    chat: Message[],
+  ): Message[] {
+    const metadata = folded.channels.get(identifier.channelId)?.metadata;
+    if (!metadata) return [];
+    const attachments = channelGitRepositories(metadata);
+    if (attachments.length === 0) return [];
+    const coordinates = [
+      ...new Set(attachments.map((a) => a.address.coordinate)),
+    ];
+    const events = eventStore.getTimeline([
+      { kinds: GIT_ACTIVITY_KINDS, "#a": coordinates },
+    ]);
+    return gitActivityRows(
+      events,
+      attachments,
+      conversationIdOf(identifier),
+      chat[0]?.timestamp,
     );
   }
 }

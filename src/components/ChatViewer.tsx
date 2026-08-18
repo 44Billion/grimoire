@@ -14,6 +14,7 @@ import {
   FileText,
   MessageSquare,
   Check,
+  GitPullRequest,
 } from "lucide-react";
 import { nip19 } from "nostr-tools";
 import type { EventPointer, AddressPointer } from "nostr-tools/nip19";
@@ -628,6 +629,7 @@ const MessageItem = memo(function MessageItem({
   /** Briefly marked, because a jump just landed here. */
   isFlashing?: boolean;
 }) {
+  const addWindow = useAddWindow();
   // Get relays for this conversation (memoized to prevent unnecessary re-subscriptions)
   const relays = useMemo(
     () => getConversationRelays(conversation),
@@ -687,6 +689,32 @@ const MessageItem = memo(function MessageItem({
           ) : (
             "removed"
           )}{" "}
+          · <Timestamp timestamp={message.timestamp} />
+        </span>
+      </div>
+    );
+  }
+
+  // Public git activity in a Concord channel attached to a repository. As
+  // quiet as a system row and shaped like one — a line of muted text the eye
+  // passes over — but it names an event, so the subject opens it.
+  if (message.metadata?.git) {
+    const { action, subject, pointer } = message.metadata.git;
+    return (
+      <div className="flex items-center gap-1 px-3 py-1 text-xs text-muted-foreground">
+        <GitPullRequest className="size-3 shrink-0" />
+        <UserName pubkey={message.author} className="text-xs" />
+        <span className="shrink-0">{action}</span>
+        {subject && (
+          <button
+            type="button"
+            onClick={() => addWindow("open", { pointer })}
+            className="truncate text-left hover:text-foreground hover:underline"
+          >
+            {subject}
+          </button>
+        )}
+        <span className="shrink-0">
           · <Timestamp timestamp={message.timestamp} />
         </span>
       </div>

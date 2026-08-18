@@ -37,8 +37,10 @@ export function groupSystemMessages(
   let currentGroup: GroupedSystemMessage | null = null;
 
   for (const message of messages) {
-    // Only group system messages (not user or zap messages)
-    if (message.type === "system") {
+    // Only group system messages (not user or zap messages), and never a git
+    // activity row: grouping keeps the content string and drops `metadata`,
+    // which is where the row's pointer to the issue or patch lives.
+    if (message.type === "system" && !message.metadata?.git) {
       // Check if we can add to current group
       if (currentGroup && currentGroup.content === message.content) {
         // Add to existing group
