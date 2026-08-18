@@ -63,7 +63,7 @@ import {
 import { Nip29GroupList } from "./nip29/Nip29GroupList";
 import { groupKey, type GroupSelection } from "@/lib/nip29/group-selection";
 import { groupRowRef } from "@/lib/nip29/row-ref";
-import { markGroupRead } from "@/services/nip29-reads";
+import { markAllGroupsRead, markGroupRead } from "@/services/nip29-reads";
 import { useNip29Groups } from "@/hooks/useNip29Groups";
 import { useConcordInvites } from "@/hooks/useConcordInvites";
 import { useConcordPins } from "@/hooks/useConcordPins";
@@ -664,18 +664,45 @@ export function ConcordViewer({
   );
 
   /**
-   * The Groups heading's number: every group added up, muted ones left out — the
-   * same rule the DM heading above it follows.
+   * The groups the heading speaks for: something waiting, not muted, and with a
+   * message that can actually be stamped.
+   *
+   * One pass rather than two, because the number in the heading and the list the
+   * clear-all button walks have to agree by construction. A count that included a
+   * group the button skipped would leave a badge that the control claiming to
+   * clear everything could not.
+   *
+   * `latest` is 0 while every counted message is still ahead of the clock, so
+   * such a group badges but is not stampable yet — it is counted and left out of
+   * the walk, which is the honest pairing.
    */
-  const groupUnreadCount = useMemo(() => {
+  const groupsWaiting = useMemo(() => {
     let total = 0;
+    const stampable: Array<{
+      relayUrl: string;
+      groupId: string;
+      latest: number;
+    }> = [];
     for (const [key, summary] of nip29Unread) {
       const group = nip29Groups.find((g) => groupKey(g) === key);
       if (!group || isRowMuted(groupRowRef(group))) continue;
       total += summary.count;
+      if (summary.latest > 0)
+        stampable.push({
+          relayUrl: group.relayUrl,
+          groupId: group.groupId,
+          latest: summary.latest,
+        });
     }
-    return total;
+    return { total, stampable };
   }, [nip29Unread, nip29Groups, isRowMuted]);
+  const groupUnreadCount = groupsWaiting.total;
+
+  /** Clear every group at once, each at its own newest counted message. */
+  const markAllGroupsAsRead = useCallback(() => {
+    if (!viewerPubkey || groupsWaiting.stampable.length === 0) return;
+    void markAllGroupsRead(viewerPubkey, groupsWaiting.stampable);
+  }, [viewerPubkey, groupsWaiting]);
 
   /** Stamp a group read without opening it, at its newest counted message. */
   const markGroupAllRead = useCallback(
@@ -1116,13 +1143,42 @@ export function ConcordViewer({
           >
             <Users className="size-4 shrink-0 text-muted-foreground" />
             <span className="truncate">Groups</span>
-            {/* Messages waiting, never how many groups you are in. The count is
-                what the section total means everywhere else in this column. */}
-            {groupUnreadCount > 0 && (
-              <span className="ml-auto shrink-0 rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">
-                {groupUnreadCount}
-              </span>
-            )}
+            <span className="ml-auto flex shrink-0 items-center gap-1">
+              {/* Messages waiting, never how many groups you are in. The count
+                  is what the section total means everywhere else in this
+                  column. */}
+              {groupUnreadCount > 0 && (
+                <span className="rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">
+                  {groupUnreadCount}
+                </span>
+              )}
+              {/* Only while something can actually be cleared — so the control
+                  appears exactly when it means anything and takes no width the
+                  rest of the time, as the DM heading's does. Nested in a button,
+                  hence the stopPropagation: clearing the section must not also
+                  expand it. */}
+              {groupsWaiting.stampable.length > 0 && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  title="Mark all as read"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    markAllGroupsAsRead();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    markAllGroupsAsRead();
+                  }}
+                  className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <CheckCheck className="size-3" />
+                  <span className="sr-only">Mark all as read</span>
+                </span>
+              )}
+            </span>
           </button>
           {groupSectionOpen && (
             <div className="pl-2">

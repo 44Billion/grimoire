@@ -187,6 +187,71 @@ export async function markGroupRead(
 }
 
 /**
+ * Stamp a whole list of groups read, in ONE transaction.
+ *
+ * Not a loop over {@link markGroupRead}, and the reason is the repaint rather
+ * than the write: `useNip29Unread` watches this table, and Dexie fires its
+ * observers per transaction — so thirty separate marks would re-read every stamp
+ * thirty times and repaint the sidebar under the reader's cursor.
+ *
+ * Each group is stamped at ITS OWN newest countable message, never at the clock.
+ * A stamp is a position in a group, not a moment in time: stamping `now` would
+ * also swallow a message that arrives a second later carrying an older
+ * `created_at`, which for a group whose members' clocks disagree is routine.
+ *
+ * Groups with nothing waiting must be left out by the CALLER, not stamped
+ * forward — the same rule `markCommunityRead` follows. Moving the stamp of a
+ * group the reader never opened silently swallows whatever arrives next below it.
+ * Every entry here is expected to carry a real `latest` from
+ * `summarizeGroupUnread`, which is already bounded to the present.
+ */
+export async function markAllGroupsRead(
+  pubkey: string,
+  groups: ReadonlyArray<{
+    relayUrl: string;
+    groupId: string;
+    /** The group's own newest counted message. */
+    latest: number;
+  }>,
+): Promise<void> {
+  if (!pubkey || groups.length === 0) return;
+  const nowSecs = Math.floor(Date.now() / 1000);
+
+  // Resolved before the transaction opens: `containerFor` normalizes a URL,
+  // which is pure but not free, and a Dexie `rw` transaction should hold only
+  // reads and writes.
+  const wanted: Array<{ id: ReturnType<typeof key>; at: number }> = [];
+  for (const group of groups) {
+    const container = containerFor(group.relayUrl);
+    if (!container || !group.groupId) continue;
+    if (!Number.isFinite(group.latest) || group.latest <= 0) continue;
+    const at = Math.min(group.latest, nowSecs);
+    if (at <= 0) continue;
+    wanted.push({ id: key(pubkey, container, group.groupId), at });
+  }
+  if (wanted.length === 0) return;
+
+  try {
+    await db.transaction("rw", db.chatReads, async () => {
+      for (const { id, at } of wanted) {
+        const existing = await db.chatReads.get(id);
+        if (existing && existing.lastRead >= at) continue;
+        await db.chatReads.put({
+          pubkey: id[0],
+          protocol: id[1],
+          containerId: id[2],
+          channelId: id[3],
+          lastRead: at,
+          updatedAt: Date.now(),
+        });
+      }
+    });
+  } catch (error) {
+    console.warn("[nip-29] could not stamp the groups as read:", error);
+  }
+}
+
+/**
  * Forget every NIP-29 stamp this account holds.
  *
  * Not wired to logout, and does not need to be: `clearReads` in

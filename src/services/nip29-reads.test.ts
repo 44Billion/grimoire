@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import db from "./db";
 import {
   clearGroupReads,
   groupReadKey,
+  markAllGroupsRead,
   markGroupRead,
   readAllGroupLastReads,
   readGroupLastRead,
@@ -52,6 +53,83 @@ describe("markGroupRead", () => {
   it("keeps two readers apart", async () => {
     await markGroupRead(ME, RELAY, GROUP, 1000);
     expect(await readGroupLastRead(THEM, RELAY, GROUP)).toBe(0);
+  });
+});
+
+describe("markAllGroupsRead", () => {
+  it("stamps each group at ITS OWN newest message, not at the clock", async () => {
+    // A stamp is a position in a group, not a moment in time. Stamping `now`
+    // would also swallow a message arriving a second later with an older
+    // `created_at` — routine when members' clocks disagree.
+    await markAllGroupsRead(ME, [
+      { relayUrl: RELAY, groupId: "one", latest: 1000 },
+      { relayUrl: RELAY, groupId: "two", latest: 2000 },
+    ]);
+    expect(await readGroupLastRead(ME, RELAY, "one")).toBe(1000);
+    expect(await readGroupLastRead(ME, RELAY, "two")).toBe(2000);
+  });
+
+  it("never moves a group backwards", async () => {
+    await markGroupRead(ME, RELAY, GROUP, 5000);
+    await markAllGroupsRead(ME, [
+      { relayUrl: RELAY, groupId: GROUP, latest: 1000 },
+    ]);
+    expect(await readGroupLastRead(ME, RELAY, GROUP)).toBe(5000);
+  });
+
+  it("leaves alone a group with nothing stampable", async () => {
+    // What a group whose every counted message is still ahead of the clock
+    // produces. Stamping it would swallow whatever arrives next below it.
+    await markAllGroupsRead(ME, [
+      { relayUrl: RELAY, groupId: GROUP, latest: 0 },
+    ]);
+    expect(await db.chatReads.count()).toBe(0);
+  });
+
+  it("does not stamp into the future, group by group", async () => {
+    const nowSecs = Math.floor(Date.now() / 1000);
+    await markAllGroupsRead(ME, [
+      { relayUrl: RELAY, groupId: GROUP, latest: nowSecs + 86_400 },
+    ]);
+    expect(await readGroupLastRead(ME, RELAY, GROUP)).toBeLessThanOrEqual(
+      nowSecs + 1,
+    );
+  });
+
+  it("normalizes each relay, so one clear reaches rows the pane wrote", async () => {
+    await markGroupRead(ME, "wss://Relay.example.com", GROUP, 1000);
+    await markAllGroupsRead(ME, [
+      { relayUrl: "relay.example.com", groupId: GROUP, latest: 2000 },
+    ]);
+    expect(await db.chatReads.count()).toBe(1);
+    expect(await readGroupLastRead(ME, RELAY, GROUP)).toBe(2000);
+  });
+
+  it("writes once, so the sidebar repaints once", async () => {
+    // Dexie fires observers per transaction, and `useNip29Unread` watches this
+    // table: a loop over `markGroupRead` would repaint per group.
+    const transaction = vi.spyOn(db, "transaction");
+    // No try/finally: `markAllGroupsRead` swallows its own failures, so there is
+    // no throw for one to catch.
+    await markAllGroupsRead(ME, [
+      { relayUrl: RELAY, groupId: "one", latest: 1000 },
+      { relayUrl: RELAY, groupId: "two", latest: 2000 },
+      { relayUrl: RELAY, groupId: "three", latest: 3000 },
+    ]);
+    // Read before restoring: `mockRestore` drops the call history with it.
+    const opened = transaction.mock.calls.length;
+    transaction.mockRestore();
+
+    expect(await db.chatReads.count()).toBe(3);
+    expect(opened).toBe(1);
+  });
+
+  it("ignores an empty list and an absent reader", async () => {
+    await markAllGroupsRead(ME, []);
+    await markAllGroupsRead("", [
+      { relayUrl: RELAY, groupId: GROUP, latest: 1000 },
+    ]);
+    expect(await db.chatReads.count()).toBe(0);
   });
 });
 
