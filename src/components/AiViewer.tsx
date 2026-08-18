@@ -35,6 +35,7 @@ import {
   describeInferenceError,
   isAnyInferenceReachable,
   isInferenceAvailable,
+  IPA_ID,
   onModelDownloadProgress,
   resolveRequest,
   type ToolSupport,
@@ -64,6 +65,7 @@ import { AgentPanel } from "./ai/AgentPanel";
 import { HEX_NAME, HexAvatar } from "./ai/Hex";
 import { Shimmer, SHIMMER_DURATION } from "./ai-elements/shimmer";
 import { CommandChips } from "./ai/CommandChips";
+import { BackendSelect } from "./ai/BackendSelect";
 import { ConversationIndex } from "./ai/ConversationIndex";
 import { ModelDownload } from "./ai/ModelDownload";
 import { ReplyCodeBlock } from "./ai/ReplyCodeBlock";
@@ -73,6 +75,7 @@ import { AI_TOOLS, createToolExecutors } from "@/lib/ai-registry";
 import { TurnSteps } from "./ai/TurnSteps";
 import type { ToolRun } from "@/types/tool-part";
 import { useAccount } from "@/hooks/useAccount";
+import { useSettings } from "@/hooks/useSettings";
 import { ProviderLogo, providerFromModel } from "./ai/ProviderLogo";
 import { useAddWindow } from "@/core/state";
 import {
@@ -469,6 +472,13 @@ export default function AiViewer({
   const { searchEmojis } = useEmojiSearch();
   /** Set when this pane is going away, so its own abort is not reported. */
   const tornDown = useRef(false);
+  // Where answers come from. A global preference rather than per-window: it is a
+  // statement about this machine (what may leave it, what is paid for), not about
+  // one conversation.
+  const { settings, updateSetting } = useSettings();
+  // `use$` has no value on the first frame; the default is what settings would
+  // have said anyway.
+  const backend = settings?.inference.backend ?? "auto";
 
   // Availability is read once: an injector that appears later is picked up on
   // the next send, which throws `unavailable` with the same message.
@@ -511,10 +521,27 @@ export default function AiViewer({
   // Which request function to use, and whether it takes tools. Standard first;
   // the experimental namespace only to gain tool calling.
   const toolSupport: ToolSupport = useMemo(
-    () => (available ? resolveRequest().tools : "none"),
-    [available],
+    // Keyed on the preference too: forcing the on-device model takes tools away,
+    // and a panel that kept claiming them would be lying. `available` is read
+    // rather than only listed, so an injector appearing late re-keys this.
+    () =>
+      available || isAnyInferenceReachable()
+        ? resolveRequest(backend).tools
+        : "none",
+    [available, backend],
   );
   const toolsEnabled = toolSupport !== "none";
+
+  // Said once, where the choice was made: the selected backend is not the one
+  // answering. Not an error — nothing failed — so it is a note, not the error row.
+  const substitution = useMemo(() => {
+    if (!available) return undefined;
+    const resolved = resolveRequest(backend);
+    if (!resolved.substituted) return undefined;
+    return resolved.substituted === IPA_ID
+      ? "This browser has no on-device model, so your extension is answering."
+      : "No extension found, so the browser's own model is answering.";
+  }, [available, backend]);
 
   // The model that answered most recently, for the agent header. On the
   // on-device path nothing has answered yet but the model is already known.
@@ -638,7 +665,19 @@ export default function AiViewer({
 
   const send = useCallback(
     async (text: string) => {
-      const priorMessages: InferenceMessage[] = turns
+      // The conversation this turn is being added to, read rather than assumed.
+      //
+      // `turns` is `local ?? stored ?? []`, and `stored` is a live query: a
+      // window opened with `--conversation <id>` renders — and autofocuses its
+      // composer — before that query resolves, so a fast first message used the
+      // empty list as its base and saved two turns over the whole history.
+      // Sending is rare and this read is local, so it is always taken fresh.
+      // `Turn` is the stored shape plus `pending`, which only ever exists in
+      // state — a stored turn is by definition settled.
+      const base: Turn[] =
+        local ??
+        (storageId ? (await loadStoredConversation(storageId)).turns : []);
+      const priorMessages: InferenceMessage[] = base
         .filter((turn) => !turn.pending)
         .map((turn) =>
           turn.role === "user"
@@ -652,8 +691,8 @@ export default function AiViewer({
 
       setError(null);
       const at = Math.floor(Date.now() / 1000);
-      setTurns((previous) => [
-        ...previous,
+      setLocal(() => [
+        ...base,
         { role: "user", content: text, at },
         { role: "assistant", content: "", pending: true, at },
       ]);
@@ -672,7 +711,7 @@ export default function AiViewer({
       // prompt. `buildMentionContext` caps and dedupes, so the current message
       // wins the budget.
       const mentions = await buildMentionContext(
-        [text, ...userTurnsNewestFirst(turns)].join("\n\n"),
+        [text, ...userTurnsNewestFirst(base)].join("\n\n"),
       );
       // What this message named travels with it, so the reopened conversation
       // renders the person and the note rather than the bech32 for them.
@@ -749,7 +788,7 @@ export default function AiViewer({
             schedule();
           },
           onToolRuns: flushToolRuns,
-          request: resolveRequest().request,
+          request: resolveRequest(backend).request,
           signal: controller.signal,
           ...(toolsEnabled ? { tools: AI_TOOLS } : {}),
         });
@@ -770,7 +809,7 @@ export default function AiViewer({
         });
 
         const settled: Turn[] = [
-          ...turns.filter((turn) => !turn.pending),
+          ...base.filter((turn) => !turn.pending),
           { role: "user", content: text, at, ...attachment(attached) },
           {
             role: "assistant",
@@ -810,13 +849,14 @@ export default function AiViewer({
       }
     },
     [
+      backend,
       context?.system,
       executors,
-      setTurns,
+      local,
+      storageId,
       subject,
       system,
       toolsEnabled,
-      turns,
       windowId,
     ],
   );
@@ -846,13 +886,14 @@ export default function AiViewer({
     if (stored.length > 0 || turns.length > 0) return;
     // Only an injector answers unprompted. Opening the on-device model can
     // start a download, which the browser only allows from a user gesture, so
-    // the prompt waits in the composer for the click that qualifies.
-    if (!injected) {
+    // the prompt waits in the composer for the click that qualifies — including
+    // when an extension exists and the user chose on-device anyway.
+    if (resolveRequest(backend).onDevice) {
       editorRef.current?.insertText(prompt);
       return;
     }
     void send(prompt);
-  }, [available, injected, prompt, send, stored, turns.length]);
+  }, [available, backend, prompt, send, stored, turns.length]);
 
   if (!available) {
     return (
@@ -955,7 +996,13 @@ export default function AiViewer({
           invites Enter. Only on the landing page — a reply box sits under a
           conversation, which is what should be read there. */}
       {showIndex && !streaming && (
-        <div className="flex items-center justify-end gap-1 pt-1 pr-1 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1 pt-1 pr-1 text-xs text-muted-foreground">
+          {/* Where the answer comes from, next to the box you ask in. */}
+          <BackendSelect
+            onChange={(next) => updateSetting("inference", "backend", next)}
+            value={backend}
+          />
+          <span className="flex-1" />
           {/* `Ctrl`, not the platform modifier: both are bound, and this is the
               one that works everywhere and the one people try first. */}
           <KbdGroup>
@@ -1196,6 +1243,14 @@ export default function AiViewer({
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
+
+      {/* A preference is a preference: the chosen backend may be absent, and the
+          window says which one answered instead rather than failing. */}
+      {substitution && (
+        <p className="mx-4 mb-2 text-xs text-muted-foreground">
+          {substitution}
+        </p>
+      )}
 
       {/* A model download is minutes of nothing otherwise. */}
       {download !== undefined && (

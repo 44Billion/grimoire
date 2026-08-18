@@ -8,6 +8,7 @@ import {
   isAnyInferenceReachable,
   isInferenceAvailable,
   isInferenceError,
+  listBackends,
   probeInference,
   resolveRequest,
 } from "./inference";
@@ -214,5 +215,99 @@ describe("the on-device fallback", () => {
     const resolved = resolveRequest();
     expect(resolved.tools).toBe("standard");
     expect(resolved.onDevice).toBeUndefined();
+  });
+});
+
+describe("a backend preference", () => {
+  it("answers on-device even with an injector present", async () => {
+    // The whole reason this cannot go through `ipa-tools`' client: its resolver
+    // is IPA-first and refuses `"ipa"` as a fallback entry, so with an extension
+    // installed the preference would silently do nothing.
+    restore = installMockInference(
+      createMockInference(
+        { kind: "normal", deltas: ["from the extension"] },
+        { toolCalling: true },
+      ),
+    );
+    restorePromptApi = installMockPromptApi(
+      createMockPromptApi({ chunks: ["on ", "device"] }),
+    );
+
+    const resolved = resolveRequest("promptApi");
+    expect(resolved.onDevice).toBe(true);
+    // On-device means no tools, whatever the extension advertises.
+    expect(resolved.tools).toBe("none");
+    expect(resolved.substituted).toBeUndefined();
+
+    const chunks: InferenceChunk[] = [];
+    for await (const chunk of resolved.request({
+      method: "chat",
+      messages: [{ role: "user", content: "hi" }],
+    })) {
+      chunks.push(chunk);
+    }
+    expect(chunks[chunks.length - 1]).toMatchObject({
+      type: "done",
+      message: { content: "on device" },
+    });
+  });
+
+  it("falls back and says so when the chosen backend is missing", () => {
+    // A preference is a preference: nothing failed, so nothing throws — but the
+    // window has to be able to say which one answered.
+    restorePromptApi = installMockPromptApi(undefined);
+    restore = installMockInference(
+      createMockInference({ kind: "normal", deltas: ["x"] }),
+    );
+    expect(resolveRequest("promptApi")).toMatchObject({
+      tools: "none",
+      substituted: "ipa",
+    });
+
+    restore();
+    restore = installMockInference(undefined);
+    restorePromptApi();
+    restorePromptApi = installMockPromptApi(createMockPromptApi());
+    expect(resolveRequest("ipa")).toMatchObject({
+      onDevice: true,
+      substituted: "promptApi",
+    });
+  });
+
+  it("leaves the default path exactly as it was", () => {
+    restorePromptApi = installMockPromptApi(createMockPromptApi());
+    restore = installMockInference(
+      createMockInference({ kind: "normal" }, { toolCalling: true }),
+    );
+    expect(resolveRequest("auto")).toMatchObject({ tools: "standard" });
+    expect(resolveRequest("auto").substituted).toBeUndefined();
+    expect(resolveRequest("ipa")).toMatchObject({ tools: "standard" });
+    expect(resolveRequest("ipa").substituted).toBeUndefined();
+  });
+
+  it("lists both backends with what each can do", async () => {
+    restorePromptApi = installMockPromptApi(
+      createMockPromptApi({ availability: "downloadable" }),
+    );
+    restore = installMockInference(
+      createMockInference({ kind: "normal" }, { toolCalling: true }),
+    );
+
+    const backends = await listBackends();
+    expect(backends.map((backend) => backend.id)).toEqual(["ipa", "promptApi"]);
+    expect(backends[0]).toMatchObject({
+      availability: "available",
+      capabilities: { tools: "standard", images: false },
+    });
+    // Downloadable is not unavailable: a menu has to say so before the click
+    // that starts the download.
+    expect(backends[1]).toMatchObject({
+      availability: "downloadable",
+      capabilities: { tools: "none", images: false },
+    });
+    // A backend is never a provider or a model name.
+    for (const backend of backends) {
+      expect(backend.label).not.toMatch(/gpt|claude|gemini|llama/i);
+    }
   });
 });

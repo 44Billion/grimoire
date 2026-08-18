@@ -10,7 +10,8 @@ The page never sees a key, never names a provider, and never chooses a model.
 
 | File | What it owns |
 | --- | --- |
-| `src/services/inference.ts` | Lookup, error helpers, `resolveRequest()`, the fallback client, `probeInference()` |
+| `src/services/inference.ts` | Lookup, error helpers, `resolveRequest()`, `probeInference()` |
+| `src/services/inference-backends.ts` | The two backends, their capabilities, and the preference |
 | `src/services/prompt-api.ts` | Chrome's Prompt API as an `ipa-tools` fallback backend |
 | `src/services/tool-loop.ts` | The page-side multi-round tool loop |
 | `src/lib/ai-registry.ts` | The tool registry: ids, schemas, prompt lines, name mapping |
@@ -43,6 +44,27 @@ experimental one only to gain tools, and reports which is in use as
 `ToolSupport`. The spec asks applications not to depend on injector namespaces —
 so if that surface changes, tool calling stops and the fenced-command path takes
 over. Nothing else breaks.
+
+**A backend is not a provider.** Two backends exist: an extension injecting
+`window.inference`, and the browser's own model. Which company answers and with
+which weights is the extension's choice — that is what IPA is for — so the
+selector says "Extension" and "On-device" and never a model name. What the page
+may decide is whether the question leaves the machine at all, which is why the
+preference exists: on-device is private and free, and before this it was
+unreachable for anyone who had an extension installed.
+
+**"Prefer on-device" cannot go through the client.** `createInference` is IPA-first
+by construction and `normalizeFallbacks` rejects `"ipa"` as an entry, so with an
+extension present the client answers through it every time. Forcing on-device
+therefore drives the Prompt API backend directly (`onDeviceInference`), and every
+other path still goes through the client so a late injection wins. A preference
+whose backend is absent is not an error: `resolveRequest` falls back and reports
+`substituted`, which the window states in a line.
+
+**Capabilities are derived, never cached.** An extension can appear after the
+window opened, and `getFeatures()` is the only truth about tools. `images` is
+false for both backends and is the flag an attachment button waits on: the IPA
+draft lists images as out of scope and its `content` is a string.
 
 **IPA is decided in `resolveRequest()`, not by the client.** `ipa-tools`'
 `createInference({ fallbacks })` re-checks the injector around every probe and
@@ -117,10 +139,12 @@ and re-prompts whenever the set widens.
   `wallet` are refused and must be offered instead.
 - **`nostr.req`** — a full NIP-01 filter (`ids`, `authors`, `kinds`, `since`,
   `until`, `search`, single-letter tags via a `tags` object), `$me` and
-  `$contacts` expanded page-side. Returns at most 20 events with content
-  truncated, plus the `npub` and `nevent` to quote: handed only hex, a model
-  invents bech32 with a bad checksum, and an undecodable reference renders as
-  dead text.
+  `$contacts` expanded page-side. How many events to read is the model's call —
+  five to skim, more to summarise a thread — with a 500 bound that exists so the
+  pane and the context window survive the answer, not as a policy. The transcript
+  draws the first 40 and says how many more it read. Each event carries the `npub`
+  and `nevent` to quote: handed only hex, a model invents bech32 with a bad
+  checksum, and an undecodable reference renders as dead text.
 - **`nostr.resolve`** (`src/lib/resolve-entity.ts`) — a bech32 entity as the
   thing it names: the kind 0 for a person, the event for a note/nevent/naddr,
   EventStore first and relays second. Without it a model that meets an entity in
@@ -153,6 +177,14 @@ prompt (`buildAiContext`). `buildMentionContext` does the same for up to three
 `ai` takes an event, a profile, a kind or a NIP as its subject, and every one of
 those has an entry point in the UI (the event menu, the profile header, the kind
 and NIP windows) through `AskHexButton`.
+
+**A conversation is read before it is written.** Turns come from a live query, so
+a window opened by id renders — and autofocuses its composer — before that query
+resolves. A first message sent in that gap used the empty list as its base and
+saved two turns over the whole history. The sender now re-reads the row, and
+`reconcileTurns` refuses to let a shorter list that does not begin where the
+stored one begins replace it. `/run` pages key their conversation off the command
+rather than a constant `"pop-out"`, which made two unrelated chats one row.
 
 **A turn keeps what it named.** A transcript is `nostr:` URIs and the EventStore
 is memory, so a conversation reopened tomorrow would render a person as a stub and

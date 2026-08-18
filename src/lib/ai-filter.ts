@@ -7,9 +7,17 @@ import eventStore from "@/services/event-store";
 import { AGGREGATOR_RELAYS, addressLoader } from "@/services/loaders";
 import type { NostrFilter } from "@/types/nostr";
 
-/** Cap on one query. A model will happily ask for the whole network. */
-export const MAX_QUERY_LIMIT = 20;
-/** Default when the model names no limit. */
+/**
+ * The only bound on how many events one query returns.
+ *
+ * Not a policy — the model decides how many it needs, and it knows what it is
+ * about to read better than a number here does. This exists because the result
+ * is rendered as events and fed back as JSON: a five-figure answer freezes the
+ * pane and blows the context window, killing the turn the model was in the
+ * middle of. High enough that no reasonable request meets it.
+ */
+export const MAX_QUERY_LIMIT = 500;
+/** Default when the model names no limit. Small on purpose: a peek, not a crawl. */
 const DEFAULT_LIMIT = 5;
 /** How long to wait for a contact list before giving up on `$contacts`. */
 const CONTACTS_TIMEOUT = 6_000;

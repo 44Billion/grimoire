@@ -29,6 +29,9 @@ import { cn } from "@/lib/utils";
 
 import type { ToolRun } from "@/types/tool-part";
 
+/** Most events one tool row draws. The model may read more than a pane can. */
+const MAX_RENDERED = 40;
+
 /**
  * A run's canonical tool id.
  *
@@ -346,13 +349,21 @@ function ToolFeed({ ids, run }: { ids: string[]; run: ToolRun }) {
           <ReplyCodeBlock code={reqOf(run)} language="json" />
         </div>
       )}
-      {/* Scrolls inside itself: twenty events, each rendered whole and some
+      {/* Scrolls inside itself: a dozen events, each rendered whole and some
           quoting their parent, is longer than the conversation that asked for
-          them — the answer was unreachable below it. */}
+          them — the answer was unreachable below it. And only the first
+          `MAX_RENDERED` are drawn: the model may ask for hundreds, which it is
+          welcome to read, but hundreds of live event renderers in a chat pane is
+          a frozen tab. The count is stated rather than silently dropped. */}
       <div className="max-h-80 divide-y divide-border/50 overflow-y-auto">
-        {ids.map((id) => (
+        {ids.slice(0, MAX_RENDERED).map((id) => (
           <EmbeddedEvent className="" eventPointer={{ id }} key={id} />
         ))}
+        {ids.length > MAX_RENDERED && (
+          <p className="px-3 py-2 text-xs text-muted-foreground">
+            {ids.length - MAX_RENDERED} more read but not shown.
+          </p>
+        )}
       </div>
     </div>
   );

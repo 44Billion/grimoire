@@ -10,20 +10,24 @@
  */
 
 import {
-  createInference,
   getInference as getIpaInference,
   isInferenceAvailable as isIpaAvailable,
   isInferenceError,
   makeInferenceError,
-  type InferenceClient,
 } from "ipa-tools";
 
 import {
-  createPromptApiBackend,
+  describeBackends,
+  fallbackClient,
+  ipaToolSupport,
+  IPA_ID,
   isPromptApiPresent,
+  onDeviceInference,
   promptApiAvailability,
   PROMPT_API_ID,
-} from "./prompt-api";
+  type BackendPreference,
+  type ToolSupport,
+} from "./inference-backends";
 
 import type { BackendAvailability } from "ipa-tools";
 import type {
@@ -105,33 +109,6 @@ export function getInferenceFeatures(): InferenceFeatures {
   return getInference().getFeatures?.() ?? {};
 }
 
-/** Progress of the on-device model download, in bytes, while one is running. */
-let downloadProgress: ((loaded: number) => void) | undefined;
-
-/** Set the sink for on-device download progress. Replaces any previous one. */
-export function onModelDownloadProgress(
-  listener: ((loaded: number) => void) | undefined,
-): void {
-  downloadProgress = listener;
-}
-
-/**
- * IPA first, on-device second — `createInference` re-checks the injector around
- * every probe and create, so an extension that appears late still wins.
- *
- * One client for the app: it caches the resolved backend, and the on-device
- * model is a download nobody wants twice.
- */
-let client: InferenceClient | undefined;
-
-function fallbackClient(): InferenceClient {
-  client ??= createInference({
-    fallbacks: [createPromptApiBackend()],
-    onDownloadProgress: (loaded) => downloadProgress?.(loaded),
-  });
-  return client;
-}
-
 export interface InferenceReach {
   /** An injector is present. */
   ipa: boolean;
@@ -154,30 +131,66 @@ export async function probeInference(): Promise<InferenceReach> {
 /** Availability of the on-device model alone, without probing the injector. */
 export { promptApiAvailability };
 
-/**
- * How this window may send tools, if at all.
- *
- * `"standard"` is a spec-advertised capability. `"experimental"` means the
- * injector only offers tools on its own namespace — usable, but a surface the
- * spec asks applications not to depend on, so callers must say so.
- */
-export type ToolSupport = "standard" | "experimental" | "none";
+// One import site for the whole surface, as before the backends moved out.
+export {
+  describeBackends,
+  IPA_ID,
+  onModelDownloadProgress,
+  PROMPT_API_ID,
+  type BackendPreference,
+  type ToolSupport,
+} from "./inference-backends";
+
+/** Both backends and their state, for a selector. */
+export function listBackends() {
+  return describeBackends(isIpaAvailable() ? getInference() : undefined);
+}
 
 export interface ResolvedRequest {
   request: Inference["request"];
   tools: ToolSupport;
   /** True when the answer will come from the page's own model, not an injector. */
   onDevice?: boolean;
+  /**
+   * Set when the chosen backend could not answer and another one did. A
+   * preference is a preference: a missing extension must not turn into an error
+   * the user has to decode, but the window has to say what happened.
+   */
+  substituted?: typeof IPA_ID | typeof PROMPT_API_ID;
 }
 
 /**
- * Pick the request function to use.
+ * Pick the request function to use, honouring a backend preference.
  *
  * IPA is decided here rather than inside the client because the experimental
  * namespace is injector-specific: the client only knows `request`, so routing
  * an injected provider through it would silently drop tool calling.
+ *
+ * Forcing on-device also has to happen here: `ipa-tools`' resolver is IPA-first
+ * and rejects `"ipa"` as a fallback entry, so with an extension installed the
+ * client would answer through it every time and the preference would do nothing.
  */
-export function resolveRequest(): ResolvedRequest {
+export function resolveRequest(
+  preference: BackendPreference = "auto",
+): ResolvedRequest {
+  // Asked for on-device, and the browser has one: drive the backend directly.
+  // `create()` — and so the download — happens inside the request, on the send
+  // the user made.
+  if (preference === PROMPT_API_ID && isPromptApiPresent()) {
+    return {
+      request: (request) => ({
+        async *[Symbol.asyncIterator]() {
+          const inference = await onDeviceInference(request.signal);
+          yield* inference.request(request);
+        },
+      }),
+      tools: "none",
+      onDevice: true,
+    };
+  }
+
+  const wanted = preference === "auto" ? undefined : preference;
+
   if (!isIpaAvailable()) {
     // No injector. The client resolves the fallback lazily, inside the request,
     // and re-checks IPA on the way — so a late injection still wins.
@@ -186,25 +199,25 @@ export function resolveRequest(): ResolvedRequest {
       request: (request) => fallback.request(request),
       tools: "none",
       onDevice: true,
+      // Only a substitution if something else was asked for; with no preference
+      // this is simply what is available.
+      ...(wanted === IPA_ID ? { substituted: PROMPT_API_ID } : {}),
     };
   }
 
   const inference = getInference();
-  const standard = inference.request.bind(inference);
+  const tools = ipaToolSupport(inference);
+  const request =
+    tools === "experimental" && inference.experimental?.request
+      ? inference.experimental.request.bind(inference.experimental)
+      : inference.request.bind(inference);
 
-  if (inference.getFeatures?.().toolCalling === true) {
-    return { request: standard, tools: "standard" };
-  }
-
-  const experimental = inference.experimental?.request;
-  if (typeof experimental === "function") {
-    return {
-      request: experimental.bind(inference.experimental),
-      tools: "experimental",
-    };
-  }
-
-  return { request: standard, tools: "none" };
+  return {
+    request,
+    tools,
+    // Wanted the on-device model, which this browser does not have.
+    ...(wanted === PROMPT_API_ID ? { substituted: IPA_ID } : {}),
+  };
 }
 
 /** Drain a stream to its single `done` chunk, ignoring deltas. */

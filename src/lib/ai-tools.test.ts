@@ -292,11 +292,30 @@ describe("nostr.req", () => {
     expect(requestEvents).not.toHaveBeenCalled();
   });
 
-  it("caps the limit a model asks for", async () => {
-    await call("nostr.req", { kinds: [1], limit: 5000 });
+  it("passes the limit the model asked for", async () => {
+    // How many events a question needs is the model's call, not a number here.
+    await call("nostr.req", { kinds: [1], limit: 200 });
     expect(requestEvents).toHaveBeenCalledWith(
       ["wss://default.example"],
-      [{ kinds: [1], limit: 20 }],
+      [{ kinds: [1], limit: 200 }],
+    );
+  });
+
+  it("bounds an absurd limit, because the page has to survive the answer", async () => {
+    // Not a policy: the result renders as events and goes back as JSON, so a
+    // five-figure answer freezes the pane and kills the turn.
+    await call("nostr.req", { kinds: [1], limit: 50_000 });
+    expect(requestEvents).toHaveBeenCalledWith(
+      ["wss://default.example"],
+      [{ kinds: [1], limit: 500 }],
+    );
+  });
+
+  it("defaults to a peek when the model names no limit", async () => {
+    await call("nostr.req", { kinds: [1] });
+    expect(requestEvents).toHaveBeenCalledWith(
+      ["wss://default.example"],
+      [{ kinds: [1], limit: 5 }],
     );
   });
 

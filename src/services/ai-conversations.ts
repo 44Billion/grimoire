@@ -92,6 +92,28 @@ export async function listConversations(): Promise<ConversationSummary[]> {
   }
 }
 
+/**
+ * Turns to write, given what is already stored.
+ *
+ * A window builds its next state from the turns it has in memory, and those come
+ * from a live query that may not have resolved yet. A conversation reopened by id
+ * and answered immediately therefore arrived here as two turns to write over
+ * twenty — and the twenty were gone.
+ *
+ * The caller-side race is fixed (the sender re-reads the row), but this is the
+ * function that destroys history, so it checks: a shorter list that does not
+ * begin where the stored one begins is not a newer version of the conversation,
+ * it is a fresh one built on nothing. Keep both, in order.
+ */
+export function reconcileTurns(stored: AiTurns | undefined, next: AiTurns) {
+  if (!stored || stored.length === 0) return next;
+  if (next.length >= stored.length) return next;
+
+  const sameStart =
+    stored[0].role === next[0].role && stored[0].content === next[0].content;
+  return sameStart ? next : [...stored, ...next];
+}
+
 export async function saveConversation(
   windowId: string,
   turns: AiTurns,
@@ -102,10 +124,15 @@ export async function saveConversation(
       await db.aiConversations.delete(windowId);
       return;
     }
+    const existing = await db.aiConversations.get(windowId);
     await db.aiConversations.put({
       windowId,
-      turns,
-      ...(target ? { target } : {}),
+      turns: reconcileTurns(existing?.turns, turns),
+      // A conversation that already knew its subject keeps it: reopening by id
+      // passes no target, and the window should not forget what it is about.
+      ...((target ?? existing?.target)
+        ? { target: target ?? existing?.target }
+        : {}),
       updatedAt: Date.now(),
     });
   } catch {

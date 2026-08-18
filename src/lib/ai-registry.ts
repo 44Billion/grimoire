@@ -166,8 +166,8 @@ export const TOOL_REGISTRY: ToolDefinition[] = [
     namespace: "nostr",
     description:
       "Run a REQ against relays and read what comes back. Read-only. " +
-      "Takes a full NIP-01 filter; returns at most " +
-      `${MAX_QUERY_LIMIT} events with content truncated.`,
+      "Takes a full NIP-01 filter and returns the events, with long content " +
+      "truncated.",
     parameters: {
       type: "object",
       properties: {
@@ -210,7 +210,10 @@ export const TOOL_REGISTRY: ToolDefinition[] = [
         },
         limit: {
           type: "number",
-          description: `Maximum events, capped at ${MAX_QUERY_LIMIT}.`,
+          description:
+            "How many events you want. Ask for what the question needs — five " +
+            "to skim, more to summarise a thread or a week. Defaults to 5, " +
+            `hard bound ${MAX_QUERY_LIMIT}.`,
         },
         relays: {
           type: "array",
