@@ -12,7 +12,6 @@ import {
   isChannelPinned,
   isMutedFor,
   isPinnedFor,
-  lastChannelOf,
   loadPrefs,
   resetConcordPrefs,
 } from "./concord-prefs";
@@ -20,7 +19,6 @@ import {
 const COMMUNITY = "a".repeat(64);
 const OTHER_COMMUNITY = "b".repeat(64);
 const CHANNEL = "c".repeat(64);
-const OTHER_CHANNEL = "d".repeat(64);
 
 const stored = () =>
   JSON.parse(localStorage.getItem(CHAT_PREFS_STORAGE_KEY) ?? "null");
@@ -195,32 +193,6 @@ describe("collapsed categories", () => {
   });
 });
 
-describe("last open channel", () => {
-  it("remembers per community", () => {
-    concordPrefsManager.setLastChannel(COMMUNITY, CHANNEL);
-    concordPrefsManager.setLastChannel(OTHER_COMMUNITY, OTHER_CHANNEL);
-    expect(lastChannelOf(concordPrefsManager.value, COMMUNITY)).toBe(CHANNEL);
-    expect(lastChannelOf(concordPrefsManager.value, OTHER_COMMUNITY)).toBe(
-      OTHER_CHANNEL,
-    );
-  });
-
-  it("does not emit when the channel has not moved", async () => {
-    concordPrefsManager.setLastChannel(COMMUNITY, CHANNEL);
-    const emissions = firstValueFrom(
-      concordPrefsManager.stream$.pipe(take(2), toArray()),
-    );
-    concordPrefsManager.setLastChannel(COMMUNITY, CHANNEL); // no-op
-    concordPrefsManager.setLastChannel(COMMUNITY, OTHER_CHANNEL);
-    const seen = await emissions;
-    // The replayed current value, then the real move — never the no-op.
-    expect(seen.map((p) => lastChannelOf(p, COMMUNITY))).toEqual([
-      CHANNEL,
-      OTHER_CHANNEL,
-    ]);
-  });
-});
-
 describe("loading a damaged blob", () => {
   it("falls back to defaults on unparseable JSON", () => {
     localStorage.setItem(CHAT_PREFS_STORAGE_KEY, "{not json");
@@ -229,7 +201,6 @@ describe("loading a damaged blob", () => {
       pinnedChannels: [],
       mutedChannels: [],
       collapsedCategories: {},
-      lastChannelByContainer: {},
     });
   });
 
@@ -240,9 +211,6 @@ describe("loading a damaged blob", () => {
         __version: 1,
         pinnedChannels: [channelPrefKey("concord", COMMUNITY, CHANNEL), 7],
         collapsedCategories: "nonsense",
-        lastChannelByContainer: {
-          [containerPrefKey("concord", COMMUNITY)]: CHANNEL,
-        },
       }),
     );
     const prefs = loadPrefs();
@@ -250,7 +218,6 @@ describe("loading a damaged blob", () => {
       channelPrefKey("concord", COMMUNITY, CHANNEL),
     ]);
     expect(prefs.collapsedCategories).toEqual({});
-    expect(lastChannelOf(prefs, COMMUNITY)).toBe(CHANNEL);
   });
 });
 
@@ -258,7 +225,6 @@ describe("reset", () => {
   it("empties storage and tells its subscribers", async () => {
     concordPrefsManager.togglePin(COMMUNITY, CHANNEL);
     concordPrefsManager.toggleCategoryCollapsed(COMMUNITY, "voice");
-    concordPrefsManager.setLastChannel(COMMUNITY, CHANNEL);
 
     const emissions = firstValueFrom(
       concordPrefsManager.stream$.pipe(take(2), toArray()),
@@ -271,7 +237,6 @@ describe("reset", () => {
       pinnedChannels: [],
       mutedChannels: [],
       collapsedCategories: {},
-      lastChannelByContainer: {},
     });
     expect(localStorage.getItem(CHAT_PREFS_STORAGE_KEY)).toBeNull();
     expect(loadPrefs().pinnedChannels).toEqual([]);

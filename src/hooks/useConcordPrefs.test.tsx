@@ -22,7 +22,7 @@ describe("useConcordPrefs", () => {
     // — this is why the open channel can be resolved DURING a render.
     const { result } = renderHook(() => useConcordPrefs());
     expect(result.current.isPinned(COMMUNITY, CHANNEL)).toBe(false);
-    expect(result.current.lastChannel(COMMUNITY)).toBeUndefined();
+    expect(result.current.isCollapsed(COMMUNITY, "voice")).toBe(false);
   });
 
   it("repaints when a pin is toggled through it", () => {
@@ -42,12 +42,12 @@ describe("useConcordPrefs", () => {
     expect(second.result.current.isCollapsed(COMMUNITY, "voice")).toBe(true);
   });
 
-  it("remembers the last channel and survives a remount", () => {
+  it("remembers a pin across a remount", () => {
     const { result, unmount } = renderHook(() => useConcordPrefs());
-    act(() => result.current.setLastChannel(COMMUNITY, CHANNEL));
+    act(() => result.current.togglePin(COMMUNITY, CHANNEL));
     unmount();
     const again = renderHook(() => useConcordPrefs());
-    expect(again.result.current.lastChannel(COMMUNITY)).toBe(CHANNEL);
+    expect(again.result.current.isPinned(COMMUNITY, CHANNEL)).toBe(true);
   });
 
   it("empties when the account signs out under it", () => {

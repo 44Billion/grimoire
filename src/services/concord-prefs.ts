@@ -1,13 +1,16 @@
 /**
- * How this device arranges a chat sidebar: what is pinned, what is folded away,
- * and which channel each container was left on.
+ * How this device arranges a chat sidebar: what is pinned, what is muted, and
+ * what is folded away.
  *
- * All three are ARRANGEMENT, not content. Nothing here is published and nothing
+ * The channel a container was last left on is NOT here — that one is per
+ * window (`components/concord/window-cursor.ts`), because two open windows
+ * sharing it means they cannot show two channels.
+ *
+ * All of it is ARRANGEMENT, not content. Nothing here is published and nothing
  * here is a claim about an identity — armada keeps the same three per-device on
  * purpose (`PER_DEVICE_CONFIG_KEYS` at `bc19d1f:src/contexts/AppContext.ts`
  * holds `collapsedChannelCategories` and `lastChannelByServer`), because two
- * open clients that synced them would yank each other's channel selection
- * around. Grimoire has no settings sync at all, so per-device is the only
+ * open clients that synced them would yank each other's sidebar around. Grimoire has no settings sync at all, so per-device is the only
  * honest option as well as the right one.
  *
  * **localStorage rather than Dexie**, unlike the read cursors next door: the
@@ -96,8 +99,6 @@ export interface ChatPrefs {
   mutedChannels: string[];
   /** Container key → the casefolded `categoryKey()`s folded shut in it. */
   collapsedCategories: Record<string, string[]>;
-  /** Container key → the channel id last opened there. */
-  lastChannelByContainer: Record<string, string>;
 }
 
 const DEFAULT_PREFS: ChatPrefs = {
@@ -105,7 +106,6 @@ const DEFAULT_PREFS: ChatPrefs = {
   pinnedChannels: [],
   mutedChannels: [],
   collapsedCategories: {},
-  lastChannelByContainer: {},
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -122,15 +122,6 @@ function stringListRecord(value: unknown): Record<string, string[]> {
   for (const [key, entry] of Object.entries(value)) {
     const list = stringList(entry);
     if (list.length > 0) out[key] = list;
-  }
-  return out;
-}
-
-function stringRecord(value: unknown): Record<string, string> {
-  if (!isRecord(value)) return {};
-  const out: Record<string, string> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (typeof entry === "string" && entry) out[key] = entry;
   }
   return out;
 }
@@ -154,7 +145,6 @@ export function loadPrefs(): ChatPrefs {
       pinnedChannels: stringList(parsed.pinnedChannels),
       mutedChannels: stringList(parsed.mutedChannels),
       collapsedCategories: stringListRecord(parsed.collapsedCategories),
-      lastChannelByContainer: stringRecord(parsed.lastChannelByContainer),
     };
   } catch (error) {
     console.warn("[concord] could not read the sidebar preferences:", error);
@@ -236,16 +226,6 @@ export function isCategoryCollapsed(
   return (prefs.collapsedCategories[key] ?? []).includes(categoryKey);
 }
 
-/** The channel this community was last left on, if any. */
-export function lastChannelOf(
-  prefs: ChatPrefs,
-  communityIdHex: string,
-): string | undefined {
-  return prefs.lastChannelByContainer[
-    containerPrefKey(PROTOCOL, communityIdHex)
-  ];
-}
-
 class ConcordPrefsManager {
   private subject = new BehaviorSubject<ChatPrefs>(loadPrefs());
 
@@ -321,27 +301,6 @@ class ConcordPrefsManager {
     this.commit({ ...this.value, collapsedCategories });
   }
 
-  /**
-   * Remember which channel this community was left on.
-   *
-   * A no-op when it has not moved, because the caller is a click handler that
-   * fires on every pick including the one that changes nothing — and an emit
-   * there would repaint every subscriber for no change.
-   */
-  setLastChannel(communityIdHex: string, channelIdHex: string): void {
-    if (!communityIdHex || !channelIdHex) return;
-    const key = containerPrefKey(PROTOCOL, communityIdHex);
-    const value = channelIdHex.toLowerCase();
-    if (this.value.lastChannelByContainer[key] === value) return;
-    this.commit({
-      ...this.value,
-      lastChannelByContainer: {
-        ...this.value.lastChannelByContainer,
-        [key]: value,
-      },
-    });
-  }
-
   /** The logout door: forget the arrangement, and say so. */
   reset(): void {
     try {
@@ -359,7 +318,7 @@ class ConcordPrefsManager {
 export const concordPrefsManager = new ConcordPrefsManager();
 
 /**
- * Forget every pin, fold and last-open channel on this device.
+ * Forget every pin and fold on this device.
  *
  * Called from `clearCommunities`. Named as a free function so the wipe reads as
  * a list of doors rather than a list of singletons.

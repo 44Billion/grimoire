@@ -79,6 +79,10 @@ import { DmConsentGate } from "./dm/DmConsentGate";
 import { useDirectMessages } from "@/hooks/useDirectMessages";
 import type { DMIdentifier } from "@/types/chat";
 import { useConcordPrefs } from "@/hooks/useConcordPrefs";
+import {
+  windowCursor,
+  setWindowCursor,
+} from "@/components/concord/window-cursor";
 import { useAccount } from "@/hooks/useAccount";
 import { useAtomValue } from "jotai";
 import { useAddWindow } from "@/core/state";
@@ -137,7 +141,7 @@ export function ConcordViewer({
 }: ConcordViewerProps) {
   const isMobile = useIsMobile();
   const { state: grimoire, updateWindow } = useGrimoire();
-  const { lastChannel, setLastChannel, isRowMuted } = useConcordPrefs();
+  const { isRowMuted } = useConcordPrefs();
   const { communities, status, refresh: refreshList } = useConcordCommunities();
   const icons = useConcordIcons(communities);
   const [selectedId, setSelectedId] = useState<string | undefined>(communityId);
@@ -251,31 +255,17 @@ export function ConcordViewer({
   const dissolvedAtMs = useConcordDissolved(community);
 
   /**
-   * The remembered channel, captured when the community changes — NEVER read
-   * live.
-   *
-   * `lastChannel` is a device-wide preference every open window shares, so
-   * reading it reactively made one window follow another: open a second window,
-   * click a channel in it, and the first window — still on its fallback because
-   * nobody had clicked in it yet — jumped to the same channel. Armada hit this
-   * and kept the same state per-device for the same reason, and grimoire
-   * reproduced it between two windows of one app.
-   *
-   * Freezing it per community keeps the fallback doing its job (fill the pane on
-   * open) without letting a sibling window steer this one.
+   * Where THIS window was last left in this community — see
+   * `concord/window-cursor.ts` for why the memory is not device-wide. It can be
+   * read live now: nothing else writes this window's entry, so a sibling window
+   * cannot steer this one.
    */
-  const remembered = useMemo(
-    () => (communityIdHex ? lastChannel(communityIdHex) : undefined),
-    // `lastChannel` is deliberately absent: a later write by another window
-    // must not re-run this. `communityIdHex` is the only identity that matters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [communityIdHex],
-  );
+  const remembered = windowCursor(windowId, communityIdHex);
 
   // The OPEN channel is derived, not stored: falling back keeps the pane filled
   // the moment the fold lands, with no effect writing state during a render
   // pass. An explicit pick wins whenever it still resolves; failing that, the
-  // channel this device was last left on in this community.
+  // channel this window was last left on in this community.
   const openChannel = resolveOpenChannel(channels, selectedChannel, remembered);
 
   /**
@@ -531,7 +521,7 @@ export function ConcordViewer({
   );
 
   /**
-   * Record a deliberate move: on this device, and in this window's own props.
+   * Record a deliberate move: in this window's cursor, and in its own props.
    *
    * Only ever called from a click. A fallback resolution must not write here —
    * it would record the first channel of a community whose fold had not landed
@@ -540,7 +530,7 @@ export function ConcordViewer({
   const rememberNavigation = useCallback(
     (idHex: string | undefined, channelIdHex?: string) => {
       if (!idHex) return;
-      if (channelIdHex) setLastChannel(idHex, channelIdHex);
+      if (channelIdHex) setWindowCursor(windowId, idHex, channelIdHex);
       if (!windowId) return;
       const existing = grimoire.windows[windowId]?.props;
       if (!existing) return;
@@ -549,7 +539,7 @@ export function ConcordViewer({
         buildConcordWindowUpdate(existing, idHex, channelIdHex, command),
       );
     },
-    [command, grimoire.windows, setLastChannel, updateWindow, windowId],
+    [command, grimoire.windows, updateWindow, windowId],
   );
 
   const handleChannelSelect = useCallback(
@@ -884,7 +874,7 @@ export function ConcordViewer({
           setSelectedId(idHex);
           // Come back to where you left this community, not to its first
           // channel. Undefined is fine — the derived fallback covers it.
-          const remembered = lastChannel(idHex);
+          const remembered = windowCursor(windowId, idHex);
           setSelectedChannel(remembered);
           rememberNavigation(idHex, remembered);
           setShowGuestbook(false);

@@ -17,7 +17,6 @@ import {
   isChannelPinned,
   isMutedFor,
   isPinnedFor,
-  lastChannelOf,
   type ChatPrefs,
 } from "@/services/concord-prefs";
 import type { ChatProtocol } from "@/types/chat";
@@ -42,8 +41,6 @@ export interface ConcordPrefs {
   toggleRowMute: (row: RowRef) => void;
   isCollapsed: (communityIdHex: string, categoryKey: string) => boolean;
   toggleCollapsed: (communityIdHex: string, categoryKey: string) => void;
-  lastChannel: (communityIdHex: string) => string | undefined;
-  setLastChannel: (communityIdHex: string, channelIdHex: string) => void;
 }
 
 export function useConcordPrefs(): ConcordPrefs {
@@ -61,11 +58,6 @@ export function useConcordPrefs(): ConcordPrefs {
       isCategoryCollapsed(prefs, communityIdHex, categoryKey),
     [prefs],
   );
-  const lastChannel = useCallback(
-    (communityIdHex: string) => lastChannelOf(prefs, communityIdHex),
-    [prefs],
-  );
-
   const isMuted = useCallback(
     (communityIdHex: string, channelIdHex: string) =>
       isChannelMuted(prefs, communityIdHex, channelIdHex),
@@ -107,12 +99,6 @@ export function useConcordPrefs(): ConcordPrefs {
       concordPrefsManager.toggleCategoryCollapsed(communityIdHex, categoryKey),
     [],
   );
-  const setLastChannel = useCallback(
-    (communityIdHex: string, channelIdHex: string) =>
-      concordPrefsManager.setLastChannel(communityIdHex, channelIdHex),
-    [],
-  );
-
   return useMemo(
     () => ({
       prefs,
@@ -126,8 +112,6 @@ export function useConcordPrefs(): ConcordPrefs {
       toggleRowMute,
       isCollapsed,
       toggleCollapsed,
-      lastChannel,
-      setLastChannel,
     }),
     [
       prefs,
@@ -141,8 +125,6 @@ export function useConcordPrefs(): ConcordPrefs {
       toggleRowMute,
       isCollapsed,
       toggleCollapsed,
-      lastChannel,
-      setLastChannel,
     ],
   );
 }
