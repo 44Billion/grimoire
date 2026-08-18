@@ -234,6 +234,14 @@ export async function joinCall(opts: {
   try {
     await connect(opts, new Set());
   } catch (error) {
+    // Same rule as `leaveCall`, and the same race one step earlier: a mint
+    // can take seconds, and nothing cancels an attempt in flight — the slot
+    // is only taken once a room exists, so a reader who gives up and joins
+    // somewhere else meets no resistance. This attempt's failure is then
+    // stale news, and writing it would report a live call as failed. Our OWN
+    // failure still lands: a throw after the room existed goes through
+    // teardown, which clears the slot first.
+    if (activeRoom()) return;
     patch({
       status: "failed",
       error: error instanceof Error ? error.message : String(error),
@@ -743,6 +751,8 @@ export async function syncCall(input: {
   try {
     await connect(opts, new Set());
   } catch (error) {
+    // A rekey rejoin that fails late is stale for the same reason a join is.
+    if (activeRoom()) return;
     patch({
       status: "failed",
       error: error instanceof Error ? error.message : String(error),
