@@ -581,9 +581,9 @@ export const manPages: Record<string, ManPageEntry> = {
   call: {
     name: "call",
     section: "1",
-    synopsis: "call [community [channel]]",
+    synopsis: "call [community [channel] | relay'group-id]",
     description:
-      "The voice and video call of the Concord channel you are reading (CORD-07). Every channel is callable — there is no separate voice channel — and the call's coordinates derive from the same channel key that addresses its chat, so a rekey moves the call and removal from the channel is removal from its calls. There is no host and no roster: a token comes from a BLIND broker, which authorizes possession of the channel's key rather than membership, and which therefore cannot tell what community a room belongs to or who is joining. Media is end-to-end encrypted under per-sender keys every member derives and nobody exchanges, so the broker and the SFU forward ciphertext and nothing else. Who is in a call is announced over the channel itself, encrypted, so no relay learns it either — which is also why a participant the channel's own presence cannot vouch for is never decoded: identities are visible to members, so a copied one proves nothing, and both claimants stay silent until the stale claim ages out. The call outlives the window you started it from — switching workspaces does not end it — and closing that window does. Nothing survives a reload. Opened by the headset in a channel's header; typed on its own it shows the call you are in.",
+      "The voice and video call of the Concord channel you are reading (CORD-07). Every channel is callable — there is no separate voice channel — and the call's coordinates derive from the same channel key that addresses its chat, so a rekey moves the call and removal from the channel is removal from its calls. There is no host and no roster: a token comes from a BLIND broker, which authorizes possession of the channel's key rather than membership, and which therefore cannot tell what community a room belongs to or who is joining. Media is end-to-end encrypted under per-sender keys every member derives and nobody exchanges, so the broker and the SFU forward ciphertext and nothing else. Who is in a call is announced over the channel itself, encrypted, so no relay learns it either — which is also why a participant the channel's own presence cannot vouch for is never decoded: identities are visible to members, so a copied one proves nothing, and both claimants stay silent until the stale claim ages out. The call outlives the window you started it from — switching workspaces does not end it — and closing that window does. Nothing survives a reload. Opened by the headset in a channel's header; typed on its own it shows the call you are in. ALSO OPENS A NIP-29 RELAY GROUP'S SPACE, which is the same window and almost none of the same machinery: a group whose kind:39000 carries a `livekit` tag has a media room run by the relay itself, so the token comes from that relay's own endpoint (authorized with a NIP-98 signature by YOUR key, not a group key), who is in the room is a kind:39004 the relay publishes rather than something the members announce, and there is no end-to-end encryption — the relay issuing the credential is the relay that already reads the group, so encrypting the audio to it would protect nothing. Media travels over TLS to that relay's SFU and no further. The trade is the one NIP-29 makes everywhere: the relay is trusted, and a hostile one could put anyone in a room under anyone's name. Raising a hand and floating an emoji are Concord extensions carried on presence rumors, so a group's space offers neither. There is one call in the app, whichever kind it is: joining a space hangs up a Concord call, and vice versa.",
     options: [
       {
         flag: "[community]",
@@ -595,13 +595,19 @@ export const manPages: Record<string, ManPageEntry> = {
         description:
           "Optional. Channel name or a channel_id prefix, within that community.",
       },
+      {
+        flag: "[relay'group-id]",
+        description:
+          "A NIP-29 group's AV space. The relay hosting the group and the group id, as `chat` spells them; `wss://` is optional. Unlike a Concord channel this IS a typeable address.",
+      },
     ],
     examples: [
       "call                                      Show the call you are in",
       "call bitcoin general                      The call in #general",
       "call 3fa2c1 9d4e                          By community and channel id prefix",
+      "call relay.example.com'bitcoin-dev        A relay group's audio/video space",
     ],
-    seeAlso: ["concord"],
+    seeAlso: ["concord", "chat"],
     appId: "call",
     category: "Nostr",
     argParser: async (args: string[]) => parseCallCommand(args),

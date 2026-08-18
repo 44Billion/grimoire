@@ -3,6 +3,7 @@ import { kinds } from "nostr-tools";
 import { profileLoader } from "@/services/loaders";
 import { getProfileContent } from "applesauce-core/helpers";
 import type { NostrEvent } from "@/types/nostr";
+import { groupSupportedKinds, groupSupportsAv } from "@/lib/nip29/livekit";
 
 /**
  * Check if a string is a valid nostr pubkey (64 character hex string)
@@ -19,6 +20,13 @@ export interface ResolvedGroupMetadata {
   description?: string;
   icon?: string;
   source: "nip29" | "profile" | "fallback";
+  /** Whether the group advertises a LiveKit AV space (`livekit` tag). */
+  av?: boolean;
+  /**
+   * The kinds the group accepts, when it has said. Absent means every kind;
+   * EMPTY means none — an AV-only space, which should be offered no composer.
+   */
+  supportedKinds?: number[];
 }
 
 /**
@@ -46,11 +54,14 @@ export async function resolveGroupMetadata(
     const description = metadataEvent.tags.find((t) => t[0] === "about")?.[1];
     const icon = metadataEvent.tags.find((t) => t[0] === "picture")?.[1];
 
+    const supportedKinds = groupSupportedKinds(metadataEvent);
     return {
       name,
       description,
       icon,
       source: "nip29",
+      av: groupSupportsAv(metadataEvent),
+      ...(supportedKinds !== undefined ? { supportedKinds } : {}),
     };
   }
 

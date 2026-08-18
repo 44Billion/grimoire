@@ -280,6 +280,11 @@ export function reconstructCommand(window: WindowInstance): string {
       // A call names the channel it is in. Without this, editing a call window
       // rewrites its props to nothing and the pane goes blank.
       case "call":
+        // A relay group DOES have a typeable address, so a NIP-29 space rebuilds
+        // to the pair a person could have typed in the first place.
+        if (props.protocol === "nip-29" && props.relayUrl && props.groupId) {
+          return `call ${props.relayUrl.replace(/^wss:\/\//, "").replace(/\/$/, "")}'${props.groupId}`;
+        }
         if (props.communityId && props.channelId) {
           return `call ${props.communityId} ${props.channelId}`;
         }

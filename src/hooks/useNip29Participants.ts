@@ -7,7 +7,13 @@
  * and a `kind:39004` costs one filter on a socket the group is already using.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { groupKey } from "@/lib/nip29/group-selection";
 import {
@@ -21,26 +27,40 @@ export interface WatchedGroup {
   relayUrl: string;
 }
 
-/** Who is in one group's room, updating as the relay republishes. */
+const NOBODY: string[] = [];
+
+/**
+ * Who is in one group's room, updating as the relay republishes.
+ *
+ * Read straight from the service's memory rather than mirrored into state, and
+ * that is what makes switching groups safe: the snapshot is a function of the
+ * CURRENT props, so a group with no room — or one whose relay has not
+ * republished — shows nobody rather than whoever was in the group before it.
+ * Mirroring left the previous group's members on screen under the new group's
+ * name, because nothing arrives to correct a roster that does not exist.
+ *
+ * The snapshot is also referentially stable: the service hands back the same
+ * array until a new `kind:39004` replaces it.
+ */
 export function useGroupParticipants(
   relayUrl: string | undefined,
   groupId: string | undefined,
 ): string[] {
-  const [participants, setParticipants] = useState<string[]>(() =>
-    relayUrl && groupId ? groupParticipantsOf(relayUrl, groupId) : [],
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      if (!relayUrl || !groupId) return () => {};
+      return watchGroupParticipants(relayUrl, [groupId], onChange);
+    },
+    [relayUrl, groupId],
   );
 
-  useEffect(() => {
-    if (!relayUrl || !groupId) {
-      setParticipants([]);
-      return;
-    }
-    return watchGroupParticipants(relayUrl, [groupId], (_id, next) =>
-      setParticipants(next),
-    );
-  }, [relayUrl, groupId]);
+  const snapshot = useCallback(
+    () =>
+      relayUrl && groupId ? groupParticipantsOf(relayUrl, groupId) : NOBODY,
+    [relayUrl, groupId],
+  );
 
-  return participants;
+  return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 
 /**
@@ -51,6 +71,11 @@ export function useGroupParticipants(
  * identity: the group list is rebuilt on every fold of the reader's kind-10009,
  * and re-subscribing for a set that did not change would restart every REQ on
  * every repaint.
+ *
+ * What the effect collects is never trimmed — a group the reader leaves simply
+ * stops being asked about. The trimming happens on the way out instead, against
+ * the set the caller is currently rendering, so a stale count cannot appear on a
+ * row and an emptied list needs no write at all.
  */
 export function useGroupCallCounts(
   groups: readonly WatchedGroup[],
@@ -77,10 +102,7 @@ export function useGroupCallCounts(
   );
 
   useEffect(() => {
-    if (byRelay.size === 0) {
-      setCounts(new Map());
-      return;
-    }
+    if (byRelay.size === 0) return;
     const stops = [...byRelay].map(([relayUrl, groupIds]) =>
       watchGroupParticipants(relayUrl, groupIds, (groupId, participants) =>
         setCounts((prev) => {
@@ -102,5 +124,13 @@ export function useGroupCallCounts(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature]);
 
-  return counts;
+  return useMemo(() => {
+    const live = new Map<string, number>();
+    for (const group of groups) {
+      const k = groupKey(group);
+      const count = counts.get(k);
+      if (count) live.set(k, count);
+    }
+    return live;
+  }, [counts, groups]);
 }

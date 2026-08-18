@@ -39,7 +39,7 @@ vi.mock("@/services/concord-state", () => ({
   readStoredState: vi.fn(async () => undefined),
 }));
 
-const { resolveStoredCommunity, parseConcordCommand } =
+const { resolveStoredCommunity, parseConcordCommand, parseCallCommand } =
   await import("./concord-parser");
 
 describe("resolveStoredCommunity", () => {
@@ -100,5 +100,59 @@ describe("parseConcordCommand", () => {
 
   it("opens the whole list with no argument", async () => {
     await expect(parseConcordCommand([])).resolves.toEqual({});
+  });
+});
+
+describe("parseCallCommand", () => {
+  beforeEach(() => active$.next({ pubkey: VIEWER }));
+
+  // The channel needs a decrypted vault, which this suite mocks away; what is
+  // asserted here is that the community resolved and the protocol was named.
+  it("names the Concord community it resolved", async () => {
+    await expect(parseCallCommand(["bitcoin", "general"])).resolves.toEqual({
+      protocol: "concord",
+      communityId: BUILDERS,
+    });
+  });
+
+  it("shows the running call with no argument", async () => {
+    await expect(parseCallCommand([])).resolves.toEqual({});
+  });
+
+  // A relay group has a typeable address, unlike a Concord channel, so this
+  // needs no local vault lookup at all.
+  it("takes a relay group's space by its address", async () => {
+    await expect(
+      parseCallCommand(["relay.example.com'bitcoin-dev"]),
+    ).resolves.toEqual({
+      protocol: "nip-29",
+      relayUrl: "wss://relay.example.com",
+      groupId: "bitcoin-dev",
+    });
+  });
+
+  it("keeps an explicit scheme, and the group id verbatim", async () => {
+    await expect(parseCallCommand(["wss://nos.lol'Welcome"])).resolves.toEqual({
+      protocol: "nip-29",
+      relayUrl: "wss://nos.lol",
+      groupId: "Welcome",
+    });
+  });
+
+  // Nothing else in the app can address a group over plaintext either, and the
+  // AV endpoint is what refuses it — the parser's job is only to read the pair.
+  it("reads a ws:// pair rather than silently upgrading it", async () => {
+    await expect(
+      parseCallCommand(["ws://localhost:7777'test"]),
+    ).resolves.toEqual({
+      protocol: "nip-29",
+      relayUrl: "ws://localhost:7777",
+      groupId: "test",
+    });
+  });
+
+  it("does not mistake a community name for a group", async () => {
+    const parsed = await parseCallCommand(["bitcoin"]);
+    expect(parsed.protocol).toBe("concord");
   });
 });

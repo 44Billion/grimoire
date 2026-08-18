@@ -20,7 +20,7 @@ import {
 } from "./concord/ConcordChannelList";
 import { NoCommunitiesEmpty, StrandedBanner } from "./concord/ArmadaHandoff";
 import { ConcordPinsList, PinsHeaderButton } from "@/components/ConcordPinsBar";
-import { VoiceHeaderButton } from "@/components/concord/ConcordVoiceBar";
+import { CallHeaderButton } from "@/components/call/CallHeaderButton";
 import {
   ConcordInvitesPanel,
   InvitesRow,
@@ -65,7 +65,11 @@ import { groupKey, type GroupSelection } from "@/lib/nip29/group-selection";
 import { groupRowRef } from "@/lib/nip29/row-ref";
 import { markAllGroupsRead, markGroupRead } from "@/services/nip29-reads";
 import { useNip29Groups } from "@/hooks/useNip29Groups";
-import { useGroupCallCounts } from "@/hooks/useNip29Participants";
+import {
+  useGroupCallCounts,
+  useGroupParticipants,
+} from "@/hooks/useNip29Participants";
+import { useGroupMetadata } from "@/hooks/useGroupMetadata";
 import { useConcordInvites } from "@/hooks/useConcordInvites";
 import { useConcordPins } from "@/hooks/useConcordPins";
 import {
@@ -324,6 +328,35 @@ export function ConcordViewer({
       channelId: openChannel.idHex,
     });
   }, [addWindow, community, openChannel]);
+
+  /**
+   * Open the selected group's AV space in its own window.
+   *
+   * No `commandString`, for the reason the Concord one gives: it would be
+   * stored verbatim and win over `reconstructCommand`, so editing the window
+   * would rewrite its props from a bare `call` that names no room.
+   */
+  // Whether the OPEN group has a space, and who is in it. The metadata read is
+  // the same subscription the group's own row already holds, so this costs
+  // nothing beyond the tag check.
+  const openGroupMetadata = useGroupMetadata(
+    selectedGroup?.groupId ?? "",
+    selectedGroup?.relayUrl ?? "",
+  );
+  const groupHasSpace = Boolean(selectedGroup && openGroupMetadata?.av);
+  const groupCallCount = useGroupParticipants(
+    selectedGroup?.relayUrl,
+    selectedGroup?.groupId,
+  ).length;
+
+  const openGroupCallWindow = useCallback(() => {
+    if (!selectedGroup) return;
+    addWindow("call", {
+      protocol: "nip-29",
+      relayUrl: selectedGroup.relayUrl,
+      groupId: selectedGroup.groupId,
+    });
+  }, [addWindow, selectedGroup]);
 
   /**
    * Clicking a pin lands on the message itself — the same walk a search hit
@@ -1318,6 +1351,22 @@ export function ConcordViewer({
               protocol="nip-29"
               identifier={groupIdentifier}
               headerPrefix={headerPrefix}
+              {...(groupHasSpace
+                ? {
+                    headerExtra: (
+                      <CallHeaderButton
+                        count={groupCallCount}
+                        active={
+                          call.status === "connected" &&
+                          call.protocol === "nip-29" &&
+                          call.groupId === selectedGroup!.groupId
+                        }
+                        onOpen={openGroupCallWindow}
+                        emptyTitle="Start this group's space"
+                      />
+                    ),
+                  }
+                : {})}
             />
           ) : showInvites ? (
             <ConcordInvitesPanel
@@ -1345,13 +1394,15 @@ export function ConcordViewer({
                   headerPrefix={headerPrefix}
                   headerExtra={
                     <>
-                      <VoiceHeaderButton
+                      <CallHeaderButton
                         count={openCall.present.length}
                         active={
                           call.status === "connected" &&
+                          call.protocol === "concord" &&
                           call.channelIdHex === openChannel?.idHex
                         }
                         onOpen={openCallWindow}
+                        emptyTitle="Start a call in this channel"
                       />
                       <PinsHeaderButton
                         count={pins.length}

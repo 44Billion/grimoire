@@ -324,6 +324,11 @@ function generateRawCommand(appId: string, props: any): string {
       return "zap";
 
     case "call":
+      // A relay group DOES have a typeable address, so a NIP-29 space rebuilds
+      // to the pair a person could have typed in the first place.
+      if (props.protocol === "nip-29" && props.relayUrl && props.groupId) {
+        return `call ${props.relayUrl.replace(/^wss:\/\//, "").replace(/\/$/, "")}'${props.groupId}`;
+      }
       // Neither a community nor a channel has a typeable address — one is a
       // hex commitment, the other lives at a derived pubkey — so the ids
       // themselves are what `parseCallCommand` matches against the member's
@@ -828,6 +833,12 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
   // The running call knows its own channel's name even where the directory has
   // not been filled in yet, which is the case right after a fresh join.
   const liveCall = useAtomValue(callStateAtom);
+  const groupCallName =
+    isCall &&
+    liveCall.protocol === "nip-29" &&
+    liveCall.groupId === props.groupId
+      ? liveCall.channelName
+      : undefined;
   const callChannelName =
     isCall && liveCall.channelIdHex === props.channelId
       ? liveCall.channelName
@@ -957,9 +968,12 @@ function useDynamicTitle(window: WindowInstance): WindowTitleData {
       // it is: two tiles both reading `community › channel` say nothing about
       // which is which. `Call › general` does, and the community is already on
       // the tile it belongs to.
-      title = concordChannelName
-        ? `Call › ${concordChannelName}`
-        : (callChannelName ?? staticTitle ?? "Call");
+      title =
+        props.protocol === "nip-29"
+          ? `Call › ${groupCallName ?? props.groupId ?? "Space"}`
+          : concordChannelName
+            ? `Call › ${concordChannelName}`
+            : (callChannelName ?? staticTitle ?? "Call");
       icon = getCommandIcon("call");
       tooltip = rawCommand;
     } else if (appId === "concord") {

@@ -44,6 +44,7 @@ import {
 } from "applesauce-common/factories";
 import { resolveGroupMetadata } from "@/lib/chat/group-metadata-helpers";
 import { markGroupRead, readGroupLastRead } from "@/services/nip29-reads";
+import { parseGroupSelection } from "@/lib/nip29/group-selection";
 
 /**
  * NIP-29 Adapter - Relay-Based Groups
@@ -105,21 +106,13 @@ export class Nip29Adapter extends ChatProtocolAdapter {
     }
 
     // NIP-29 format: [wss://]relay'group-id
-    const match = input.match(/^((?:wss?:\/\/)?[^']+)'([^']+)$/);
-    if (!match) return null;
-
-    let [, relayUrl] = match;
-    const groupId = match[2];
-
-    // Add wss:// prefix if not present
-    if (!relayUrl.startsWith("ws://") && !relayUrl.startsWith("wss://")) {
-      relayUrl = `wss://${relayUrl}`;
-    }
+    const selection = parseGroupSelection(input);
+    if (!selection) return null;
 
     return {
       type: "group",
-      value: groupId,
-      relays: [relayUrl],
+      value: selection.groupId,
+      relays: [selection.relayUrl],
     };
   }
 

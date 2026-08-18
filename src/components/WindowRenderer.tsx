@@ -38,8 +38,8 @@ const ConcordViewer = lazy(() =>
 );
 // Lazy like every other window, and worth it here: `livekit-client` and its
 // E2EE worker are a large chunk nobody who never calls should download.
-const CallViewer = lazy(() =>
-  import("./CallViewer").then((m) => ({ default: m.CallViewer })),
+const CallWindow = lazy(() =>
+  import("./call/CallWindow").then((m) => ({ default: m.CallWindow })),
 );
 const SpellsViewer = lazy(() =>
   import("./SpellsViewer").then((m) => ({ default: m.SpellsViewer })),
@@ -260,11 +260,16 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
           />
         );
         break;
+      // One appId, two spaces — a Concord channel's call and a NIP-29 group's.
+      // `CallWindow` picks; see the note there.
       case "call":
         content = (
-          <CallViewer
+          <CallWindow
+            protocol={window.props.protocol}
             communityId={window.props.communityId}
             channelId={window.props.channelId}
+            relayUrl={window.props.relayUrl}
+            groupId={window.props.groupId}
             windowId={window.id}
           />
         );

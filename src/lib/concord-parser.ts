@@ -11,6 +11,7 @@
 import { loadStoredCommunities } from "@/services/concord-communities";
 import { readStoredState } from "@/services/concord-state";
 import accountManager from "@/services/accounts";
+import { parseGroupSelection } from "@/lib/nip29/group-selection";
 
 export interface ConcordCommandProps {
   /** Full community_id (lowercase hex) when one was resolved. */
@@ -20,8 +21,19 @@ export interface ConcordCommandProps {
 }
 
 export interface CallCommandProps {
+  /**
+   * Which kind of space this window holds. Absent means Concord, so a window
+   * saved before relay groups were callable still opens as what it was.
+   */
+  protocol?: "concord" | "nip-29";
+  /** Concord: the community, lowercase hex. */
   communityId?: string;
+  /** Concord: the channel, lowercase hex. */
   channelId?: string;
+  /** NIP-29: the relay hosting the group. */
+  relayUrl?: string;
+  /** NIP-29: the group id, VERBATIM — `#d` is case-sensitive. */
+  groupId?: string;
 }
 
 /**
@@ -44,9 +56,23 @@ export async function parseCallCommand(
   const pubkey = accountManager.active$.value?.pubkey;
   const [communityQuery, ...rest] = args;
   if (!communityQuery) return {};
+
+  // A relay group DOES have an address a person can type, unlike a Concord
+  // channel — so `call relay.example.com'pizza` is unambiguous and needs no
+  // local lookup at all.
+  const group = parseGroupSelection(communityQuery);
+  if (group) {
+    return {
+      protocol: "nip-29",
+      relayUrl: group.relayUrl,
+      groupId: group.groupId,
+    };
+  }
+
   const channelQuery = rest.join(" ").trim();
   if (!pubkey) {
     return {
+      protocol: "concord",
       communityId: communityQuery.toLowerCase(),
       ...(channelQuery ? { channelId: channelQuery.toLowerCase() } : {}),
     };
@@ -54,12 +80,12 @@ export async function parseCallCommand(
 
   const { communityId } = await parseConcordCommand([communityQuery]);
   if (!communityId || !channelQuery) {
-    return communityId ? { communityId } : {};
+    return communityId ? { protocol: "concord", communityId } : {};
   }
 
   const communities = await loadStoredCommunities(pubkey);
   const community = communities.find((c) => c.idHex === communityId);
-  if (!community) return { communityId };
+  if (!community) return { protocol: "concord", communityId };
   const state = await readStoredState(community).catch(() => undefined);
   const lower = channelQuery.toLowerCase();
   const channels = state?.channels ?? [];
@@ -69,6 +95,7 @@ export async function parseCallCommand(
     channels.find((ch) => ch.idHex.startsWith(lower)) ??
     channels.find((ch) => ch.name.toLowerCase().startsWith(lower));
   return {
+    protocol: "concord",
     communityId,
     ...(hit ? { channelId: hit.idHex } : {}),
   };

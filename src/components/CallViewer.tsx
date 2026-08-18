@@ -18,20 +18,8 @@
 
 import { useAtomValue } from "jotai";
 import { useCallback, useEffect, useState } from "react";
-import {
-  Hand,
-  Loader2,
-  Mic,
-  MicOff,
-  Monitor,
-  Phone,
-  PhoneOff,
-  SmilePlus,
-  Video,
-  VideoOff,
-} from "lucide-react";
+import { Phone } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { useAccount } from "@/hooks/useAccount";
 import { useChannelVoice } from "@/hooks/useConcordVoice";
 import type { Channel, Community } from "@/lib/concord/types";
@@ -53,6 +41,7 @@ import {
 } from "@/services/call-room";
 import { EmojiPickerDialog } from "@/components/chat/EmojiPickerDialog";
 import { resolveChannel } from "@/services/concord-channel-resolve";
+import { CallControls } from "@/components/call/CallControls";
 import { CallStage } from "@/components/call/CallStage";
 import { useRoomSpeakers } from "@/components/call/useRoomSpeakers";
 import { useRoomTracks } from "@/components/call/useRoomTracks";
@@ -67,11 +56,6 @@ interface CallViewerProps {
 
 const EMPTY_RELAYS: string[] = [];
 const EMPTY_REACTIONS: VoiceReactionEntry[] = [];
-
-/** Screensharing needs an API Safari on iOS and most mobiles do not have. */
-const canShareScreen =
-  typeof navigator !== "undefined" &&
-  typeof navigator.mediaDevices?.getDisplayMedia === "function";
 
 export function CallViewer({
   communityId,
@@ -178,98 +162,27 @@ export function CallViewer({
         />
       </div>
 
-      {/* The controls sit above the join button and stay put, so the row does
-          not reshuffle under the cursor the moment a call connects — and so
-          what a call offers is legible before joining one. Off the call they
-          are inert: there is no room to publish into. */}
-      <div className="flex flex-col items-center gap-2 border-t p-2">
-        <div className="flex items-center gap-1.5">
-          <Toggle
-            on={call.micEnabled}
-            disabled={!connected}
-            onClick={() => void setMicEnabled(!call.micEnabled)}
-            title={call.micEnabled ? "Mute" : "Unmute"}
-            OnIcon={Mic}
-            OffIcon={MicOff}
-          />
-          <Toggle
-            on={call.cameraEnabled}
-            disabled={!connected}
-            onClick={() => void setCameraEnabled(!call.cameraEnabled)}
-            title={
-              call.cameraEnabled ? "Stop your camera" : "Start your camera"
-            }
-            OnIcon={Video}
-            OffIcon={VideoOff}
-          />
-          {canShareScreen && (
-            <Toggle
-              on={call.screenEnabled}
-              disabled={!connected}
-              onClick={() => void setScreenShareEnabled(!call.screenEnabled)}
-              title={
-                call.screenEnabled
-                  ? "Stop sharing your screen"
-                  : "Share a screen"
-              }
-              OnIcon={Monitor}
-              OffIcon={Monitor}
-            />
-          )}
-          <Toggle
-            on={call.handRaised}
-            disabled={!connected}
-            onClick={() => setHandRaised(!call.handRaised)}
-            title={call.handRaised ? "Lower your hand" : "Raise your hand"}
-            OnIcon={Hand}
-            OffIcon={Hand}
-          />
-          <Toggle
-            on={false}
-            disabled={!connected}
-            onClick={() => setPickerOpen(true)}
-            title="Float an emoji at everyone"
-            OnIcon={SmilePlus}
-            OffIcon={SmilePlus}
-          />
-        </div>
-
-        {connected ? (
-          <Button
-            size="sm"
-            variant="destructive"
-            className="w-40"
-            onClick={() => void leaveCall()}
-          >
-            <PhoneOff className="size-4" />
-            Leave
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            className="w-40"
-            disabled={
-              busy ||
-              joining ||
-              !callsSupported() ||
-              !target ||
-              !account?.signer
-            }
-            onClick={() => void join()}
-          >
-            {busy || joining ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Phone className="size-4" />
-            )}
-            {joining
-              ? "Joining…"
-              : fold.present.length > 0
-                ? "Join call"
-                : "Start a call"}
-          </Button>
-        )}
-      </div>
+      <CallControls
+        connected={connected}
+        joining={busy || joining}
+        micEnabled={call.micEnabled}
+        cameraEnabled={call.cameraEnabled}
+        screenEnabled={call.screenEnabled}
+        onMic={(on) => void setMicEnabled(on)}
+        onCamera={(on) => void setCameraEnabled(on)}
+        onScreen={(on) => void setScreenShareEnabled(on)}
+        onJoin={() => void join()}
+        onLeave={() => void leaveCall()}
+        canJoin={
+          Boolean(target) && Boolean(account?.signer) && callsSupported()
+        }
+        joinLabel={fold.present.length > 0 ? "Join call" : "Start a call"}
+        hand={{
+          raised: call.handRaised,
+          onToggle: () => setHandRaised(!call.handRaised),
+        }}
+        onReact={() => setPickerOpen(true)}
+      />
 
       <EmojiPickerDialog
         open={pickerOpen}
@@ -285,35 +198,5 @@ export function CallViewer({
         }}
       />
     </div>
-  );
-}
-
-function Toggle({
-  on,
-  disabled,
-  onClick,
-  title,
-  OnIcon,
-  OffIcon,
-}: {
-  on: boolean;
-  disabled: boolean;
-  onClick: () => void;
-  title: string;
-  OnIcon: typeof Mic;
-  OffIcon: typeof Mic;
-}) {
-  const Icon = on ? OnIcon : OffIcon;
-  return (
-    <Button
-      size="icon"
-      variant={on ? "default" : "outline"}
-      disabled={disabled}
-      onClick={onClick}
-      title={disabled ? "Join the call first" : title}
-      className="size-8"
-    >
-      <Icon className="size-4" />
-    </Button>
   );
 }
