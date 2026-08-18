@@ -69,9 +69,28 @@ function value(rumor: UnsignedRumor, name: string): string | undefined {
   return tag(rumor, name)?.[1];
 }
 
+/**
+ * The largest counter this NIP will believe.
+ *
+ * `seq`, `turn` and `part` are attacker-supplied decimal strings, and one of
+ * them feeds a loop that walks every sequence number a stream should hold. An
+ * unbounded `last-seq` therefore buys a remote out-of-memory with one event, so
+ * a counter past this is not a large session, it is a lie.
+ */
+export const MAX_COUNTER = 1_000_000;
+
 function integer(raw: string | undefined): number | undefined {
   if (raw === undefined || !/^\d+$/.test(raw)) return undefined;
+  // A timestamp is ten digits and a token count is seven; anything longer is
+  // not a large number, it is a number chosen to break whoever parses it.
+  if (raw.length > 12) return undefined;
   return Number(raw);
+}
+
+/** A sequence, turn or part: bounded, because one of them drives a loop. */
+function counter(raw: string | undefined): number | undefined {
+  const parsed = integer(raw);
+  return parsed !== undefined && parsed <= MAX_COUNTER ? parsed : undefined;
 }
 
 function profileOf(rumor: UnsignedRumor): RedactionProfile {
@@ -129,7 +148,12 @@ function msOf(rumor: UnsignedRumor): number | undefined {
  * anyone else is a forgery and is dropped here rather than rendered.
  */
 function sessionOf(rumor: UnsignedRumor) {
-  const t = tag(rumor, "a");
+  const addresses = rumor.tags.filter((t) => t[0] === "a" && t[1]);
+  // Relays index every `a` tag, so an event carrying two addresses is returned
+  // by a REQ for either one. Checking only the first would let an event that is
+  // honest about its own session be filed inside somebody else's transcript.
+  if (addresses.length !== 1) return null;
+  const t = addresses[0]!;
   if (!t?.[1]) return null;
   const parsed = parseSessionAddress(t[1]);
   if (!parsed || parsed.kind !== KIND_SESSION_HEAD) return null;
@@ -191,8 +215,8 @@ function parseTurn(
   options: ParseOptions,
 ): DecodedTurn | null {
   const session = sessionOf(rumor);
-  const seq = integer(value(rumor, "seq"));
-  const turn = integer(value(rumor, "turn"));
+  const seq = counter(value(rumor, "seq"));
+  const turn = counter(value(rumor, "turn"));
   const role = value(rumor, "role");
   const operator = operatorOf(rumor);
   if (!session || seq === undefined || turn === undefined || !operator)
@@ -229,7 +253,7 @@ function parseMilestone(
   options: ParseOptions,
 ): DecodedMilestone | null {
   const session = sessionOf(rumor);
-  const seq = integer(value(rumor, "seq"));
+  const seq = counter(value(rumor, "seq"));
   const status = value(rumor, "status");
   const operator = operatorOf(rumor);
   if (!session || seq === undefined || !operator) return null;
@@ -241,8 +265,8 @@ function parseMilestone(
   const stepTag = tag(rumor, "step");
   const step = stepTag?.[1]
     ? {
-        n: integer(stepTag[1]) ?? 0,
-        total: stepTag[2] === "?" ? ("?" as const) : (integer(stepTag[2]) ?? 0),
+        n: counter(stepTag[1]) ?? 0,
+        total: stepTag[2] === "?" ? ("?" as const) : (counter(stepTag[2]) ?? 0),
       }
     : undefined;
   const toolTag = tag(rumor, "tool");
@@ -260,7 +284,7 @@ function parseMilestone(
     prev,
     status: status as MilestoneStatus,
     text: rumor.content,
-    turn: integer(value(rumor, "turn")),
+    turn: counter(value(rumor, "turn")),
     step,
     tool: toolTag?.[1]
       ? { name: toolTag[1], callId: toolTag[2] || undefined }
@@ -275,8 +299,8 @@ function parseDelta(
   options: ParseOptions,
 ): DecodedDelta | null {
   const session = sessionOf(rumor);
-  const turn = integer(value(rumor, "turn"));
-  const part = integer(value(rumor, "part"));
+  const turn = counter(value(rumor, "turn"));
+  const part = counter(value(rumor, "part"));
   const delta = value(rumor, "delta");
   if (!session || turn === undefined || part === undefined) return null;
   if (!DELTA_KINDS.includes(delta ?? "")) return null;
@@ -334,7 +358,6 @@ function parseHead(
     transport: options.transport,
     redaction: profileOf(rumor),
     alt: value(rumor, "alt"),
-    seq: integer(value(rumor, "seq")) ?? 0,
     title: value(rumor, "title") ?? "",
     status: status as SessionStatus,
     operator,
@@ -343,9 +366,9 @@ function parseHead(
       .map((t) => personOf(t))
       .filter((p): p is { pubkey: string; relay?: string } => !!p),
     streams,
-    lastSeq: integer(value(rumor, "last-seq")) ?? 0,
+    lastSeq: counter(value(rumor, "last-seq")) ?? 0,
     head: value(rumor, "head"),
-    turns: integer(value(rumor, "turns")) ?? 0,
+    turns: counter(value(rumor, "turns")) ?? 0,
     started,
     ended: integer(value(rumor, "ended")),
     model: modelOf(rumor),

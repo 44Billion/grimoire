@@ -87,9 +87,51 @@ export async function fitBlock(
   return block;
 }
 
+/** Bring one block under a byte share, whatever kind it is. */
+function squeeze(block: ContentBlock, share: number): ContentBlock {
+  if (block.type === "text" || block.type === "thinking")
+    return block.text.length <= share
+      ? block
+      : { ...block, text: clip(block.text, share) };
+
+  if (block.type === "tool_result" && block.output)
+    return block.output.length <= share
+      ? block
+      : { ...block, output: clip(block.output, share) };
+
+  // Arguments are arbitrary JSON with no honest clipping point, so an oversize
+  // call drops them for its digest — the same shape the `public` profile uses,
+  // which readers already know how to render.
+  if (block.type === "tool_call" && block.arguments !== null) {
+    const encoded = JSON.stringify(block.arguments);
+    if (encoded.length <= share) return block;
+    return {
+      ...block,
+      arguments: null,
+      arguments_digest: block.arguments_digest ?? `len:${encoded.length}`,
+    };
+  }
+
+  return block;
+}
+
+/** What replaces a block there was no room for. Never a silent disappearance. */
+function dropped(count: number): ContentBlock {
+  return {
+    type: "text",
+    text: `${TRUNCATION_MARKER} ${count} block${count === 1 ? "" : "s"} omitted: this turn exceeded what a relay will accept`,
+  };
+}
+
 /**
- * Fit a whole turn. Thinking goes first when the total is still too large — it
- * is the least load-bearing thing in a transcript and the largest.
+ * Fit a whole turn.
+ *
+ * Thinking is elided first — the least load-bearing thing in a transcript and
+ * usually the largest — and then every block is squeezed against a TOTAL budget
+ * rather than a per-block one, because a relay counts the whole event. A block
+ * there is no room for is replaced by a marker saying so: a turn that quietly
+ * lost half its content reads as a complete turn, which is worse than a short
+ * one.
  */
 export async function fitTurn(
   blocks: ContentBlock[],
@@ -107,25 +149,24 @@ export async function fitTurn(
   if (JSON.stringify(elided).length <= TURN_MAX_BYTES)
     return { blocks: elided, lossy: true };
 
-  // Last resort: a total budget, not a per-block one. Forty clipped blocks are
-  // still forty blocks, and the relay counts the whole event.
-  const clipped: ContentBlock[] = [];
-  let budget = TURN_MAX_BYTES - 512; // headroom for tags and JSON scaffolding
-  for (const block of elided) {
-    const share = Math.max(64, Math.floor(budget / Math.max(1, elided.length)));
-    if (block.type === "text" || block.type === "thinking")
-      clipped.push({
-        ...block,
-        text: clip(block.text, Math.min(share, block.text.length)),
-      });
-    else if (block.type === "tool_result" && block.output)
-      clipped.push({
-        ...block,
-        output: clip(block.output, Math.min(share, block.output.length)),
-      });
-    else clipped.push(block);
-    budget -= JSON.stringify(clipped[clipped.length - 1]).length;
-    if (budget <= 0) break;
+  const out: ContentBlock[] = [];
+  // Headroom for the tags, the JSON scaffolding, and the marker below.
+  let budget = TURN_MAX_BYTES - 1024;
+
+  for (let index = 0; index < elided.length; index += 1) {
+    const remaining = elided.length - index;
+    const share = Math.max(64, Math.floor(budget / remaining));
+    const squeezed = squeeze(elided[index]!, share);
+    const cost = JSON.stringify(squeezed).length;
+
+    if (cost > budget) {
+      out.push(dropped(remaining));
+      return { blocks: out, lossy: true };
+    }
+
+    out.push(squeezed);
+    budget -= cost;
   }
-  return { blocks: clipped, lossy: true };
+
+  return { blocks: out, lossy: true };
 }

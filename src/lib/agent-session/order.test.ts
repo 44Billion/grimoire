@@ -98,12 +98,10 @@ describe("mergeStream", () => {
         started: 1_755_499_000,
         createdAt: 1_755_500_000,
       },
-      { seq: 6 },
       "full",
     );
     const head = parseAgentEvent(headRumor) as DecodedHead;
-    // The head is itself sequenced, so it lands at seq 6 and 3-5 are the hole.
-    const [stream] = mergeStream([...events, head]);
+    const [stream] = mergeStream(events, [head]);
 
     expect(stream!.gaps[0]!.missing).toEqual([3, 4, 5]);
   });
@@ -173,7 +171,6 @@ describe("newestHeads", () => {
             started: 1_755_499_000,
             createdAt,
           },
-          { seq: 1 },
           "full",
         );
         return parseAgentEvent(rumor) as DecodedHead;
@@ -184,5 +181,67 @@ describe("newestHeads", () => {
 
     expect(folded).toHaveLength(1);
     expect(folded[0]!.title).toBe("at 1755500500");
+  });
+});
+
+describe("hostile input", () => {
+  it("does not allocate a gap list from an attacker's last-seq", () => {
+    // A `last-seq` tag is a decimal string anyone can write. Before it was
+    // clamped, `mergeStream` walked 1..last-seq and a single event took the tab
+    // out with a RangeError or an out-of-memory.
+    const events = chain(1, () => 1_755_500_000);
+    const headRumor = buildSessionHead(
+      AGENT,
+      SESSION,
+      {
+        title: "hostile",
+        status: "active",
+        operator: { pubkey: OPERATOR },
+        streams: [],
+        lastSeq: 1,
+        turns: 1,
+        started: 1,
+        createdAt: 1_755_500_000,
+      },
+      "full",
+    );
+    const hostile = {
+      ...headRumor,
+      tags: headRumor.tags.map((t) =>
+        t[0] === "last-seq" ? ["last-seq", "99999999999999999999"] : t,
+      ),
+    };
+    const head = parseAgentEvent({ ...hostile, id: headRumor.id });
+
+    // The counter is refused outright, so the head decodes with no claim at all.
+    const started = Date.now();
+    const [stream] = mergeStream(events, head?.type === "head" ? [head] : []);
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(stream!.gaps).toEqual([]);
+  });
+
+  it("caps how many missing sequence numbers it will name", () => {
+    const events = chain(1, () => 1_755_500_000);
+    const headRumor = buildSessionHead(
+      AGENT,
+      SESSION,
+      {
+        title: "sparse",
+        status: "active",
+        operator: { pubkey: OPERATOR },
+        streams: [],
+        lastSeq: 50_000,
+        turns: 1,
+        started: 1,
+        createdAt: 1_755_500_000,
+      },
+      "full",
+    );
+    const head = parseAgentEvent(headRumor) as DecodedHead;
+
+    const [stream] = mergeStream(events, [head]);
+
+    expect(stream!.gaps[0]!.missing.length).toBe(1000);
+    expect(stream!.gaps[0]!.truncated).toBe(true);
   });
 });

@@ -196,7 +196,10 @@ export interface SessionHeadInput {
   operator: { pubkey: string; relay?: string };
   observers?: { pubkey: string; relay?: string }[];
   streams: StreamDescriptor[];
-  /** Highest `seq` emitted on this stream. A reader with fewer knows it has a gap. */
+  /**
+   * Highest `seq` emitted on this stream, over turns and milestones. The head
+   * itself takes no sequence number.
+   */
   lastSeq: number;
   /** Id of the most recent turn on this stream. */
   head?: string;
@@ -282,7 +285,6 @@ export interface DecodedDelta extends DecodedBase {
 
 export interface DecodedHead extends DecodedBase {
   type: "head";
-  seq: number;
   title: string;
   status: SessionStatus;
   operator: { pubkey: string; relay?: string };

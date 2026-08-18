@@ -33,6 +33,11 @@ const ChatViewer = lazy(() =>
 const GroupListViewer = lazy(() =>
   import("./GroupListViewer").then((m) => ({ default: m.GroupListViewer })),
 );
+const AgentSessionViewer = lazy(() =>
+  import("./agent/AgentSessionViewer").then((m) => ({
+    default: m.AgentSessionViewer,
+  })),
+);
 const ConcordViewer = lazy(() =>
   import("./ConcordViewer").then((m) => ({ default: m.ConcordViewer })),
 );
@@ -246,6 +251,14 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
             />
           );
         }
+        break;
+      case "agent":
+        content = (
+          <AgentSessionViewer
+            agent={window.props.agent}
+            session={window.props.session}
+          />
+        );
         break;
       case "concord":
         content = (

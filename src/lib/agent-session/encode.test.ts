@@ -69,7 +69,6 @@ describe("golden vectors", () => {
         definition: `31779:${AGENT}:hex`,
         createdAt: AT,
       },
-      { seq: 3 },
       "full",
     );
     const turn = buildTurn(

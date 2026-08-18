@@ -91,8 +91,7 @@ Addressable. Authored by the agent's key. `content` is a human-readable summary 
 | `p`         | `<pubkey>`, `<relay>`, `operator` | yes | yes | The human on whose behalf the agent runs. Exactly one. |
 | `p`         | `<pubkey>`, `<relay>`, `observer` | yes | no | Further recipients of the private stream. |
 | `stream`    | `<transport>`, `<address>`, `<visibility>`, `<redaction>` | no | yes | One per mirror. `<transport>` is `nip17`\|`nip29`\|`concord`. |
-| `seq`       | `<integer>` | no | yes | The head's own place in the stream's sequence. |
-| `last-seq`  | `<integer>` | no | yes | Highest `seq` emitted on this stream. A reader holding fewer knows it has a gap. |
+| `last-seq`  | `<integer>` | no | yes | Highest `seq` emitted on this stream, over turns and milestones. A reader holding fewer knows it has a gap. |
 | `head`      | `<event-id>` | no | no | Id of the most recent turn on this stream. |
 | `turns`     | `<integer>` | no | yes | Turns so far. |
 | `started`   | `<unix-seconds>` | no | yes | Real start time, not subject to NIP-59 randomization. |
@@ -103,6 +102,8 @@ Addressable. Authored by the agent's key. `content` is a human-readable summary 
 | `agent`     | `31779:<pubkey>:<slug>` | no | no | The definition this run is of. |
 | `redaction` | `full`\|`summary`\|`public` | no | yes | Profile applied to this copy. |
 | `alt`       | `<string>` | no | yes | [NIP-31](31.md). |
+
+**The head takes no `seq` of its own.** It is addressable, so a public relay deletes the version it supersedes — a sequence number the head had consumed would name an event no longer on the relay, and every later reader would see a permanent hole it is told to try to fill and never can. This is the same reason deltas take no `seq`.
 
 On a private stream the head is a rumor inside a wrap, so relays cannot replace it: replaceability is applied client-side, keeping the newest `created_at` per `(pubkey, d)`. On a public mirror ordinary relay replaceability applies.
 
@@ -119,7 +120,7 @@ On a private stream the head is a rumor inside a wrap, so relays cannot replace 
     ["p", "1a2b…human", "wss://relay.example", "operator"],
     ["stream", "nip17", "1a2b…human", "private", "full"],
     ["stream", "nip29", "wss://groups.example'grimoire-agents", "public", "public"],
-    ["seq", "48"], ["last-seq", "47"], ["head", "b17c…"],
+    ["last-seq", "47"], ["head", "b17c…"],
     ["turns", "12"], ["started", "1755498000"],
     ["model", "claude-opus-5", "anthropic"],
     ["usage", "184320", "9211", "160000", "24320"],
@@ -216,7 +217,7 @@ Regular. One per phase change, tool invocation, permission request, or terminal 
 | `redaction`| profile | no | yes | |
 | `alt`     | `<string>` | no | yes | |
 
-Within one stream, `seq` is unique across `1777`, `1778` and `31777` alike.
+Within one stream, `seq` is unique across `1777` and `1778`. The head and the deltas take none.
 
 ## Delta — `kind:21777`
 
@@ -244,7 +245,7 @@ An agent SHOULD coalesce deltas into fragments of at least 50 ms or 32 character
 NIP-59 requires a gift wrap's `created_at` to be randomized up to two days in the past and a seal's up to one hour. Only the **rumor's** `created_at` is the agent's real clock, and it is unsigned — a hint, not a proof. Ordering therefore rests on `seq`, which lives inside the sealed payload and is covered by the seal's signature.
 
 1. **Group by stream.** A stream is the pair (`a` address, transport the event arrived on). Sequence numbers from a private NIP-17 copy and a public NIP-29 copy of the same session are in **different spaces** and MUST NOT be compared.
-2. **Sort by `seq` ascending**, over `1777`/`1778`/`31777` only.
+2. **Sort by `seq` ascending**, over `1777` and `1778` only — the two kinds that carry one.
 3. **Tie-break** on equal `seq`: lower rumor `created_at` first, then lower `ms`, then lexicographically smaller event `id`. A duplicate `seq` SHOULD be surfaced as a warning — it is the visible signature of a replayed or forged event.
 4. **Never sort by `created_at` across the wrap boundary.** A client that sorts a private transcript by the outer timestamp renders it in near-random order over a two-day window. Display timestamps come from the rumor and SHOULD be clamped: a rumor more than 900 seconds in the future is displayed with its receipt time and flagged.
 5. **Chain check.** `prev` names the event at `seq - 1`. A reader holding both and finding a mismatch MUST treat the stream as forked from that point and MUST NOT silently merge the branches.
@@ -323,6 +324,8 @@ A client MUST treat a session as run by a given human only when both halves hold
 - **Author equality.** A client MUST discard any `1777`/`1778`/`21777` whose `pubkey` differs from the pubkey component of its own `a` address. The address contains the agent's key, so this alone kills the naive forgery.
 - **Seal equality.** For wrapped copies the gift wrap's signature proves nothing — it is a throwaway key by design. The **seal's** signature is the authorship proof: made by the agent's persistent key over the encrypted rumor. A client MUST verify that the seal's author is the rumor's author and reject otherwise; a mismatch is someone forwarding another agent's words as their own.
 - **Chain continuity.** `prev` and `seq` make silent insertion into an existing transcript detectable.
+- **One address per event.** A relay indexes every `a` tag it sees, so an event carrying two addresses is returned by a REQ for either. A client MUST reject an event with more than one `a` address, or an attacker's event — honest about its own session, and so passing the author check — is filed inside somebody else's transcript.
+- **Bounded counters.** `seq`, `turn`, `part`, `turns` and `last-seq` are attacker-supplied decimal strings, and `last-seq` bounds a walk over every sequence number a stream should hold. A client MUST refuse a counter beyond a sane ceiling and MUST bound how many missing numbers it will enumerate; otherwise one event is a remote out-of-memory.
 - **The head is the root.** A turn whose session head is unknown is an orphan and MUST be labelled as one.
 
 In a NIP-29 group the events are signed directly, so the event signature is the authorship proof. The relay's membership enforcement (`kind:9000`/`9021`) is an *authorization* fact — it says the relay let this key post here — and MUST NOT be read as an identity fact. Cross-check the author against the head's pubkey exactly as on the private path.
@@ -333,7 +336,8 @@ In a NIP-29 group the events are signed directly, so the event signature is the 
 - A `text` or `thinking` block SHOULD be truncated at **8 KiB**, a `tool_result` `output` at **16 KiB**.
 - Truncation is explicit: the block gains `"truncated": {"bytes", "sha256"}` describing the **original**, and the retained text carries the marker `…[truncated]`. A client MUST render the marker and MUST NOT hide it.
 - **Oversize tool results are referenced, not inlined.** The publisher uploads the full output to a content-addressed store and sets `"output": null` with `"ref"`. The `sha256` is over the plaintext and is authoritative: a client that fetches the blob MUST verify the digest and MUST show the result as unverified if it does not match. On a private stream the blob SHOULD be encrypted before upload with a per-blob key carried in `ref.encryption`, since the host would otherwise hold exactly the plaintext the wrap was protecting.
-- A publisher MUST NOT emit an event it knows exceeds the limit. When a turn is still too large after truncation, `thinking` is elided first — it is the least load-bearing and usually the largest — and then the whole turn is fitted to a total budget rather than a per-block one.
+- A publisher MUST NOT emit an event it knows exceeds the limit. When a turn is still too large after truncation, `thinking` is elided first — it is the least load-bearing and usually the largest — and then EVERY block is fitted against a total budget rather than a per-block one, `tool_call` arguments included: an oversize call drops its arguments for a digest, exactly as the `public` profile does.
+- A block there was no room for is replaced by a marker saying how many were omitted. A turn that quietly lost half its content reads as a complete turn, which is worse than a short one.
 - A turn that cannot be fitted at all is split: several `kind:1777` with the same `turn`, consecutive `seq`, and blocks partitioned in order.
 
 ## What a Minimal Client Must Implement

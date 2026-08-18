@@ -104,3 +104,65 @@ describe("fitTurn", () => {
     expect(JSON.stringify(fitted).length).toBeLessThanOrEqual(TURN_MAX_BYTES);
   });
 });
+
+describe("fitTurn under hostile sizes", () => {
+  it("bounds a tool call whose arguments are enormous", async () => {
+    // Nothing clipped `arguments` before: a 200 KB call produced a turn four
+    // times the cap, which the relay then refused — losing the turn entirely.
+    const blocks: ContentBlock[] = [
+      {
+        type: "tool_call",
+        id: "tc_01",
+        name: "Write",
+        arguments: { content: "q".repeat(200_000) },
+      },
+      { type: "text", text: "and then I wrote the file" },
+    ];
+
+    const { blocks: fitted, lossy } = await fitTurn(blocks, { digest });
+
+    expect(lossy).toBe(true);
+    expect(JSON.stringify(fitted).length).toBeLessThanOrEqual(TURN_MAX_BYTES);
+    const call = fitted.find((b) => b.type === "tool_call");
+    expect(call).toMatchObject({ arguments: null });
+    expect(
+      call && "arguments_digest" in call && call.arguments_digest,
+    ).toBeTruthy();
+  });
+
+  it("says so when a block had to be dropped", async () => {
+    const blocks: ContentBlock[] = [
+      { type: "text", text: "a".repeat(60_000) },
+      {
+        type: "image",
+        url: `data:image/png;base64,${"A".repeat(60_000)}`,
+        mime: "image/png",
+      },
+      { type: "text", text: "the tail" },
+    ];
+
+    const { blocks: fitted } = await fitTurn(blocks, {
+      digest,
+      textMax: 100_000,
+    });
+
+    expect(JSON.stringify(fitted).length).toBeLessThanOrEqual(TURN_MAX_BYTES);
+    const rendered = JSON.stringify(fitted);
+    expect(rendered).toContain(TRUNCATION_MARKER);
+  });
+
+  it("does not label intact content as truncated", async () => {
+    const blocks: ContentBlock[] = [
+      { type: "text", text: "x".repeat(60_000) },
+      { type: "text", text: "short and complete" },
+    ];
+
+    const { blocks: fitted } = await fitTurn(blocks, {
+      digest,
+      textMax: 100_000,
+    });
+
+    const tail = fitted[fitted.length - 1];
+    expect(tail).toMatchObject({ type: "text", text: "short and complete" });
+  });
+});

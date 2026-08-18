@@ -131,3 +131,30 @@ describe("parseAgentEvent — shape", () => {
     expect(parseAgentEvent(broken)).toBeNull();
   });
 });
+
+describe("parseAgentEvent — hostile counters and addresses", () => {
+  it("refuses a counter no session could reach", () => {
+    const turn = aTurn();
+    const huge = rehash({
+      ...turn,
+      tags: turn.tags.map((t) =>
+        t[0] === "turn" ? ["turn", "99999999999999999999"] : t,
+      ),
+    });
+
+    expect(parseAgentEvent(huge)).toBeNull();
+  });
+
+  it("refuses an event carrying two session addresses", () => {
+    // A relay indexes every `a` tag, so an event with two addresses comes back
+    // from a REQ for either. Validating only the first would file an attacker's
+    // own honest event inside somebody else's transcript.
+    const turn = aTurn();
+    const twoFaced = rehash({
+      ...turn,
+      tags: [...turn.tags, ["a", `31777:${IMPOSTOR}:victim-session`]],
+    });
+
+    expect(parseAgentEvent(twoFaced)).toBeNull();
+  });
+});

@@ -54,6 +54,12 @@ import { Kind39701Renderer } from "./BookmarkRenderer";
 import { GenericRelayListRenderer } from "./GenericRelayListRenderer";
 import { PublicChatsRenderer } from "./PublicChatsRenderer";
 import { LiveActivityRenderer } from "./LiveActivityRenderer";
+import { AgentTurnRenderer } from "./AgentTurnRenderer";
+import {
+  AgentDefinitionRenderer,
+  AgentMilestoneRenderer,
+  AgentSessionHeadRenderer,
+} from "./AgentSessionRenderers";
 import { LiveActivityDetailRenderer } from "./LiveActivityDetailRenderer";
 import { SpellRenderer, SpellDetailRenderer } from "./SpellRenderer";
 import {
@@ -298,6 +304,10 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   30166: RelayDiscoveryRenderer, // Relay Discovery (NIP-66)
   30267: ZapstoreAppSetRenderer, // Zapstore App Collection
   30311: LiveActivityRenderer, // Live Streaming Event (NIP-53)
+  1777: AgentTurnRenderer, // Agent session turn (NIP-xx)
+  1778: AgentMilestoneRenderer, // Agent milestone (NIP-xx)
+  31777: AgentSessionHeadRenderer, // Agent session head (NIP-xx)
+  31779: AgentDefinitionRenderer, // Agent definition (NIP-xx)
   30382: TrustedAssertionRenderer, // User Assertion (NIP-85)
   30383: TrustedAssertionRenderer, // Event Assertion (NIP-85)
   30384: TrustedAssertionRenderer, // Address Assertion (NIP-85)

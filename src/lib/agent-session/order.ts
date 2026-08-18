@@ -7,6 +7,7 @@
  * Order therefore rests on `seq`, which lives inside the sealed payload.
  */
 
+import { MAX_COUNTER } from "./decode";
 import type {
   DecodedHead,
   DecodedMilestone,
@@ -14,8 +15,14 @@ import type {
   Transport,
 } from "./types";
 
-/** Only stored kinds carry `seq`; deltas are ordered by `part` inside a turn. */
-export type SequencedEvent = DecodedTurn | DecodedMilestone | DecodedHead;
+/**
+ * What carries `seq`: turns and milestones, and nothing else.
+ *
+ * Deltas evaporate at the relay and the head is replaced on it, so neither may
+ * consume a sequence number — a number whose event the protocol itself removes
+ * is a hole no reader can ever fill.
+ */
+export type SequencedEvent = DecodedTurn | DecodedMilestone;
 
 /** A `seq` space. Two transports are two streams even for one session. */
 export interface StreamKey {
@@ -27,6 +34,8 @@ export interface Gap {
   stream: StreamKey;
   /** Missing sequence numbers, ascending. */
   missing: number[];
+  /** Set when the list was cut short; the stream is missing more than it says. */
+  truncated?: boolean;
 }
 
 export interface Fork {
@@ -52,6 +61,13 @@ export interface MergedStream {
   duplicates: Duplicate[];
 }
 
+/**
+ * How many missing sequence numbers are worth naming. A reader who is told
+ * about the first thousand holes knows everything they can act on, and the
+ * ceiling comes from an attacker-supplied tag.
+ */
+const MAX_REPORTED_GAPS = 1000;
+
 function keyOf(event: SequencedEvent): string {
   return `${event.session.agent}:${event.session.session}|${event.transport ?? "unknown"}`;
 }
@@ -64,8 +80,8 @@ function keyOf(event: SequencedEvent): string {
 function compare(a: SequencedEvent, b: SequencedEvent): number {
   if (a.seq !== b.seq) return a.seq - b.seq;
   if (a.created_at !== b.created_at) return a.created_at - b.created_at;
-  const aMs = "ms" in a ? (a.ms ?? 0) : 0;
-  const bMs = "ms" in b ? (b.ms ?? 0) : 0;
+  const aMs = a.ms ?? 0;
+  const bMs = b.ms ?? 0;
   if (aMs !== bMs) return aMs - bMs;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
@@ -75,8 +91,15 @@ function compare(a: SequencedEvent, b: SequencedEvent): number {
  * `last-seq`, forks where `prev` does not name the event actually held at
  * `seq - 1`, and duplicate sequence numbers — the visible signature of a
  * replayed or forged event.
+ *
+ * `heads` are consulted for the ceiling only. Their `last-seq` is a tag anyone
+ * can write, so it is clamped: a hostile head must not turn gap detection into
+ * an allocation.
  */
-export function mergeStream(events: SequencedEvent[]): MergedStream[] {
+export function mergeStream(
+  events: SequencedEvent[],
+  heads: DecodedHead[] = [],
+): MergedStream[] {
   const byStream = new Map<string, SequencedEvent[]>();
   for (const event of events) {
     const key = keyOf(event);
@@ -116,34 +139,44 @@ export function mergeStream(events: SequencedEvent[]): MergedStream[] {
     const forks: Fork[] = [];
     for (const event of ordered) {
       if (event.seq <= 1) continue;
-      const prev = event.type === "head" ? undefined : event.prev;
-      if (!prev) continue;
+      if (!event.prev) continue;
       const held = bySeq.get(event.seq - 1);
       if (!held) continue; // a gap, not a fork — reported below
-      if (!held.some((candidate) => candidate.id === prev))
+      if (!held.some((candidate) => candidate.id === event.prev))
         forks.push({
           stream,
           seq: event.seq,
-          claimedPrev: prev,
+          claimedPrev: event.prev,
           heldPrev: held[0]!.id,
         });
     }
 
-    // The head knows how far the stream got; without one, trust what we hold.
-    const head = ordered.find(
-      (event): event is DecodedHead => event.type === "head",
+    const head = heads.find(
+      (candidate) =>
+        candidate.session.agent === first.session.agent &&
+        candidate.session.session === first.session.session,
     );
     const highest = ordered.reduce((max, event) => Math.max(max, event.seq), 0);
-    const ceiling = Math.max(head?.lastSeq ?? 0, highest);
+    const claimed = Math.min(head?.lastSeq ?? 0, MAX_COUNTER);
+    const ceiling = Math.max(claimed, highest);
 
     const missing: number[] = [];
-    for (let seq = 1; seq <= ceiling; seq += 1)
-      if (!bySeq.has(seq)) missing.push(seq);
+    let truncated = false;
+    for (let seq = 1; seq <= ceiling; seq += 1) {
+      if (bySeq.has(seq)) continue;
+      if (missing.length >= MAX_REPORTED_GAPS) {
+        truncated = true;
+        break;
+      }
+      missing.push(seq);
+    }
 
     merged.push({
       stream,
       ordered,
-      gaps: missing.length ? [{ stream, missing }] : [],
+      gaps: missing.length
+        ? [{ stream, missing, ...(truncated ? { truncated } : {}) }]
+        : [],
       forks,
       duplicates,
     });

@@ -223,11 +223,18 @@ export function buildDelta(
 
 // ── Session head ─────────────────────────────────────────────────────────────
 
+/**
+ * The head takes NO `seq` of its own.
+ *
+ * It is addressable, so a public relay deletes the version it supersedes. A
+ * head that consumed a sequence number would leave that number nowhere on the
+ * relay, and every later reader would see a permanent hole it is told to try to
+ * fill and never can — the same reason deltas do not take one.
+ */
 export function buildSessionHead(
   agentPubkey: string,
   sessionId: string,
   input: SessionHeadInput,
-  cursor: { seq: number },
   redaction: RedactionProfile,
 ): Rumor {
   const tags: string[][] = [
@@ -248,7 +255,6 @@ export function buildSessionHead(
       stream.redaction,
     ]);
 
-  tags.push(["seq", String(cursor.seq)]);
   tags.push(["last-seq", String(input.lastSeq)]);
   if (input.head) tags.push(["head", input.head]);
   tags.push(["turns", String(input.turns)]);
