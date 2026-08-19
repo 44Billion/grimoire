@@ -111,7 +111,9 @@ function usageOf(rumor: UnsignedRumor): Usage | undefined {
 
 function costOf(rumor: UnsignedRumor): Cost | undefined {
   const t = tag(rumor, "cost");
-  return t?.[1] && t[2] ? { amount: t[1], currency: t[2] } : undefined;
+  return t?.[1] && t[2]
+    ? { amount: t[1], currency: t[2], estimated: t[3] === "estimated" }
+    : undefined;
 }
 
 /**
@@ -275,6 +277,12 @@ function parseHead(rumor: UnsignedRumor & { id: string }): DecodedHead | null {
     model: modelOf(rumor),
     usage: usageOf(rumor),
     cost: costOf(rumor),
+    deltaRelays: rumor.tags
+      .filter((t) => t[0] === "delta-relay" && t[1])
+      .map((t) => t[1]!)
+      // A relay URL, or nothing. An agent naming an http endpoint here is
+      // either confused or trying something, and neither gets dialled.
+      .filter((url) => url.startsWith("wss://") || url.startsWith("ws://")),
     definition: value(rumor, "agent"),
   };
 }

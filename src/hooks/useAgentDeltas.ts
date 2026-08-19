@@ -41,12 +41,15 @@ export function useAgentDeltas(
   agent: string | undefined,
   session: string | undefined,
   settled = 0,
+  /** Relays the head says its deltas go to, read alongside the reader's inbox. */
+  deltaRelays: string[] = [],
 ): LiveTurn {
   const account = use$(accountManager.active$);
   const pubkey = account?.pubkey;
   const signer = account?.signer;
 
   const key = agent && session ? `${agent}:${session}` : undefined;
+  const hintKey = deltaRelays.join(",");
   const [live, setLive] = useState<LiveTurn>(NOTHING);
 
   useEffect(() => {
@@ -58,7 +61,19 @@ export function useAgentDeltas(
       // The same consent the inbox asks for: this drives the signer once per
       // arriving wrap, which is exactly what the prompt is about.
       if (!(await hasDecryptConsent(pubkey))) return;
-      const relays = await ownDmReadRelays(pubkey);
+      /**
+       * The reader's own inbox is not enough, and often is not it at all.
+       *
+       * Deltas ride kind 21059, which a DM inbox relay may refuse — the three in
+       * one real 10050 all did — so the session head names where they actually
+       * go, and both lists are read.
+       */
+      const relays = [
+        ...new Set([
+          ...(await ownDmReadRelays(pubkey)),
+          ...hintKey.split(",").filter(Boolean),
+        ]),
+      ];
       if (cancelled || relays.length === 0) return;
 
       const watch = subscribeDeltas(pubkey, relays, signer, (delta) => {
@@ -87,7 +102,7 @@ export function useAgentDeltas(
       cancelled = true;
       stop?.();
     };
-  }, [pubkey, signer, key]);
+  }, [pubkey, signer, key, hintKey]);
 
   // Nothing to show once the stored turn has arrived. Computed rather than
   // cleared in an effect: the durable turn landing is a render's worth of new

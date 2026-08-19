@@ -51,6 +51,10 @@ interface Watch {
   listeners: Set<DeltaListener>;
   /** Live text per session, so a window opening mid-turn is not blank. */
   buffers: Map<string, DeltaBuffer>;
+  /** Relays already being read, so joining with more adds only the new ones. */
+  relays: Set<string>;
+  /** Open one more REQ, for a session whose deltas go somewhere new. */
+  extend: (relays: string[]) => void;
 }
 
 const watches = new Map<string, Watch>();
@@ -116,46 +120,64 @@ export function subscribeDeltas(
     const listeners = new Set<DeltaListener>();
     const buffers = new Map<string, DeltaBuffer>();
     const seen = makeSeen();
+    const open_: (() => void)[] = [];
+    const reading = new Set<string>();
 
-    // Authenticate, the same way the durable inbox read does: a relay that wants
-    // NIP-42 answers a REQ for your own wraps with nothing at all until you have,
-    // and says so only in a CLOSED nobody is listening for.
-    const auth = authenticateDmRelays(relays);
+    const read = (where: string[]) => {
+      const fresh = where.filter((url) => !reading.has(url));
+      if (fresh.length === 0) return;
+      for (const url of fresh) reading.add(url);
 
-    const subscription = pool
-      .subscription(relays, [deltaFilter(viewer)], { eventStore: null })
-      .subscribe({
-        next: (wrap: NostrEvent) => {
-          if (!seen.admit(wrap.id)) return;
-          void open(wrap, signer).then((delta) => {
-            if (!delta) return;
-            const key = `${delta.session.agent}:${delta.session.session}`;
-            let buffer = buffers.get(key);
-            if (!buffer) {
-              buffer = new DeltaBuffer();
-              buffers.set(key, buffer);
-            }
-            buffer.apply(delta);
-            for (const each of listeners) each(delta);
-          });
-        },
-        error: (error: unknown) => {
-          // Ephemeral traffic is worthless once missed, so there is no catch-up
-          // to rush back for — but a session in progress goes blind, so it is
-          // said out loud rather than swallowed.
-          console.warn("[agent] the delta watch stopped:", error);
-        },
+      // Authenticate, the same way the durable inbox read does: a relay that
+      // wants NIP-42 answers a REQ for your own wraps with nothing at all until
+      // you have, and says so only in a CLOSED nobody is listening for.
+      const auth = authenticateDmRelays(fresh);
+      const subscription = pool
+        .subscription(fresh, [deltaFilter(viewer)], { eventStore: null })
+        .subscribe({
+          next: (wrap: NostrEvent) => {
+            if (!seen.admit(wrap.id)) return;
+            void open(wrap, signer).then((delta) => {
+              if (!delta) return;
+              const key = `${delta.session.agent}:${delta.session.session}`;
+              let buffer = buffers.get(key);
+              if (!buffer) {
+                buffer = new DeltaBuffer();
+                buffers.set(key, buffer);
+              }
+              buffer.apply(delta);
+              for (const each of listeners) each(delta);
+            });
+          },
+          error: (error: unknown) => {
+            // Ephemeral traffic is worthless once missed, so there is no
+            // catch-up to rush back for — but a session in progress goes blind,
+            // so it is said out loud rather than swallowed.
+            console.warn("[agent] the delta watch stopped:", error);
+          },
+        });
+
+      open_.push(() => {
+        subscription.unsubscribe();
+        auth.unsubscribe();
       });
+    };
+
+    read(relays);
 
     watch = {
       listeners,
       buffers,
+      relays: reading,
+      extend: read,
       stop: () => {
-        subscription.unsubscribe();
-        auth.unsubscribe();
+        for (const close of open_) close();
       },
     };
     watches.set(viewer, watch);
+  } else {
+    // A session whose head names relays this watch is not reading yet.
+    watch.extend(relays);
   }
 
   watch.listeners.add(listener);

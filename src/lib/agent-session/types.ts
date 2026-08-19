@@ -149,6 +149,13 @@ export interface Usage {
 export interface Cost {
   amount: string;
   currency: string;
+  /**
+   * Worked out from token counts and a price list, not billed by the provider.
+   *
+   * Rendered with a `~`, because a figure presented as a bill when it is
+   * arithmetic is worse than no figure.
+   */
+  estimated?: boolean;
 }
 
 // ── Session addressing ───────────────────────────────────────────────────────
@@ -287,6 +294,15 @@ export interface DecodedHead extends DecodedBase {
   model?: { id: string; provider?: string };
   usage?: Usage;
   cost?: Cost;
+  /**
+   * Where this session's ephemeral deltas are published, as the head declares.
+   *
+   * Not guessable, and not the reader's own inbox: kind 21059 is exactly what a
+   * DM inbox relay is entitled to refuse, and real ones do. A reader that only
+   * listens where its mail arrives watches a status that never moves while the
+   * run goes perfectly.
+   */
+  deltaRelays: string[];
   definition?: string;
 }
 

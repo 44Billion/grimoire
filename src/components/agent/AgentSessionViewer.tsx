@@ -65,7 +65,12 @@ export function AgentSessionViewer({
   const settled = view?.turns.length
     ? (view.turns[view.turns.length - 1]?.turn ?? 0)
     : 0;
-  const live = useAgentDeltas(selected?.agent, selected?.session, settled);
+  const live = useAgentDeltas(
+    selected?.agent,
+    selected?.session,
+    settled,
+    view?.head?.deltaRelays,
+  );
 
   // Both effects only subscribe and read; every setState lands in an async
   // callback, because the doorbell is the external system here and a render is
