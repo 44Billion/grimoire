@@ -188,10 +188,11 @@ export function TranscriptBlockBody({ block }: { block: TranscriptBlock }) {
       >
         {block.speaker && (
           <span className="flex items-center gap-1 text-sm">
-            {/* The agent side of a transcript is always a machine. Said with an
-                icon rather than left to a kind 0 that may not declare it. */}
-            {!isUser && <Bot className="h-3.5 w-3.5 text-muted-foreground" />}
             <UserName pubkey={block.speaker} />
+            {/* After the name, the way a badge follows a name. The agent side of
+                a transcript is always a machine, and it is said with an icon
+                rather than left to a kind 0 that may not declare it. */}
+            {!isUser && <Bot className="h-3.5 w-3.5 text-muted-foreground" />}
           </span>
         )}
         <span className="text-[11px] text-muted-foreground">
