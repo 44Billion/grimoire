@@ -6,9 +6,9 @@
  *
  * - **Public (NIP-57)** — `ZapWindow`, for profiles and public events. The
  *   provider publishes the receipt.
- * - **Private (CORD.md)** — `ConcordZapDialog`, for a sealed channel message.
- *   `privateZap.onSettled` seals the proof into the channel instead, and no
- *   public event exists anywhere.
+ * - **Private (CORD.md)** — the same window opened on a sealed channel message
+ *   (`ZapWindow`'s `zapTarget`). `privateZap.onSettled` seals the proof into
+ *   the channel instead, and no public event exists anywhere.
  *
  * Private mode drops what would leak: no kind-9734, no comment to the provider,
  * and no anonymous toggle (the seal carries the payer's real identity — that is
@@ -388,8 +388,7 @@ export function ZapComposer({
     <div className="space-y-2 border border-dashed rounded-md p-3">
       <Label>Payment preimage</Label>
       <p className="text-xs text-muted-foreground">
-        A private zap is proven by the payment's preimage. Paste it here if your
-        wallet shows one, and the zap will appear in the channel.
+        Paste it to record the zap — your wallet shows one per payment.
       </p>
       <div className="flex gap-2">
         <Input
@@ -417,11 +416,13 @@ export function ZapComposer({
           Scan with your Lightning wallet or copy the invoice
         </div>
 
+        {/* Load-bearing, not decoration: an externally paid zap settles but
+            cannot be proven, so it never reaches the channel unless its
+            preimage is pasted below. */}
         {isPrivate && (
-          <div className="text-xs text-muted-foreground border border-dashed rounded-md p-3">
-            A zap paid from another wallet cannot be proven, so it will not
-            appear in the channel — the sats still reach the recipient. Paste
-            the preimage afterwards to record it.
+          <div className="text-xs text-muted-foreground text-center">
+            Paid elsewhere, it can't be proven — record the preimage below or it
+            won't appear in the channel.
           </div>
         )}
 

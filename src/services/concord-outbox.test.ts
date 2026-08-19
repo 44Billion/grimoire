@@ -470,6 +470,37 @@ describe("a queued private zap", () => {
     );
   });
 
+  it("carries the comment's custom emoji into the rumor", async () => {
+    await writeChatRumors(idHex, [
+      {
+        rumorId: TARGET,
+        author: "aa".repeat(32),
+        kind: KIND_MESSAGE,
+        content: "zap me",
+        tags: [],
+        ms: NOW * 1000,
+        createdAt: NOW,
+        channel: channelIdHex,
+      },
+    ]);
+
+    const adapter = new ConcordAdapter();
+    await adapter.sendZap(conversation, TARGET, {
+      amountMsats: 21_000,
+      bolt11: "lnbc210n1p",
+      preimage: PREIMAGE,
+      comment: ":pepe:",
+      emojiTags: [{ shortcode: "pepe", url: "https://example.com/pepe.png" }],
+    });
+
+    const zap = (await db.concordRumors.toArray()).find((r) => r.id !== TARGET);
+    expect(zap?.tags).toContainEqual([
+      "emoji",
+      "pepe",
+      "https://example.com/pepe.png",
+    ]);
+  });
+
   it("refuses a zap with no payment proof", async () => {
     const adapter = new ConcordAdapter();
     await expect(

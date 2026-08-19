@@ -389,6 +389,11 @@ export function useZapPayment(opts: UseZapPaymentOptions) {
           bolt11,
           preimage: "",
           comment,
+          // The public path puts these in the kind-9734; the private one has to
+          // carry them itself, or the comment seals as a bare `:shortcode:`.
+          ...(attempt.emojiTags?.length
+            ? { emojiTags: attempt.emojiTags }
+            : {}),
         };
         pending.current = { bolt11, payment };
 

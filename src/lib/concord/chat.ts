@@ -508,6 +508,7 @@ export function foldTimeline(
           recipient: ev.tags.find((t) => t[0] === "p")?.[1] ?? "",
           sats: Math.floor(msats / 1000),
           comment: ev.content,
+          emojiTags: ev.tags.filter((t) => t[0] === "emoji"),
           createdAt: ev.createdAt,
         },
       });

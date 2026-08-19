@@ -40,6 +40,11 @@ export interface ZapEntry {
   recipient: string;
   sats: number;
   comment: string;
+  /**
+   * The rumor's NIP-30 `emoji` tags, kept so the comment renders with the
+   * images it names rather than as bare `:shortcode:` text.
+   */
+  emojiTags: string[][];
   /** The zap rumor's `created_at`, so a reader can place it in time. */
   createdAt: number;
 }

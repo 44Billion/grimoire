@@ -27,12 +27,12 @@ import { useCopy } from "@/hooks/useCopy";
 import { EventJsonDialog } from "@/components/EventJsonDialog";
 import { KindBadge } from "@/components/KindBadge";
 import { EmojiPickerDialog } from "./EmojiPickerDialog";
-import { PrivateZapDialog } from "./PrivateZapDialog";
 import { nip19 } from "nostr-tools";
 import { getTagValue } from "applesauce-core/helpers";
 import { getSeenRelays } from "applesauce-core/helpers/relays";
 import { isAddressableKind } from "@/lib/nostr-kinds";
 import { getEmojiTags } from "@/lib/emoji-helpers";
+import { claimZapTarget } from "@/lib/zap-targets";
 import type { EmojiTag } from "@/lib/emoji-helpers";
 
 interface ChatMessageContextMenuProps {
@@ -69,7 +69,6 @@ export function ChatMessageContextMenu({
   const { copy, copied } = useCopy();
   const [jsonDialogOpen, setJsonDialogOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
-  const [zapDialogOpen, setZapDialogOpen] = useState(false);
 
   // Extract context emojis from the conversation
   const contextEmojis = getEmojiTags(event);
@@ -106,7 +105,8 @@ export function ChatMessageContextMenu({
    *
    * A sealed protocol cannot use the public flow at all: the receipt would name
    * the recipient, the amount and this message's id on relays that would then
-   * know the conversation happened. The private dialog is offered instead.
+   * know the conversation happened. The zap window opens in private mode
+   * instead.
    */
   const canZapPrivately = Boolean(adapter?.sendZap && conversation && message);
 
@@ -195,6 +195,25 @@ export function ChatMessageContextMenu({
     });
   };
 
+  /**
+   * The same zap window, for a message whose id cannot be handed outward.
+   *
+   * The window carries a HANDLE, not the rumor id: window props are published
+   * inside spellbooks, so the id stays in memory — see `@/lib/zap-targets`.
+   */
+  const openPrivateZapWindow = () => {
+    if (!adapter || !conversation || !message) return;
+    addWindow("zap", {
+      recipientPubkey: message.author,
+      zapTarget: claimZapTarget({
+        conversation,
+        adapter,
+        messageId: message.id,
+        recipientPubkey: message.author,
+      }),
+    });
+  };
+
   const handleEmojiSelect = async (emoji: string, customEmoji?: EmojiTag) => {
     if (!conversation || !adapter) {
       console.error(
@@ -246,7 +265,7 @@ export function ChatMessageContextMenu({
                   see `adapter.sendZap`. Everything else gets the public NIP-57
                   window. */}
               {canZapPrivately ? (
-                <ContextMenuItem onClick={() => setZapDialogOpen(true)}>
+                <ContextMenuItem onClick={openPrivateZapWindow}>
                   <Zap className="size-4 mr-2" />
                   Zap
                 </ContextMenuItem>
@@ -314,15 +333,6 @@ export function ChatMessageContextMenu({
           onOpenChange={setEmojiPickerOpen}
           onEmojiSelect={handleEmojiSelect}
           contextEmojis={contextEmojis}
-        />
-      )}
-      {canZapPrivately && conversation && adapter && message && (
-        <PrivateZapDialog
-          open={zapDialogOpen}
-          onOpenChange={setZapDialogOpen}
-          message={{ id: message.id, pubkey: message.author }}
-          conversation={conversation}
-          adapter={adapter}
         />
       )}
     </>

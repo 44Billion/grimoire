@@ -108,6 +108,7 @@ describe("foldTimeline — private zaps", () => {
         recipient: ALICE,
         sats: 21,
         comment: "nice",
+        emojiTags: [],
         createdAt: expect.any(Number),
       },
     ]);
@@ -182,6 +183,18 @@ describe("foldTimeline — private zaps", () => {
       moderation([BANNED]),
     );
     expect(timeline.zaps.size).toBe(0);
+  });
+
+  it("keeps the comment's NIP-30 emoji tags", () => {
+    // Without them the comment renders as a bare `:shortcode:` — the tag is
+    // the only thing that says what image the shortcode stands for.
+    const msg = opened({ author: ALICE, content: "hi" });
+    const zap = zapOf(BOB, msg.rumorId, 21, { comment: ":pepe:" });
+    zap.tags.push(["emoji", "pepe", "https://example.com/pepe.png"]);
+    const timeline = foldTimeline([msg, zap]);
+    expect(timeline.zaps.get(msg.rumorId)?.[0].emojiTags).toEqual([
+      ["emoji", "pepe", "https://example.com/pepe.png"],
+    ]);
   });
 
   it("holds a zap whose target has not arrived yet", () => {

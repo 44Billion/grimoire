@@ -306,6 +306,7 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
             addressPointer={window.props.addressPointer}
             customTags={window.props.customTags}
             relays={window.props.relays}
+            zapTarget={window.props.zapTarget}
             onClose={onClose}
           />
         );

@@ -722,14 +722,19 @@ export class ConcordAdapter extends ChatProtocolAdapter {
     // The `e` target rides in `extraTags`, not `target`: a drain rebuilds the
     // rumor from `kind` + `extraTags` alone, and `replyToId` is left unset
     // because the drain would turn it into a NIP-22 kind-1111 comment.
-    const extraTags = zapRumorTags({
-      targetId: messageId,
-      targetKind: target.kind,
-      recipient: target.pubkey,
-      amountMsats: payment.amountMsats,
-      bolt11: payment.bolt11,
-      preimage: payment.preimage,
-    });
+    const extraTags = [
+      ...zapRumorTags({
+        targetId: messageId,
+        targetKind: target.kind,
+        recipient: target.pubkey,
+        amountMsats: payment.amountMsats,
+        bolt11: payment.bolt11,
+        preimage: payment.preimage,
+      }),
+      // NIP-30, exactly as a message carries them: the comment is rendered by
+      // every member, and a shortcode with no `emoji` tag renders as text.
+      ...(payment.emojiTags?.map(emojiTag) ?? []),
+    ];
 
     const { built, account } = await this.prepareSend(
       community,
@@ -1141,6 +1146,7 @@ export class ConcordAdapter extends ChatProtocolAdapter {
                 recipient: tag("p") ?? "",
                 sats: Number.isFinite(msats) ? Math.floor(msats / 1000) : 0,
                 comment: row.content,
+                emojiTags: row.extraTags?.filter(([n]) => n === "emoji") ?? [],
                 createdAt: row.createdAt,
               },
               tag("e") ?? "",
@@ -1343,6 +1349,9 @@ function zapMessage(
         ["e", targetId],
         ["p", entry.recipient],
         ["amount", String(entry.sats * 1000)],
+        // Carried onto the synthesized event because that is what `RichText`
+        // resolves a `:shortcode:` against.
+        ...entry.emojiTags,
       ],
       createdAt: entry.createdAt,
     }) as NostrEvent,

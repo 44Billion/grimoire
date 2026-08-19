@@ -37,6 +37,11 @@ export interface ZapPayment {
   preimage: string;
   /** The zap comment. It reaches the protocol, never the LNURL provider. */
   comment: string;
+  /**
+   * NIP-30 emoji the comment uses. Carried like any message's, or the comment
+   * arrives as a bare `:shortcode:` with nothing to resolve it against.
+   */
+  emojiTags?: EmojiTag[];
 }
 
 export interface ZapConfig {
