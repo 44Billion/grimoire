@@ -22,7 +22,7 @@ import { useAgentDeltas } from "@/hooks/useAgentDeltas";
 import { groupTurns } from "@/components/agent/transcript";
 import { AgentSessionHeadBody } from "@/components/nostr/kinds/AgentSessionRenderers";
 import { StatusBadge } from "@/components/agent/status";
-import { SessionControls } from "@/components/agent/SessionControls";
+import { SessionComposer } from "@/components/agent/SessionComposer";
 import { SessionSetup } from "@/components/agent/SessionSetup";
 import { UserName } from "@/components/nostr/UserName";
 import { cn } from "@/lib/utils";
@@ -140,24 +140,24 @@ export function AgentSessionViewer({
         />
       )}
 
-      <section className="flex-1 overflow-y-auto p-3">
+      {/*
+        The transcript scrolls; the composer does not.
+        Every other conversation in this app puts its input at the bottom, and a
+        session is a conversation — one you can still change the course of.
+      */}
+      <section className="flex min-w-0 flex-1 flex-col">
         {!view ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="p-3 text-sm text-muted-foreground">
             Pick a session to read its transcript.
           </p>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
             {view.head && (
               <>
                 <AgentSessionHeadBody head={view.head} />
                 {view.definition && (
                   <SessionSetup definition={view.definition} />
                 )}
-                <SessionControls
-                  agent={view.head.session.agent}
-                  session={view.head.session.session}
-                  status={view.head.status}
-                />
               </>
             )}
 
@@ -209,6 +209,14 @@ export function AgentSessionViewer({
               </p>
             )}
           </div>
+        )}
+
+        {view?.head && (
+          <SessionComposer
+            agent={view.head.session.agent}
+            session={view.head.session.session}
+            status={view.head.status}
+          />
         )}
       </section>
     </div>
