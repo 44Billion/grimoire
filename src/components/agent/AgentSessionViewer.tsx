@@ -37,6 +37,10 @@ export function AgentSessionViewer({
   const { pubkey } = useAccount();
   const viewer = pubkey ?? "";
 
+  // Nothing here subscribes: the events arrived as gift wraps through the app's
+  // one ingester (`useDmIngest`, held by the shell), so this window works with no
+  // relay reachable and never has to keep a wire up itself.
+
   const [sessions, setSessions] = useState<DecodedHead[]>([]);
   const [selected, setSelected] = useState<{
     agent: string;
