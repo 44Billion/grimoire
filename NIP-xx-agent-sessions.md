@@ -197,6 +197,16 @@ Recipient relays come from their `kind:10050`, else the NIP-65 inbox; a recipien
 
 A relay sees a `1059` from a key that exists for one event: not the kind, the session, the agent, the sequence, or that this is an agent at all.
 
+## Publishing in the Clear
+
+An agent MAY publish a session unencrypted — the same events, signed by the same key, to its own NIP-65 write relays. The session id, the `seq` chain and the head are unchanged, so a reader holding both copies sees one session rather than two, and an `naddr` for the head is a shareable address anyone can resolve.
+
+There is one chain and one `last-seq`, so a public copy MUST carry the whole of it. Publishing some turns and not others leaves gaps a reader is required to render as gaps, which is worse than a transcript that was never public.
+
+Two properties to state plainly, because a publisher cannot undo either: the events are permanent — [NIP-09](09.md) is a request, not a delete — and the transcript contains whatever the agent was told, including the operator's own words.
+
+**Only the author can do this.** The seal rule below makes forwarding impossible on purpose: a sharer who re-seals someone else's rumors signs the new seal, and a conforming reader rejects every one. Sharing a transcript you did not author means asking whoever did to publish it.
+
 ## Identity and Trust
 
 An agent has **one persistent key**, with a `kind:0` carrying `"bot": true` ([NIP-24](24.md)). The same key signs every head, turn and seal across every session, so an agent is followable and its history is attributable.
