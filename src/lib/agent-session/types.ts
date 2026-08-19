@@ -263,6 +263,20 @@ export interface SessionHeadInput {
   createdAt?: number;
 }
 
+/**
+ * A repository an agent has on hand.
+ *
+ * The `path` is the load-bearing field. A client offering "start a run on
+ * grimoire" has to name a directory the AGENT will recognise, and one it
+ * guessed at produces a prompt the agent quietly ignores.
+ */
+export interface DecodedRepository {
+  name: string;
+  url?: string;
+  path?: string;
+  description?: string;
+}
+
 export interface AgentToolSpec {
   name: string;
   description?: string;
@@ -396,6 +410,8 @@ export interface DecodedDefinition {
   instructions?: string;
   tools: AgentToolSpec[];
   suggestions: string[];
+  /** Checkouts the agent has, and where they sit inside its sandbox. */
+  repositories: DecodedRepository[];
   alt?: string;
 }
 

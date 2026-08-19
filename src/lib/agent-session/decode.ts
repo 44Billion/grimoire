@@ -335,6 +335,16 @@ function parseDefinition(
         description: t[2] || undefined,
         parameters: parseJson(t[3]),
       })),
+    repositories: rumor.tags
+      .filter((t) => t[0] === "repo" && t[1])
+      .map((t) => ({
+        name: t[1]!,
+        // Positional, with empty strings for what is absent — so a missing url
+        // never shifts the path into its place.
+        url: t[2] || undefined,
+        path: t[3] || undefined,
+        description: t[4] || undefined,
+      })),
     suggestions: rumor.tags
       .filter((t) => t[0] === "try" && t[1])
       .map((t) => t[1]!),
