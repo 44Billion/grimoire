@@ -23,6 +23,17 @@ The kinds are identical over every transport. A private copy is a NIP-59 rumor i
 
 Envelopes are reused unchanged: `kind:1059` wrap with a `kind:13` seal (NIP-59), and `kind:21059` for a delta so the wrap is dropped with its payload.
 
+### Kind allocation
+
+The numbers are a family with `kind:777` (spells) and `kind:30777` (spellbooks). Checks performed before freezing them:
+
+| Registry | Result |
+| --- | --- |
+| Upstream event-kind table (`nostr-protocol/nips` `README.md`, commit `656cecc7c0a815b6a2b218d3b5d6f078b3f4dbab`) | `1777`, `21777`, `31777` and `31779` all unassigned; nothing assigned in `1770`-`1789`, `21770`-`21779` or `31770`-`31789`. |
+| nostrbook.dev (`https://nostrbook.dev/kinds/<n>`) | All four HTTP 404 — no entry. |
+
+Both registries are advisory and neither reserves numbers, so an unregistered kind may still be in use by an unpublished client. An upstream assignment later would be a collision this NIP absorbs: the numbers are its own, and a reader that does not know them sees nothing it could misread.
+
 ## Agent Definition — `kind:31779`
 
 Authored by the agent's own key. What the agent *is*, as opposed to what one run of it is doing.
