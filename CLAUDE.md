@@ -27,19 +27,6 @@ The official **`applesauce` skill** (`.claude/skills/applesauce`) and the
 applesauce + nostrbook **MCP servers** (`.mcp.json`) are authoritative for
 library and protocol questions — prefer them over recalling API shapes.
 
-## Workspace packages
-
-`packages/*` are standalone, publishable, and **not part of the app build** —
-nothing in `src/` imports them except through their package name.
-
-- `relay-auth-manager` — generic NIP-42 auth manager.
-- `hex` (npm `nostr-hex`) — Hex, the grimoire assistant as a headless Nostr
-  agent: its own key, config file, and transports (NIP-29 first). It must not
-  import from `src/` — no React, no Dexie, no singletons. Where it needs a rule
-  the app learned the hard way (relay timeouts, the NIP-17 publish split), the
-  rule is reimplemented with its reasoning, not imported. See
-  `packages/hex/README.md`.
-
 ## Core Architecture
 
 ### Dual state system

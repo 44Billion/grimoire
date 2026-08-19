@@ -25,12 +25,6 @@ export default defineConfig({
         import.meta.dirname,
         "./packages/relay-auth-manager/src/index.ts",
       ),
-      // Same reason. The app does not import Hex — it is a standalone daemon —
-      // but its own tests resolve through the package name.
-      "nostr-hex": path.resolve(
-        import.meta.dirname,
-        "./packages/hex/src/index.ts",
-      ),
     },
   },
 });
