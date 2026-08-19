@@ -169,7 +169,13 @@ describe("the shapes that changed", () => {
       name: "Hex",
       instructions:
         "You are Hex.\n\nAnswer with a REQ filter when one will do.",
-      tools: [{ name: "nostr.req", description: "Query relays" }],
+      tools: [
+        {
+          name: "nostr.req",
+          description: "Query relays",
+          parameters: { type: "object" },
+        },
+      ],
       createdAt: 1,
     });
 
@@ -177,7 +183,12 @@ describe("the shapes that changed", () => {
       "You are Hex.\n\nAnswer with a REQ filter when one will do.",
     );
     expect(def.tags).toContainEqual(["v", "1"]);
-    expect(def.tags).toContainEqual(["tool", "nostr.req", "Query relays"]);
+    expect(def.tags).toContainEqual([
+      "tool",
+      "nostr.req",
+      "Query relays",
+      '{"type":"object"}',
+    ]);
 
     const decoded = parseAgentEvent(def);
     expect(decoded).toMatchObject({
@@ -185,7 +196,13 @@ describe("the shapes that changed", () => {
       version: 1,
       instructions:
         "You are Hex.\n\nAnswer with a REQ filter when one will do.",
-      tools: [{ name: "nostr.req", description: "Query relays" }],
+      tools: [
+        {
+          name: "nostr.req",
+          description: "Query relays",
+          parameters: { type: "object" },
+        },
+      ],
     });
   });
 

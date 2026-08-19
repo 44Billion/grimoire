@@ -137,6 +137,16 @@ function sessionOf(rumor: UnsignedRumor) {
   };
 }
 
+/** A tag element that is meant to be JSON. Malformed is absent, never a throw. */
+function parseJson(raw: string | undefined): unknown {
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+}
+
 function blocksOf(rumor: UnsignedRumor): ContentBlock[] | null {
   try {
     const parsed: unknown = JSON.parse(rumor.content);
@@ -290,7 +300,11 @@ function parseDefinition(
     instructions: rumor.content || undefined,
     tools: rumor.tags
       .filter((t) => t[0] === "tool" && t[1])
-      .map((t) => ({ name: t[1]!, description: t[2] || undefined })),
+      .map((t) => ({
+        name: t[1]!,
+        description: t[2] || undefined,
+        parameters: parseJson(t[3]),
+      })),
     suggestions: rumor.tags
       .filter((t) => t[0] === "try" && t[1])
       .map((t) => t[1]!),

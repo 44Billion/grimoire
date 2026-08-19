@@ -47,11 +47,11 @@ Authored by the agent's own key. What the agent *is*, as opposed to what one run
 | `name`    | `<string>` | no | yes |
 | `picture` | `<url>` | no | no |
 | `about`   | `<string>` | no | no |
-| `tool`    | `<tool-name>`, `<description>` | yes | no |
+| `tool`    | `<tool-name>`, `<description>`, `<parameters>` | yes | no |
 | `try`     | `<starter prompt>` | no | no |
 | `alt`     | `<string>` ([NIP-31](31.md)) | no | yes |
 
-`tool` is indexable, so `{"#tool":["nostr.req"]}` finds every agent that can do a thing. A tool's parameter schema is deliberately absent: nobody calls an agent's tools but the agent.
+`tool` is indexable, so `{"#tool":["nostr.req"]}` finds every agent that can do a thing. Trailing elements are dropped when absent: a bare tool is a two-element tag, a fully described one is four. `<parameters>` is the tool's schema — usually JSON Schema — as a JSON string, which is the price of the content being prose rather than a document. A reader that cannot parse it treats the tool as having no schema rather than discarding the tool.
 
 ```json
 {
@@ -63,7 +63,7 @@ Authored by the agent's own key. What the agent *is*, as opposed to what one run
     ["v", "1"],
     ["name", "Hex"],
     ["about", "Answers questions about Nostr REQs."],
-    ["tool", "nostr.req", "Query relays"],
+    ["tool", "nostr.req", "Query relays", "{\"type\":\"object\",\"properties\":{\"kinds\":{\"type\":\"array\"}}}"],
     ["try", "what kinds does this relay serve?"],
     ["alt", "Hex — a Nostr agent answering REQ questions"]
   ]

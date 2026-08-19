@@ -218,6 +218,14 @@ export interface SessionHeadInput {
 export interface AgentToolSpec {
   name: string;
   description?: string;
+  /**
+   * The tool's parameter schema, usually JSON Schema.
+   *
+   * Carried as a JSON string in the tag's fourth element. That is not pretty,
+   * but the event's content is the system prompt, so a document cannot hold it —
+   * and without it a definition can say a tool exists and not how to call it.
+   */
+  parameters?: unknown;
 }
 
 export interface AgentDefinitionInput {

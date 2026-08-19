@@ -17,6 +17,7 @@ import {
 import { isKnownBlock } from "./types";
 import type {
   AgentDefinitionInput,
+  AgentToolSpec,
   AgentTurnInput,
   Cost,
   DeltaInput,
@@ -29,6 +30,18 @@ import type {
 
 /** What revision of the definition's shape an event was written to. */
 export const DEFINITION_VERSION = 1;
+
+/**
+ * `["tool", name, description, parameters]` — trailing elements are dropped when
+ * absent, so a bare tool is a two-element tag and a fully described one is four.
+ */
+function toolTag(tool: AgentToolSpec): string[] {
+  const tag = ["tool", tool.name];
+  if (tool.parameters !== undefined)
+    return [...tag, tool.description ?? "", JSON.stringify(tool.parameters)];
+  if (tool.description) return [...tag, tool.description];
+  return tag;
+}
 
 /** The address every event in a session points at. */
 export function sessionAddress(agent: string, session: string): string {
@@ -233,12 +246,7 @@ export function buildAgentDefinition(
   ];
   if (input.picture) tags.push(["picture", input.picture]);
   if (input.about) tags.push(["about", input.about]);
-  for (const tool of input.tools ?? [])
-    tags.push(
-      tool.description
-        ? ["tool", tool.name, tool.description]
-        : ["tool", tool.name],
-    );
+  for (const tool of input.tools ?? []) tags.push(toolTag(tool));
   for (const suggestion of input.suggestions ?? [])
     tags.push(["try", suggestion]);
   if (input.alt) tags.push(["alt", input.alt]);

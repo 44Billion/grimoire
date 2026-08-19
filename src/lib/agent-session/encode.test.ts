@@ -40,7 +40,16 @@ describe("golden vectors", () => {
       name: "Hex",
       about: "Answers questions about Nostr REQs.",
       instructions: "You are Hex.",
-      tools: [{ name: "nostr.req", description: "Query relays" }],
+      tools: [
+        {
+          name: "nostr.req",
+          description: "Query relays",
+          parameters: {
+            type: "object",
+            properties: { kinds: { type: "array" } },
+          },
+        },
+      ],
       suggestions: ["what kinds does this relay serve?"],
       createdAt: AT,
     });
