@@ -187,25 +187,14 @@ export function TranscriptBlockBody({ block }: { block: TranscriptBlock }) {
   const model = splitModel(totals.model, totals.provider);
 
   return (
-    <div
-      className={cn(
-        "flex w-full flex-col gap-1",
-        isUser ? "items-end" : "items-start",
-      )}
-    >
+    <div className={cn("flex w-full flex-col items-start gap-1")}>
       {/*
         Who spoke on the left, what it cost on the right, and the gap between
         them doing the work — the same split the `ai` window uses on an assistant
         message. A reader following the conversation never has to read past the
         name; a reader auditing the spend finds every figure in one column.
       */}
-      <div
-        className={cn(
-          "flex w-full max-w-full flex-wrap items-center gap-x-2 gap-y-0.5",
-          // The prompt's own name belongs over the prompt, which sits right.
-          isUser && "justify-end",
-        )}
-      >
+      <div className="flex w-full max-w-full flex-wrap items-center gap-x-2 gap-y-0.5">
         {block.speaker && (
           <span className="flex items-center gap-1 text-sm">
             <UserName pubkey={block.speaker} />
@@ -258,16 +247,16 @@ export function TranscriptBlockBody({ block }: { block: TranscriptBlock }) {
       </div>
 
       {/*
-        The prompt sits right and carries no container.
-        A bubble says "message in a chat app"; this is a transcript, and the
-        agent's side has no bubble to answer it with — one filled block against
-        an unfilled one reads as emphasis nobody meant. Position is enough to say
-        who spoke.
+        Everything reads down one column, the way the chat window does.
+        A prompt is a message in the same conversation as the answer, not a
+        separate side of it — and a transcript that alternates margins makes a
+        reader's eye do work the content does not need. The name over each block
+        says who spoke.
       */}
       <div
         className={cn(
           "flex min-w-0 flex-col gap-2",
-          isUser ? "max-w-[85%] text-right" : "w-full",
+          isUser ? "max-w-[85%]" : "w-full",
         )}
       >
         {block.items.length > 0 ? (
