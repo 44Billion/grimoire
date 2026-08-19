@@ -21,6 +21,8 @@ export interface CoalescedDelta {
   part: number;
   delta: DeltaKind;
   text: string;
+  /** Which call a `tool` delta belongs to. Required for that kind, absent otherwise. */
+  toolId?: string;
 }
 
 export interface CoalescerOptions {
@@ -37,6 +39,7 @@ export interface CoalescerOptions {
 interface Buffer {
   kind: DeltaKind;
   text: string;
+  toolId?: string;
 }
 
 export class DeltaCoalescer {
@@ -73,19 +76,24 @@ export class DeltaCoalescer {
     this.lastHeartbeat = Number.NEGATIVE_INFINITY;
   }
 
-  push(kind: DeltaKind, text: string, atMs = 0): void {
+  push(kind: DeltaKind, text: string, atMs = 0, toolId?: string): void {
     if (!text) return;
 
     // Switching kind flushes the other buffer first, so text and reasoning never
-    // interleave within a part.
-    if (this.buffer && this.buffer.kind !== kind) this.flush();
+    // interleave within a part. A different tool is a different subject and
+    // flushes for the same reason.
+    if (
+      this.buffer &&
+      (this.buffer.kind !== kind || this.buffer.toolId !== toolId)
+    )
+      this.flush();
 
     if (this.emitted >= this.options.maxPerTurn) {
       this.heartbeat(atMs);
       return;
     }
 
-    if (!this.buffer) this.buffer = { kind, text: "" };
+    if (!this.buffer) this.buffer = { kind, text: "", toolId };
     this.buffer.text += text;
 
     if (this.buffer.text.length >= this.options.maxBytes) {
@@ -122,6 +130,7 @@ export class DeltaCoalescer {
       part: this.part,
       delta: buffer.kind,
       text,
+      ...(buffer.toolId ? { toolId: buffer.toolId } : {}),
     });
   }
 

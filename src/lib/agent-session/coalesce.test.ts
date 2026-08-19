@@ -119,3 +119,36 @@ describe("DeltaCoalescer", () => {
     expect(beats.every((d) => d.text === "")).toBe(true);
   });
 });
+
+describe("DeltaCoalescer and tool ids", () => {
+  it("carries the call a tool delta belongs to", () => {
+    // Without this the encoder refuses the delta outright — a `tool` delta with
+    // no `tool-id` names no call — and the refusal surfaces nowhere useful.
+    const { coalescer, emitted } = harness({ flushBytes: 1 });
+
+    coalescer.startTurn(1);
+    coalescer.push("tool", "Bash(…)", 0, "call_1");
+
+    expect(emitted[0]).toMatchObject({ delta: "tool", toolId: "call_1" });
+  });
+
+  it("does not merge two tools into one delta", () => {
+    const { coalescer, emitted } = harness();
+
+    coalescer.startTurn(1);
+    coalescer.push("tool", "Bash(…)", 0, "call_1");
+    coalescer.push("tool", "Read(…)", 0, "call_2");
+    coalescer.boundary();
+
+    expect(emitted.map((d) => d.toolId)).toEqual(["call_1", "call_2"]);
+  });
+
+  it("leaves toolId off a kind that has no call", () => {
+    const { coalescer, emitted } = harness({ flushBytes: 1 });
+
+    coalescer.startTurn(1);
+    coalescer.push("text", "hello");
+
+    expect(emitted[0]).not.toHaveProperty("toolId");
+  });
+});
