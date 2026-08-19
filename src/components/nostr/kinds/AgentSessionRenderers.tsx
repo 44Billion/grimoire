@@ -1,11 +1,13 @@
 import { useMemo } from "react";
-import { Bot } from "lucide-react";
+import { Bot, Hash, MessageSquare, Users } from "lucide-react";
 
 import type { NostrEvent } from "@/types/nostr";
 import { parseAgentEvent } from "@/lib/agent-session/decode";
 import type { DecodedDefinition, DecodedHead } from "@/lib/agent-session/types";
 import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/agent/status";
+import { UserName } from "@/components/nostr/UserName";
+import { RelayLink } from "@/components/nostr/RelayLink";
 import { cacheRate } from "@/lib/agent-session/usage";
 import { useLocale } from "@/hooks/useLocale";
 import { BaseEventContainer } from "./BaseEventRenderer";
@@ -56,7 +58,23 @@ export function AgentSessionHeadBody({ head }: { head: DecodedHead }) {
           {head.title || "untitled session"}
         </span>
         <StatusBadge status={head.status} />
+        {/*
+          Where it ran, beside what it is. A transcript is read away from the
+          conversation that produced it, so this is the only answer to "where
+          did this happen" — and the protocol is what decides whether the room
+          is something this client could even open.
+        */}
+        {head.channel && (
+          <Label
+            size="sm"
+            className="ml-auto shrink-0"
+            title={channelTitle(head.channel)}
+          >
+            {head.channel.transport}
+          </Label>
+        )}
       </div>
+      {head.channel?.id && <ChannelLine channel={head.channel} />}
       <div className="flex flex-wrap items-end gap-x-5 gap-y-2">
         {usage && (
           <>
@@ -88,6 +106,56 @@ export function AgentSessionHeadBody({ head }: { head: DecodedHead }) {
       </div>
     </div>
   );
+}
+
+/**
+ * The room, rendered as whatever the room actually is.
+ *
+ * A NIP-17 channel identifier IS a pubkey, so it gets a name and a face rather
+ * than 64 hex characters; a NIP-29 one is `<relay-host>'<group-id>`, and the
+ * host half is a relay this app already knows how to render. Anything else is
+ * printed verbatim, which is the honest thing to do with an identifier written
+ * by a protocol this build has never heard of.
+ */
+function ChannelLine({
+  channel,
+}: {
+  channel: { transport: string; id?: string };
+}) {
+  const id = channel.id;
+  if (!id) return null;
+
+  if (channel.transport === "nip-17" && /^[0-9a-f]{64}$/i.test(id))
+    return (
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        <MessageSquare className="h-3 w-3 shrink-0" />
+        <UserName pubkey={id} />
+      </div>
+    );
+
+  const [host, group] = id.includes("'") ? id.split("'", 2) : [undefined, id];
+  if (channel.transport === "nip-29" && host)
+    return (
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        <Users className="h-3 w-3 shrink-0" />
+        <RelayLink url={`wss://${host}`} />
+        <span className="font-mono">{group}</span>
+      </div>
+    );
+
+  return (
+    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+      <Hash className="h-3 w-3 shrink-0" />
+      <span className="truncate font-mono">{id}</span>
+    </div>
+  );
+}
+
+/** The tooltip on the transport tag: the protocol, and the room under it. */
+function channelTitle(channel: { transport: string; id?: string }): string {
+  return channel.id
+    ? `${channel.transport} — ${channel.id}`
+    : channel.transport;
 }
 
 export function AgentSessionHeadRenderer({ event }: { event: NostrEvent }) {

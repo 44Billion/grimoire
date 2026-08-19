@@ -299,6 +299,14 @@ function parseHead(rumor: UnsignedRumor & { id: string }): DecodedHead | null {
       // A relay URL, or nothing. An agent naming an http endpoint here is
       // either confused or trying something, and neither gets dialled.
       .filter((url) => url.startsWith("wss://") || url.startsWith("ws://")),
+    channel: (() => {
+      const transport = value(rumor, "transport");
+      // The protocol is what makes the room meaningful, so a `channel` with no
+      // `transport` beside it is dropped rather than shown as a bare string.
+      return transport
+        ? { transport, id: value(rumor, "channel") }
+        : undefined;
+    })(),
     definition: value(rumor, "agent"),
   };
 }

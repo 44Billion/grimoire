@@ -363,6 +363,16 @@ export interface DecodedHead extends DecodedBase {
    */
   deltaRelays: string[];
   /**
+   * Where the run is happening: the protocol, and the room inside it.
+   *
+   * A transcript is read away from the conversation that produced it, so this
+   * is the only thing that answers "where did this happen". The channel is
+   * written in its own protocol's notation — a pubkey for NIP-17,
+   * `<relay-host>'<group-id>` for NIP-29 — so a client can act on it rather
+   * than reformat it.
+   */
+  channel?: { transport: string; id?: string };
+  /**
    * Requests the run is blocked on, by id.
    *
    * The one thing that separates a session waiting on its operator from one that
