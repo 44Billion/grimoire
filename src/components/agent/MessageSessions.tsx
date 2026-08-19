@@ -24,6 +24,7 @@ import { onDmScopes } from "@/services/dm-bus";
 import { listSessionsForEvent } from "@/services/agent-store";
 import type { DecodedHead } from "@/lib/agent-session/types";
 import { useAddWindow } from "@/core/state";
+import { useAgentActivity } from "@/hooks/useAgentActivity";
 import { UserName } from "@/components/nostr/UserName";
 import { cn } from "@/lib/utils";
 
@@ -61,7 +62,14 @@ const STATUS_STYLE: Record<
   aborted: { dot: "bg-muted-foreground", text: "text-muted-foreground" },
 };
 
-function StatusDot({ status }: { status: string }) {
+function StatusDot({
+  status,
+  /** Fragments are arriving, so pulse whatever the head last said. */
+  live = false,
+}: {
+  status: string;
+  live?: boolean;
+}) {
   const style = STATUS_STYLE[status] ?? {
     dot: "bg-muted-foreground",
     text: "text-muted-foreground",
@@ -69,7 +77,7 @@ function StatusDot({ status }: { status: string }) {
 
   return (
     <span className="relative flex h-2 w-2 shrink-0" title={status}>
-      {style.pulse && (
+      {(style.pulse || live) && (
         <span
           className={cn(
             "absolute inline-flex h-full w-full animate-ping rounded-full opacity-60",
@@ -81,6 +89,44 @@ function StatusDot({ status }: { status: string }) {
         className={cn("relative inline-flex h-2 w-2 rounded-full", style.dot)}
       />
     </span>
+  );
+}
+
+/**
+ * One session's row.
+ *
+ * A component of its own because the live verb is per session: the row watches
+ * the delta stream for its own address and says what the agent is doing, falling
+ * back to the head's status when nothing has arrived lately. `active` for ninety
+ * seconds tells a reader nothing; `running npm test` tells them everything.
+ */
+function SessionRow({
+  head,
+  onOpen,
+}: {
+  head: DecodedHead;
+  onOpen: () => void;
+}) {
+  const activity = useAgentActivity(head.session.agent, head.session.session);
+  const style = STATUS_STYLE[head.status] ?? {
+    dot: "bg-muted-foreground",
+    text: "text-muted-foreground",
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex w-fit max-w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs hover:bg-muted/50"
+      title={head.title}
+    >
+      <StatusDot status={head.status} live={Boolean(activity)} />
+      <UserName pubkey={head.session.agent} className="shrink-0 text-xs" />
+      <Bot className="h-3 w-3 shrink-0 text-muted-foreground" />
+      <span className={cn("truncate", style.text)}>
+        {activity?.verb ?? style.label ?? head.status}
+      </span>
+    </button>
   );
 }
 
@@ -111,34 +157,16 @@ export function MessageSessions({ messageId }: { messageId: string }) {
   return (
     <div className="mt-1 flex flex-col gap-0.5">
       {sessions.map((head) => (
-        <button
+        <SessionRow
           key={`${head.session.agent}:${head.session.session}`}
-          type="button"
-          onClick={() =>
+          head={head}
+          onOpen={() =>
             addWindow("agent", {
               agent: head.session.agent,
               session: head.session.session,
             })
           }
-          className="flex w-fit max-w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs hover:bg-muted/50"
-          title={head.title}
-        >
-          <StatusDot status={head.status} />
-          <UserName pubkey={head.session.agent} className="shrink-0 text-xs" />
-          <Bot className="h-3 w-3 shrink-0 text-muted-foreground" />
-          <span
-            className={cn(
-              "shrink-0",
-              (STATUS_STYLE[head.status] ?? { text: "text-muted-foreground" })
-                .text,
-            )}
-          >
-            {STATUS_STYLE[head.status]?.label ?? head.status}
-          </span>
-          <span className="shrink-0 text-muted-foreground">
-            {head.lastSeq} {head.lastSeq === 1 ? "turn" : "turns"}
-          </span>
-        </button>
+        />
       ))}
     </div>
   );

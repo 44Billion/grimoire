@@ -53,6 +53,33 @@ export class DeltaBuffer {
   private parts = new Map<number, BufferedPart>();
   private bytes = 0;
   private dropped = false;
+  /**
+   * The last fragment's kind and when it arrived, for saying what is happening.
+   *
+   * Deliberately NOT derived from `current`: a fragment held behind a hole is
+   * still evidence the agent is working, and the most recent one is what a reader
+   * wants the verb from even when it cannot be rendered yet.
+   */
+  private lastKind?: DeltaKind;
+  private lastToolText?: string;
+  private lastAt = 0;
+
+  /**
+   * What the agent is doing, and when it last said so.
+   *
+   * `at` is the READER's clock, taken as the fragment arrives — never the wrap's
+   * `created_at`, which the publisher chose and which is randomised on the durable
+   * path. A caller decides for itself how stale is too stale.
+   */
+  get activity(): { kind: DeltaKind; tool?: string; at: number } | undefined {
+    if (!this.lastKind || this.lastAt === 0) return undefined;
+    return {
+      kind: this.lastKind,
+      // `nostr_req(…)` is what the publisher sends; the name is the useful half.
+      tool: this.lastToolText?.split("(")[0] || undefined,
+      at: this.lastAt,
+    };
+  }
 
   /** Which turn is being written, if any. */
   get turn(): number {
@@ -100,12 +127,15 @@ export class DeltaBuffer {
       this.parts = new Map();
       this.bytes = 0;
       this.dropped = false;
+      this.lastToolText = undefined;
     }
 
     if (this.parts.size >= MAX_PARTS || this.bytes >= MAX_BYTES) {
       // Anyone can send you 21059s. Past the cap, fragments are dropped and the
-      // reader is told the preview is partial.
+      // reader is told the preview is partial — but the agent is plainly still
+      // working, so the verb still moves.
       this.dropped = true;
+      this.note(delta);
       return false;
     }
 
@@ -125,7 +155,15 @@ export class DeltaBuffer {
       text: delta.text,
       toolId: delta.toolId,
     });
+    this.note(delta);
     return true;
+  }
+
+  /** Record what just happened, whether or not it can be rendered yet. */
+  private note(delta: DecodedDelta): void {
+    this.lastKind = delta.delta;
+    this.lastAt = Date.now();
+    if (delta.delta === "tool") this.lastToolText = delta.text;
   }
 
   /**
@@ -140,6 +178,9 @@ export class DeltaBuffer {
     this.parts = new Map();
     this.bytes = 0;
     this.dropped = false;
+    this.lastKind = undefined;
+    this.lastToolText = undefined;
+    this.lastAt = 0;
   }
 
   /** One string per kind, in order, for rendering a turn in progress. */
