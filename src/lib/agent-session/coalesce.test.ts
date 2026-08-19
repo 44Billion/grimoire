@@ -74,16 +74,16 @@ describe("DeltaCoalescer", () => {
     ]);
   });
 
-  it("does not interleave text and thinking in one part", () => {
+  it("does not interleave text and reasoning in one part", () => {
     const { coalescer, emitted, tick } = harness();
 
     coalescer.startTurn(1);
-    coalescer.push("thinking", "hmm");
+    coalescer.push("reasoning", "hmm");
     coalescer.push("text", "answer");
     tick();
 
     expect(emitted.map((d) => [d.delta, d.text])).toEqual([
-      ["thinking", "hmm"],
+      ["reasoning", "hmm"],
       ["text", "answer"],
     ]);
     expect(emitted.map((d) => d.part)).toEqual([1, 2]);

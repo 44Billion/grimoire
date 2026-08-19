@@ -30,7 +30,7 @@ function aTurn() {
     ref,
     {
       role: "assistant",
-      blocks: [{ type: "text", text: "hi" }],
+      parts: [{ type: "text", text: "hi" }],
       turn: 1,
       createdAt: 1_755_500_000,
     },
@@ -85,7 +85,7 @@ describe("parseAgentEvent — shape", () => {
     const turn = buildTurn(
       AGENT,
       ref,
-      { role: "assistant", blocks: [], turn: 2, createdAt: 1 },
+      { role: "assistant", parts: [], turn: 2, createdAt: 1 },
       { seq: 2, prev: "b".repeat(64) },
       { pubkey: OPERATOR },
     );
@@ -108,7 +108,7 @@ describe("parseAgentEvent — shape", () => {
     const decoded = parseAgentEvent(garbled);
 
     expect(decoded?.type).toBe("turn");
-    expect(decoded && "blocks" in decoded && decoded.blocks).toEqual([]);
+    expect(decoded && "parts" in decoded && decoded.parts).toEqual([]);
     expect(decoded?.alt).toBe("said hi");
   });
 
@@ -228,14 +228,14 @@ describe("the shapes that changed", () => {
     });
   });
 
-  it("keeps a block type it does not know, and the blocks around it", () => {
+  it("keeps a part type it does not know, and the parts around it", () => {
     // The list is open: a turn from a later revision must still render.
     const turn = buildTurn(
       AGENT,
       ref,
       {
         role: "assistant",
-        blocks: [
+        parts: [
           { type: "text", text: "before" },
           { type: "audio", url: "https://example/x.opus", seconds: 4 },
           { type: "text", text: "after" },
@@ -248,7 +248,7 @@ describe("the shapes that changed", () => {
     );
 
     const decoded = parseAgentEvent(turn);
-    const blocks = decoded && "blocks" in decoded ? decoded.blocks : [];
-    expect(blocks.map((b) => b.type)).toEqual(["text", "audio", "text"]);
+    const parts = decoded && "parts" in decoded ? decoded.parts : [];
+    expect(parts.map((b) => b.type)).toEqual(["text", "audio", "text"]);
   });
 });

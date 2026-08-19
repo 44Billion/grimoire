@@ -3,8 +3,8 @@ import { ChevronRight, Wrench } from "lucide-react";
 
 import type { NostrEvent } from "@/types/nostr";
 import { parseAgentEvent } from "@/lib/agent-session/decode";
-import { isKnownBlock } from "@/lib/agent-session/types";
-import type { DecodedTurn, TurnBlock } from "@/lib/agent-session/types";
+import { isKnownPart } from "@/lib/agent-session/types";
+import type { DecodedTurn, TurnPart } from "@/lib/agent-session/types";
 import { RichText } from "@/components/nostr/RichText";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -16,14 +16,14 @@ import { BaseEventContainer } from "./BaseEventRenderer";
  * Everything structured goes through `parseAgentEvent`, which is the security
  * boundary — a turn whose author is not the agent named in its own address
  * never gets here. A turn that fails to parse still renders: its `alt` tag is
- * what a client that cannot read the blocks is supposed to show.
+ * what a client that cannot read the parts is supposed to show.
  */
 
-export function AgentTurnBlocks({ blocks }: { blocks: TurnBlock[] }) {
+export function AgentTurnParts({ parts }: { parts: TurnPart[] }) {
   return (
     <div className="flex flex-col gap-2">
-      {blocks.map((block, index) => (
-        <AgentBlock key={index} block={block} />
+      {parts.map((part, index) => (
+        <AgentPart key={index} part={part} />
       ))}
     </div>
   );
@@ -66,29 +66,29 @@ function Collapsible({
   );
 }
 
-function AgentBlock({ block }: { block: TurnBlock }) {
-  if (!isKnownBlock(block))
-    // A block type this build does not know. The rest of the turn still renders
+function AgentPart({ part }: { part: TurnPart }) {
+  if (!isKnownPart(part))
+    // A part type this build does not know. The rest of the turn still renders
     // — that is the point of leaving the list open.
     return (
-      <Collapsible title={`${block.type} (unrecognised)`}>
-        {JSON.stringify(block, null, 2)}
+      <Collapsible title={`${part.type} (unrecognised)`}>
+        {JSON.stringify(part, null, 2)}
       </Collapsible>
     );
 
-  switch (block.type) {
+  switch (part.type) {
     case "text":
-      return <RichText content={block.text} />;
+      return <RichText content={part.text} />;
 
-    case "thinking":
-      return <Collapsible title="thinking">{block.text}</Collapsible>;
+    case "reasoning":
+      return <Collapsible title="reasoning">{part.text}</Collapsible>;
 
     case "tool_call":
       return (
-        <Collapsible tone="tool" title={`↳ ${block.name}`}>
-          {block.arguments === null
-            ? `arguments too large to carry${block.arguments_digest ? ` (${block.arguments_digest})` : ""}`
-            : JSON.stringify(block.arguments, null, 2)}
+        <Collapsible tone="tool" title={`↳ ${part.name}`}>
+          {part.arguments === null
+            ? `arguments too large to carry${part.arguments_digest ? ` (${part.arguments_digest})` : ""}`
+            : JSON.stringify(part.arguments, null, 2)}
         </Collapsible>
       );
 
@@ -97,24 +97,24 @@ function AgentBlock({ block }: { block: TurnBlock }) {
         <div className="flex flex-col gap-1">
           <Collapsible
             tone="tool"
-            title={`${block.name} — ${block.ok ? "ok" : "failed"}`}
+            title={`${part.name} — ${part.ok ? "ok" : "failed"}`}
           >
-            {block.output ??
-              (block.ref
-                ? `stored out of band: ${block.ref.size} bytes, ${block.ref.sha256}`
+            {part.output ??
+              (part.ref
+                ? `stored out of band: ${part.ref.size} bytes, ${part.ref.sha256}`
                 : "this turn carried no output")}
           </Collapsible>
-          {block.truncated && (
-            <Label size="sm">{block.truncated.bytes} bytes truncated</Label>
+          {part.truncated && (
+            <Label size="sm">{part.truncated.bytes} bytes truncated</Label>
           )}
-          {block.ref && (
+          {part.ref && (
             <a
-              href={block.ref.url}
+              href={part.ref.url}
               target="_blank"
               rel="noreferrer"
               className="text-xs text-muted-foreground underline"
             >
-              full output ({block.ref.size} bytes)
+              full output ({part.ref.size} bytes)
             </a>
           )}
         </div>
@@ -123,7 +123,7 @@ function AgentBlock({ block }: { block: TurnBlock }) {
     case "image":
       return (
         <img
-          src={block.url}
+          src={part.url}
           alt=""
           className="max-h-64 max-w-full rounded border border-border"
         />
@@ -132,11 +132,9 @@ function AgentBlock({ block }: { block: TurnBlock }) {
 }
 
 export function AgentTurnBody({ turn }: { turn: DecodedTurn }) {
-  const tools = turn.blocks
-    .filter(
-      (block) => block.type === "tool_call" || block.type === "tool_result",
-    )
-    .map((block) => ("name" in block ? block.name : ""))
+  const tools = turn.parts
+    .filter((part) => part.type === "tool_call" || part.type === "tool_result")
+    .map((part) => ("name" in part ? part.name : ""))
     .filter(Boolean);
 
   return (
@@ -158,8 +156,8 @@ export function AgentTurnBody({ turn }: { turn: DecodedTurn }) {
           </span>
         )}
       </div>
-      {turn.blocks.length > 0 ? (
-        <AgentTurnBlocks blocks={turn.blocks} />
+      {turn.parts.length > 0 ? (
+        <AgentTurnParts parts={turn.parts} />
       ) : (
         <p className="text-sm text-muted-foreground">
           {turn.alt ?? "This turn carried nothing this client could read."}

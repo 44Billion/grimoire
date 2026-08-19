@@ -67,8 +67,8 @@ describe("golden vectors", () => {
       ref,
       {
         role: "assistant",
-        blocks: [
-          { type: "thinking", text: "the caller never unsubscribes" },
+        parts: [
+          { type: "reasoning", text: "the caller never unsubscribes" },
           { type: "text", text: "Found it." },
           {
             type: "tool_call",
@@ -125,7 +125,7 @@ describe("encode", () => {
       buildTurn(
         AGENT,
         ref,
-        { role: "user", blocks: [], turn: 1, createdAt: AT },
+        { role: "user", parts: [], turn: 1, createdAt: AT },
         { seq: 2 },
         { pubkey: OPERATOR },
       ),
@@ -138,7 +138,7 @@ describe("encode", () => {
       ref,
       {
         role: "assistant",
-        blocks: [
+        parts: [
           { type: "tool_call", id: "a", name: "Bash", arguments: {} },
           { type: "tool_call", id: "b", name: "Read", arguments: {} },
           { type: "tool_call", id: "c", name: "Bash", arguments: {} },

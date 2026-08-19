@@ -10,7 +10,7 @@ Agent Sessions
 
 Four kinds encode what an autonomous agent did: an **agent definition**, a **session head**, one **turn** per message, and an ephemeral **delta** while a turn is still being written.
 
-They are rumors, carried as NIP-59 gift wraps to whoever is meant to read them. Nothing here depends on that envelope — a transport that carries the same rumors carries the same session — but this document specifies only the wrapped case, because that is the only one with an implementation behind it.
+They are rumors, carried as NIP-59 gift wraps to whoever is meant to read them. A turn's shape — a `role` and an ordered list of `parts`, each `text`, `reasoning`, a tool call or its result — is the shape an agent runtime already has, so publishing is a mapping rather than a translation. Nothing here depends on that envelope — a transport that carries the same rumors carries the same session — but this document specifies only the wrapped case, because that is the only one with an implementation behind it.
 
 ## Kinds
 
@@ -99,11 +99,11 @@ Because the head carries running `usage` and `cost`, an agent MAY publish heads 
 
 ## Turn — `kind:1777`
 
-One event per message: a user prompt, an assistant reply, or a tool result. `content` is a JSON array of **content blocks**, in order — the one place structure lives in `content` rather than in tags, because a turn's payload is a sequence, tags are a set, and tool arguments are arbitrary JSON with no honest tag encoding.
+One event per message: a user prompt, an assistant reply, or a tool result. `content` is a JSON array of **parts**, in order — the one place structure lives in `content` rather than in tags, because a turn's payload is a sequence, tags are a set, and tool arguments are arbitrary JSON with no honest tag encoding.
 
 ```
 text        = { "type":"text",        "text": <string>, "truncated"?: <truncation> }
-thinking    = { "type":"thinking",    "text": <string>, "truncated"?: <truncation> }
+reasoning   = { "type":"reasoning",   "text": <string>, "truncated"?: <truncation> }
 tool_call   = { "type":"tool_call",   "id","name", "arguments": <object>|null,
                                       "arguments_digest"?: <sha256> }
 tool_result = { "type":"tool_result", "id","name", "ok": <bool>,
@@ -117,7 +117,7 @@ blob-ref    = { "sha256","url","size","mime" }
 
 `arguments: null` with a digest means the call was too large to carry; the digest still names which call it was. `output: null` with a `ref` means the result was too large to inline.
 
-**The list of block types is open.** Those five are the ones this revision defines and the ones a client should implement; an agent MAY emit others. A client MUST keep a block whose `type` it does not recognise, render what it can around it, and MUST NOT discard the turn — a turn from a later revision is still most of a turn.
+**The list of part types is open.** Those five are the ones this revision defines and the ones a client should implement; an agent MAY emit others. A client MUST keep a part whose `type` it does not recognise, render what it can around it, and MUST NOT discard the turn — a turn from a later revision is still most of a turn.
 
 | tag     | value | indexable | req |
 | ------- | ----- | --------- | --- |
@@ -132,7 +132,7 @@ blob-ref    = { "sha256","url","size","mime" }
 | `usage` | `<in>`, `<out>`, `<cache-read>`, `<cache-write>` | no | no |
 | `cost`  | `<amount>`, `<currency>` | no | no |
 | `tool`  | one per distinct tool in `content` | yes | no |
-| `alt`   | plain-text rendering — what a client that cannot parse the blocks shows | no | yes |
+| `alt`   | plain-text rendering — what a client that cannot parse the parts shows | no | yes |
 
 ```json
 {
@@ -157,14 +157,14 @@ blob-ref    = { "sha256","url","size","mime" }
 
 ## Delta — `kind:21777`
 
-What tells a reader the agent is working before the turn lands. `content` is the raw appended fragment: prose for `text`, reasoning for `thinking`, the tool call's arguments as they stream for `tool` (with `tool-id` naming the call), and empty for `heartbeat`, which asserts only that the agent is alive.
+What tells a reader the agent is working before the turn lands. `content` is the raw appended fragment: prose for `text`, the model's own words for `reasoning`, the tool call's arguments as they stream for `tool` (with `tool-id` naming the call), and empty for `heartbeat`, which asserts only that the agent is alive.
 
 | tag       | value | indexable | req |
 | --------- | ----- | --------- | --- |
 | `a`       | `31777:<agent>:<session>` | yes | yes |
 | `turn`    | the turn being streamed | no | yes |
 | `part`    | counter local to the turn, from 1, reset at turn start | no | yes |
-| `delta`   | `text`\|`thinking`\|`tool`\|`heartbeat` | no | yes |
+| `delta`   | `text`\|`reasoning`\|`tool`\|`heartbeat` | no | yes |
 | `tool-id` | required when `delta` is `tool` | no | cond |
 | `p`       | `<pubkey>`, `<relay>`, `<role>` | yes | yes |
 
@@ -225,7 +225,7 @@ Anyone can publish a `1777` carrying any `a` tag; relays index tags, they do not
 
 An event SHOULD stay under 64 KiB and MUST stay under 256 KiB; a wrapped copy is ~1.4× the rumor. A publisher MUST NOT emit an event it knows exceeds the limit; how it gets under is its own business.
 
-Whatever it does MUST be visible. A shortened block carries `truncated` describing the **original** and ends with the marker `…[truncated]`, which a client MUST render. An oversize tool result MAY be referenced instead: `output: null` plus a `ref` whose `sha256` is over the plaintext and is authoritative, and which a client that fetches the blob MUST verify. On a private stream the blob SHOULD be encrypted before upload, since the host would otherwise hold exactly the plaintext the wrap was protecting.
+Whatever it does MUST be visible. A shortened part carries `truncated` describing the **original** and ends with the marker `…[truncated]`, which a client MUST render. An oversize tool result MAY be referenced instead: `output: null` plus a `ref` whose `sha256` is over the plaintext and is authoritative, and which a client that fetches the blob MUST verify. On a private stream the blob SHOULD be encrypted before upload, since the host would otherwise hold exactly the plaintext the wrap was protecting.
 
 A turn that quietly lost half its content reads as a whole one, which is worse than a short one.
 

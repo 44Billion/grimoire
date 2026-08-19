@@ -14,7 +14,7 @@ import {
   KIND_SESSION_HEAD,
   KIND_TURN,
 } from "./kinds";
-import { isKnownBlock } from "./types";
+import { isKnownPart } from "./types";
 import type {
   AgentDefinitionInput,
   AgentToolSpec,
@@ -119,10 +119,10 @@ export function buildTurn(
   operator: { pubkey: string; relay?: string },
 ): Rumor {
   const tools = new Set<string>();
-  for (const block of input.blocks) {
-    if (!isKnownBlock(block)) continue;
-    if (block.type === "tool_call" || block.type === "tool_result")
-      tools.add(block.name);
+  for (const part of input.parts) {
+    if (!isKnownPart(part)) continue;
+    if (part.type === "tool_call" || part.type === "tool_result")
+      tools.add(part.name);
   }
 
   const tags: string[][] = [
@@ -150,7 +150,7 @@ export function buildTurn(
     pubkey: agentPubkey,
     created_at: now(input.createdAt),
     tags,
-    content: JSON.stringify(input.blocks),
+    content: JSON.stringify(input.parts),
   });
 }
 

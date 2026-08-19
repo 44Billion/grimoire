@@ -35,7 +35,7 @@ function turn(seq: number, prev: string | undefined, createdAt = nowSecs()) {
     ref,
     {
       role: "assistant",
-      blocks: [{ type: "text", text: `turn ${seq}` }],
+      parts: [{ type: "text", text: `turn ${seq}` }],
       turn: seq,
       createdAt,
     },
@@ -86,7 +86,7 @@ describe("agent kinds in the DM store", () => {
     const notMine = buildTurn(
       AGENT,
       ref,
-      { role: "assistant", blocks: [], turn: 1 },
+      { role: "assistant", parts: [], turn: 1 },
       { seq: 1 },
       { pubkey: "b".repeat(64) },
     ) as unknown as DmRumor;

@@ -76,7 +76,7 @@ export class DeltaCoalescer {
   push(kind: DeltaKind, text: string, atMs = 0): void {
     if (!text) return;
 
-    // Switching kind flushes the other buffer first, so text and thinking never
+    // Switching kind flushes the other buffer first, so text and reasoning never
     // interleave within a part.
     if (this.buffer && this.buffer.kind !== kind) this.flush();
 

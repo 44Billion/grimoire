@@ -30,7 +30,7 @@ export type TurnRole = "user" | "assistant" | "tool";
 export type StopReason =
   "end_turn" | "max_tokens" | "tool_use" | "content_filter" | "error";
 
-export type DeltaKind = "text" | "thinking" | "tool" | "heartbeat";
+export type DeltaKind = "text" | "reasoning" | "tool" | "heartbeat";
 
 /**
  * `awaiting-input` and `payment-required` are NIP-90's kind-7000 vocabulary,
@@ -53,21 +53,21 @@ export const TERMINAL_STATUSES: readonly SessionStatus[] = [
   "aborted",
 ];
 
-// ── Content blocks (the JSON inside a turn) ──────────────────────────────────
+// ── Content parts (the JSON inside a turn) ──────────────────────────────────
 
-export interface TextBlock {
+export interface TextPart {
   type: "text";
   text: string;
   truncated?: Truncation;
 }
 
-export interface ThinkingBlock {
-  type: "thinking";
+export interface ReasoningPart {
+  type: "reasoning";
   text: string;
   truncated?: Truncation;
 }
 
-export interface ToolCallBlock {
+export interface ToolCallPart {
   type: "tool_call";
   id: string;
   name: string;
@@ -76,7 +76,7 @@ export interface ToolCallBlock {
   arguments_digest?: string;
 }
 
-export interface ToolResultBlock {
+export interface ToolResultPart {
   type: "tool_result";
   id: string;
   name: string;
@@ -87,19 +87,19 @@ export interface ToolResultBlock {
   truncated?: Truncation;
 }
 
-export interface ImageBlock {
+export interface ImagePart {
   type: "image";
   url: string;
   mime: string;
   sha256?: string;
 }
 
-/** The block types this revision defines. */
-export type ContentBlock =
-  TextBlock | ThinkingBlock | ToolCallBlock | ToolResultBlock | ImageBlock;
+/** The part types this revision defines. */
+export type ContentPart =
+  TextPart | ReasoningPart | ToolCallPart | ToolResultPart | ImagePart;
 
-/** A block whose `type` this build does not know. */
-export interface UnknownBlock {
+/** A part whose `type` this build does not know. */
+export interface UnknownPart {
   type: string;
   [key: string]: unknown;
 }
@@ -107,22 +107,22 @@ export interface UnknownBlock {
 /**
  * What a turn actually carries.
  *
- * The list is open on purpose: a turn holding a block from a later revision must
- * still render the blocks around it, so an unrecognised one is kept and skipped
+ * The list is open on purpose: a turn holding a part from a later revision must
+ * still render the parts around it, so an unrecognised one is kept and skipped
  * rather than making the whole turn unreadable.
  */
-export type TurnBlock = ContentBlock | UnknownBlock;
+export type TurnPart = ContentPart | UnknownPart;
 
-const KNOWN_BLOCK_TYPES: ReadonlySet<string> = new Set([
+const KNOWN_PART_TYPES: ReadonlySet<string> = new Set([
   "text",
-  "thinking",
+  "reasoning",
   "tool_call",
   "tool_result",
   "image",
 ]);
 
-export function isKnownBlock(block: TurnBlock): block is ContentBlock {
-  return KNOWN_BLOCK_TYPES.has(block.type);
+export function isKnownPart(part: TurnPart): part is ContentPart {
+  return KNOWN_PART_TYPES.has(part.type);
 }
 
 export interface Truncation {
@@ -171,13 +171,13 @@ export interface StreamCursor {
 
 export interface AgentTurnInput {
   role: TurnRole;
-  blocks: TurnBlock[];
+  parts: TurnPart[];
   turn: number;
   stop?: StopReason;
   model?: { id: string; provider?: string };
   usage?: Usage;
   cost?: Cost;
-  /** Plain-text rendering for clients that cannot parse the blocks. */
+  /** Plain-text rendering for clients that cannot parse the parts. */
   alt?: string;
   createdAt?: number;
 }
@@ -258,7 +258,7 @@ export interface DecodedTurn extends DecodedBase {
   prev?: string;
   turn: number;
   role: TurnRole;
-  blocks: TurnBlock[];
+  parts: TurnPart[];
   stop?: StopReason;
   model?: { id: string; provider?: string };
   usage?: Usage;

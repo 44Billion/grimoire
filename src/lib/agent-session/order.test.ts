@@ -17,7 +17,7 @@ function turn(seq: number, prev: string | undefined, createdAt: number) {
     ref,
     {
       role: "assistant",
-      blocks: [{ type: "text", text: `turn ${seq}` }],
+      parts: [{ type: "text", text: `turn ${seq}` }],
       turn: seq,
       createdAt,
     },

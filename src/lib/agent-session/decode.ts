@@ -16,7 +16,7 @@ import {
 import { parseSessionAddress } from "./encode";
 import type {
   AgentSessionEvent,
-  ContentBlock,
+  ContentPart,
   Cost,
   DecodedDefinition,
   DecodedDelta,
@@ -41,7 +41,7 @@ const SESSION_STATUSES: readonly string[] = [
 ];
 const DELTA_KINDS: readonly string[] = [
   "text",
-  "thinking",
+  "reasoning",
   "tool",
   "heartbeat",
 ];
@@ -147,15 +147,15 @@ function parseJson(raw: string | undefined): unknown {
   }
 }
 
-function blocksOf(rumor: UnsignedRumor): ContentBlock[] | null {
+function partsOf(rumor: UnsignedRumor): ContentPart[] | null {
   try {
     const parsed: unknown = JSON.parse(rumor.content);
     if (!Array.isArray(parsed)) return null;
     return parsed.filter(
-      (block): block is ContentBlock =>
-        !!block &&
-        typeof block === "object" &&
-        typeof (block as ContentBlock).type === "string",
+      (part): part is ContentPart =>
+        !!part &&
+        typeof part === "object" &&
+        typeof (part as ContentPart).type === "string",
     );
   } catch {
     return null;
@@ -165,7 +165,7 @@ function blocksOf(rumor: UnsignedRumor): ContentBlock[] | null {
 /**
  * Decode one rumor. Returns null for anything that is not a well-formed event of
  * this NIP authored by the agent it names — a caller may render `alt` for a turn
- * whose blocks failed to parse, but never an event that failed this check.
+ * whose parts failed to parse, but never an event that failed this check.
  */
 export function parseAgentEvent(
   rumor: UnsignedRumor & { id: string },
@@ -208,7 +208,7 @@ function parseTurn(rumor: UnsignedRumor & { id: string }): DecodedTurn | null {
     prev,
     turn,
     role: role as TurnRole,
-    blocks: blocksOf(rumor) ?? [],
+    parts: partsOf(rumor) ?? [],
     stop: value(rumor, "stop") as DecodedTurn["stop"],
     model: modelOf(rumor),
     usage: usageOf(rumor),
