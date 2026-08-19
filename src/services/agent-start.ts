@@ -7,18 +7,22 @@
  * unrelated context — so "start a session" is a NIP-17 DM with no `e` tag, and a
  * `1779` control verb for it would be a second way to say the same thing.
  *
- * The only thing added here is the preamble. An agent with several checkouts
- * cannot tell which one a question is about, and a run that reads the wrong
- * repository answers confidently about the wrong code. So a repo-scoped start
- * names the directory the AGENT knows — the path from its own published
- * definition, never one this client made up, because a guessed path produces a
- * prompt the agent silently ignores and a session that looks like it worked.
+ * The only thing added here is the preamble. An agent handed "fix the parser"
+ * with no other context works on whatever it happens to have, and a run that
+ * reads the wrong repository answers confidently about the wrong code.
+ *
+ * What the preamble carries is the CLONE URL, from the repository's own kind
+ * 30617. That is the one identifier that works whether or not the agent already
+ * has a copy: an agent holding the checkout recognises it, and an agent without
+ * one can fetch it. A sandbox path would be this client guessing at the inside
+ * of someone else's machine — and a guessed path produces a prompt the agent
+ * silently ignores and a session that looks like it worked.
  */
 
 import type { ISigner } from "applesauce-signers";
 
 import { sendDirectMessage } from "@/lib/dm/send";
-import type { DecodedRepository } from "@/lib/agent-session/types";
+import type { MyRepository } from "@/hooks/useMyRepositories";
 
 export interface StartSessionParams {
   viewer: string;
@@ -28,7 +32,7 @@ export interface StartSessionParams {
   /** What to ask it. */
   prompt: string;
   /** Scope the run to one checkout, by the path the agent published. */
-  repository?: DecodedRepository;
+  repository?: MyRepository;
 }
 
 /**
@@ -41,12 +45,12 @@ export interface StartSessionParams {
  */
 export function scopedPrompt(
   prompt: string,
-  repository?: DecodedRepository,
+  repository?: MyRepository,
 ): string {
   if (!repository) return prompt;
-  const where = repository.path
-    ? `Work in ${repository.path} (${repository.name}).`
-    : `Work on ${repository.name}${repository.url ? ` — ${repository.url}` : ""}.`;
+  const where = repository.clone
+    ? `Work on the repository ${repository.name} (${repository.clone}). If you already have a checkout of it, use that one.`
+    : `Work on the repository ${repository.name}.`;
   return `${where}\n\n${prompt}`;
 }
 

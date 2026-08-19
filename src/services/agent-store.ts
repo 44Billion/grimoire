@@ -25,6 +25,7 @@ import { mergeStream, newestHeads } from "@/lib/agent-session/order";
 import type {
   AgentSessionEvent,
   DecodedDefinition,
+  DecodedRepository,
   DecodedHead,
   DecodedTurn,
   Rumor,
@@ -68,6 +69,37 @@ export async function listAgentSessions(
     .map(decode)
     .filter((event): event is DecodedHead => event?.type === "head");
   return newestHeads(heads).sort((a, b) => b.created_at - a.created_at);
+}
+
+/**
+ * Every repository the agents you hold definitions for say they have.
+ *
+ * Read from the definitions the DM pipeline already delivered, like everything
+ * else here — a window that reached for a relay would be the only part of this
+ * viewer that stops working offline.
+ *
+ * Newest definition per agent wins. An agent republishes its definition when
+ * its checkouts change, and offering a repository it removed is offering a run
+ * that will start in a directory that is not there.
+ */
+export async function listAgentRepositories(
+  viewer: string,
+): Promise<{ agent: string; repository: DecodedRepository }[]> {
+  const rows = await scan(viewer, new Set([KIND_AGENT_DEFINITION]));
+  const newest = new Map<string, DecodedDefinition>();
+
+  for (const event of rows.map(decode)) {
+    if (event?.type !== "definition") continue;
+    const held = newest.get(event.pubkey);
+    if (!held || event.created_at > held.created_at)
+      newest.set(event.pubkey, event);
+  }
+
+  const out: { agent: string; repository: DecodedRepository }[] = [];
+  for (const [agent, definition] of newest)
+    for (const repository of definition.repositories)
+      out.push({ agent, repository });
+  return out;
 }
 
 export interface AgentSessionView {

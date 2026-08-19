@@ -6,7 +6,9 @@ import {
   GitBranch,
   PanelLeftClose,
   PanelLeftOpen,
+  Play,
   Search,
+  FolderGit2,
 } from "lucide-react";
 
 import { useAccount } from "@/hooks/useAccount";
@@ -25,6 +27,12 @@ import { AgentSessionHeadBody } from "@/components/nostr/kinds/AgentSessionRende
 import { StatusBadge } from "@/components/agent/status";
 import { SessionComposer } from "@/components/agent/SessionComposer";
 import { SessionSetup } from "@/components/agent/SessionSetup";
+import { AgentDashboard } from "@/components/agent/Dashboard";
+import { StartRunDialog } from "@/components/agent/StartRun";
+import {
+  useMyRepositories,
+  type MyRepository,
+} from "@/hooks/useMyRepositories";
 import { UserName } from "@/components/nostr/UserName";
 import { cn } from "@/lib/utils";
 
@@ -154,7 +162,7 @@ export function AgentSessionViewer({
         <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-2">
           <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <span className="truncate text-sm font-semibold">
-            {view?.head?.title || (view ? "untitled session" : "Sessions")}
+            {view?.head?.title || (view ? "untitled session" : "Agents")}
           </span>
           {view?.head && <StatusBadge status={view.head.status} />}
           {view?.head && (
@@ -165,9 +173,8 @@ export function AgentSessionViewer({
         </div>
 
         {!view ? (
-          <p className="p-3 text-sm text-muted-foreground">
-            Pick a session to read its transcript.
-          </p>
+          /* Nothing picked is not nothing to say — see AgentDashboard. */
+          <AgentDashboard sessions={sessions} onSelect={setSelected} />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
             {view.head && (
@@ -278,8 +285,10 @@ function statusRank(status: string): number {
 /**
  * Who you have transcripts from, and then what they did.
  *
- * Two sections, because they answer different questions. Above, who has ever
- * published here — pick one to narrow the list. Below, every session grouped by
+ * Three sections, answering three questions. Who has published here — pick one
+ * to narrow the list. What of YOURS something could work on — your own kind-30617
+ * repositories, which start a run rather than filter one. And below, every
+ * session grouped by
  * STATUS and nothing else: a reader scanning this list is looking for what is
  * happening now, and a second level of nesting by agent buried the one running
  * session under a heading per agent. The agent's name rides on the session row
@@ -297,6 +306,11 @@ function SessionList({
   const [open, setOpen] = useState(true);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState("");
+  const { repositories } = useMyRepositories();
+  const [starting, setStarting] = useState<{
+    agent: string;
+    repository: MyRepository;
+  } | null>(null);
   /** Which agent the list is narrowed to, or every agent. */
   const [only, setOnly] = useState<string | null>(null);
 
@@ -414,6 +428,37 @@ function SessionList({
               </button>
             ))}
 
+            {repositories.length > 0 && agents.length > 0 && (
+              <>
+                <SectionLabel>Repositories</SectionLabel>
+                {repositories.map((repository) => (
+                  <button
+                    key={repository.address}
+                    type="button"
+                    onClick={() =>
+                      // Whichever agent is in view, or the busiest one — the
+                      // choice is confirmed in the dialog either way, so this
+                      // only decides what it opens with.
+                      setStarting({
+                        agent: only ?? agents[0]![0],
+                        repository,
+                      })
+                    }
+                    className="flex w-full items-center gap-1.5 px-2 py-0.5 text-left text-xs hover:bg-muted/50"
+                    title={
+                      repository.description ??
+                      repository.clone ??
+                      repository.name
+                    }
+                  >
+                    <FolderGit2 className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{repository.name}</span>
+                    <Play className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" />
+                  </button>
+                ))}
+              </>
+            )}
+
             <SectionLabel>
               Sessions
               {only && (
@@ -501,6 +546,17 @@ function SessionList({
           </>
         )}
       </div>
+
+      {starting && (
+        <StartRunDialog
+          agent={starting.agent}
+          repository={starting.repository}
+          open
+          onOpenChange={(open) => {
+            if (!open) setStarting(null);
+          }}
+        />
+      )}
     </aside>
   );
 }
