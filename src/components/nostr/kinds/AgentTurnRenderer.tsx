@@ -208,10 +208,7 @@ export function TranscriptBlockBody({ block }: { block: TranscriptBlock }) {
               <span className="text-destructive/80">{totals.stop}</span>
             )}
             {model.label && (
-              <span
-                className="flex items-center gap-1"
-                title={totals.model}
-              >
+              <span className="flex items-center gap-1" title={totals.model}>
                 <ProviderLogo provider={model.vendor} />
                 {model.label}
               </span>
