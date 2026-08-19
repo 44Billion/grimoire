@@ -23,6 +23,7 @@ import { groupTurns } from "@/components/agent/transcript";
 import { AgentSessionHeadBody } from "@/components/nostr/kinds/AgentSessionRenderers";
 import { StatusBadge } from "@/components/agent/status";
 import { SessionControls } from "@/components/agent/SessionControls";
+import { SessionSetup } from "@/components/agent/SessionSetup";
 import { UserName } from "@/components/nostr/UserName";
 import { cn } from "@/lib/utils";
 
@@ -149,6 +150,9 @@ export function AgentSessionViewer({
             {view.head && (
               <>
                 <AgentSessionHeadBody head={view.head} />
+                {view.definition && (
+                  <SessionSetup definition={view.definition} />
+                )}
                 <SessionControls
                   agent={view.head.session.agent}
                   session={view.head.session.session}

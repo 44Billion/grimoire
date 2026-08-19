@@ -11,7 +11,7 @@ import type { NostrEvent } from "@/types/nostr";
 import { parseAgentEvent } from "@/lib/agent-session/decode";
 import { isKnownPart } from "@/lib/agent-session/types";
 import type { DecodedTurn, TurnPart } from "@/lib/agent-session/types";
-import { Check } from "lucide-react";
+import { Check, Users } from "lucide-react";
 
 import { Markdown } from "@/components/Markdown";
 import { InputRequestRow } from "@/components/agent/InputRequest";
@@ -305,6 +305,41 @@ export function TranscriptBlockBody({
           isUser ? "max-w-[85%]" : "w-full",
         )}
       >
+        {/*
+          A subagent ran, and its work is somewhere else.
+          Named rather than linked: the child is a separate session with its own
+          head and chain, and unless somebody followed it there is no transcript
+          to open. A link that goes nowhere is worse than a sentence that says
+          where to look.
+        */}
+        {block.turns.flatMap((turn) => turn.subagents).length > 0 && (
+          <div className="flex flex-col gap-1">
+            {block.turns
+              .flatMap((turn) => turn.subagents)
+              .map((child) => (
+                <p
+                  key={child.callId}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                  title={
+                    child.session
+                      ? `runtime session ${child.session}`
+                      : "the runtime named no session for this one"
+                  }
+                >
+                  <Users className="h-3 w-3 shrink-0" />
+                  <span>
+                    delegated to {child.name ?? "a subagent"}
+                    {child.session ? (
+                      <span className="ml-1 font-mono opacity-70">
+                        {child.session.slice(0, 12)}…
+                      </span>
+                    ) : null}
+                  </span>
+                </p>
+              ))}
+          </div>
+        )}
+
         {block.items.length > 0 ? (
           block.items.map((item, index) =>
             item.kind === "tool" ? (

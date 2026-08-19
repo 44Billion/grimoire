@@ -215,6 +215,19 @@ function parseTurn(rumor: UnsignedRumor & { id: string }): DecodedTurn | null {
     model: modelOf(rumor),
     usage: usageOf(rumor),
     cost: costOf(rumor),
+    /**
+     * `["subagent", callId, sessionId, name?]`.
+     *
+     * A tag with no session id is kept, because "a subagent ran and we do not
+     * know where" is a truer thing to render than nothing at all.
+     */
+    subagents: rumor.tags
+      .filter((t) => t[0] === "subagent" && t[1])
+      .map((t) => ({
+        callId: t[1]!,
+        session: t[2] ?? "",
+        name: t[3] || undefined,
+      })),
   };
 }
 

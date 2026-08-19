@@ -29,6 +29,7 @@ import { createConversationIdentifier } from "applesauce-common/helpers/messages
 import type { Rumor } from "applesauce-common/helpers/gift-wrap";
 import db, { type DmRumorRow } from "./db";
 import {
+  KIND_AGENT_DEFINITION as AGENT_KIND_DEFINITION,
   KIND_SESSION_CONTROL as AGENT_KIND_SESSION_CONTROL,
   KIND_SESSION_HEAD as AGENT_KIND_SESSION_HEAD,
   KIND_TURN as AGENT_KIND_TURN,
@@ -57,6 +58,7 @@ export const DM_AGENT_KINDS = [
   AGENT_KIND_TURN,
   AGENT_KIND_SESSION_HEAD,
   AGENT_KIND_SESSION_CONTROL,
+  AGENT_KIND_DEFINITION,
 ];
 const ACCEPTED_KINDS = new Set([
   ...DM_ROW_KINDS,

@@ -15,17 +15,26 @@
 import Dexie from "dexie";
 
 import db, { type DmRumorRow } from "./db";
-import { KIND_SESSION_HEAD, KIND_TURN } from "@/lib/agent-session/kinds";
+import {
+  KIND_AGENT_DEFINITION,
+  KIND_SESSION_HEAD,
+  KIND_TURN,
+} from "@/lib/agent-session/kinds";
 import { parseAgentEvent } from "@/lib/agent-session/decode";
 import { mergeStream, newestHeads } from "@/lib/agent-session/order";
 import type {
   AgentSessionEvent,
+  DecodedDefinition,
   DecodedHead,
   DecodedTurn,
   Rumor,
 } from "@/lib/agent-session/types";
 
-const STORED_KINDS = new Set([KIND_TURN, KIND_SESSION_HEAD]);
+const STORED_KINDS = new Set([
+  KIND_TURN,
+  KIND_SESSION_HEAD,
+  KIND_AGENT_DEFINITION,
+]);
 
 function toRumor(row: DmRumorRow): Rumor {
   return {
@@ -64,6 +73,14 @@ export async function listAgentSessions(
 export interface AgentSessionView {
   head: DecodedHead | null;
   turns: DecodedTurn[];
+  /**
+   * How this run was set up — the prompt and the tools it had.
+   *
+   * Found by following the head's `agent` address, which names either a snapshot
+   * of this session or the agent's standing definition. Null when the agent
+   * published neither, which is most agents.
+   */
+  definition: DecodedDefinition | null;
   /** Sequence numbers the stream is missing below the head's `last-seq`. */
   gaps: number[];
   /** Sequence numbers where `prev` disagrees with what we hold. */
@@ -93,6 +110,27 @@ export async function readAgentSession(
   const heads = events.filter((e): e is DecodedHead => e.type === "head");
   const head = newestHeads(heads)[0] ?? null;
 
+  /**
+   * The definition the head points at, if we hold it.
+   *
+   * Matched on the address rather than fetched: everything here is a Dexie read
+   * over what the DM pipeline already delivered, and a window that reached for a
+   * relay would be the only part of this viewer that stops working offline.
+   */
+  const definition = head?.definition
+    ? (rows
+        .map(decode)
+        .filter(
+          (event): event is DecodedDefinition => event?.type === "definition",
+        )
+        .filter(
+          (event) =>
+            `${KIND_AGENT_DEFINITION}:${event.pubkey}:${event.slug}` ===
+            head.definition,
+        )
+        .sort((a, b) => b.created_at - a.created_at)[0] ?? null)
+    : null;
+
   // A head carries no `seq` — it is replaceable, so a number it consumed would
   // be a hole on any relay that dropped the superseded version. It supplies the
   // ceiling for gap detection and nothing else.
@@ -101,6 +139,7 @@ export async function readAgentSession(
 
   return {
     head,
+    definition,
     turns: stream?.ordered ?? [],
     gaps: stream?.gaps.flatMap((gap) => gap.missing) ?? [],
     forks: stream?.forks.map((fork) => fork.seq) ?? [],

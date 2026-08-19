@@ -295,6 +295,22 @@ export interface DecodedBase {
   alt?: string;
 }
 
+/**
+ * A child session this turn set running.
+ *
+ * A subagent's work is a SEPARATE session — its own head, its own chain — so a
+ * turn can only name it. The id is the runtime's, not a Nostr address, because
+ * the address depends on somebody having followed the child, and usually nobody
+ * has.
+ */
+export interface DecodedSubagent {
+  /** The tool call that spawned it, which is also the row it belongs to. */
+  callId: string;
+  /** The runtime's session id for the child. */
+  session: string;
+  name?: string;
+}
+
 export interface DecodedTurn extends DecodedBase {
   type: "turn";
   seq: number;
@@ -306,6 +322,8 @@ export interface DecodedTurn extends DecodedBase {
   model?: { id: string; provider?: string };
   usage?: Usage;
   cost?: Cost;
+  /** Child sessions this turn started, one per `subagent` tag. */
+  subagents: DecodedSubagent[];
 }
 
 export interface DecodedDelta extends DecodedBase {
