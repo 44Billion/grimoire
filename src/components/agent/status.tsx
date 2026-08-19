@@ -55,7 +55,17 @@ const STATUS_STYLE: Record<string, StatusStyle> = {
   },
   done: { dot: "bg-muted-foreground", text: "text-muted-foreground" },
   error: { dot: "bg-destructive", text: "text-destructive" },
-  aborted: { dot: "bg-muted-foreground", text: "text-muted-foreground" },
+  /**
+   * Stopped on purpose, which is neither a failure nor a finish.
+   *
+   * It shared `done`'s grey, so a run somebody cut short and a run that reached
+   * its own end were the same colour and, at a glance, the same thing. Warning
+   * rather than destructive: nothing went wrong, a person decided — and no
+   * pulse, because unlike the other warning states there is nothing left to do
+   * about it. The label carries the rest of the meaning, so the colour is not
+   * doing the work alone.
+   */
+  aborted: { dot: "bg-warning", text: "text-warning", label: "stopped" },
 };
 
 /** A status this build has never heard of still renders, in the quiet colour. */

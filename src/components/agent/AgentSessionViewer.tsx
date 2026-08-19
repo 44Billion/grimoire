@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   Bot,
@@ -6,6 +6,7 @@ import {
   GitBranch,
   PanelLeftClose,
   PanelLeftOpen,
+  Search,
 } from "lucide-react";
 
 import { useAccount } from "@/hooks/useAccount";
@@ -15,7 +16,7 @@ import {
   readAgentSession,
   type AgentSessionView,
 } from "@/services/agent-store";
-import type { DecodedHead } from "@/lib/agent-session/types";
+import { TERMINAL_STATUSES, type DecodedHead } from "@/lib/agent-session/types";
 import { TranscriptBlockBody } from "@/components/nostr/kinds/AgentTurnRenderer";
 import { LiveTurnBody } from "@/components/agent/LiveTurn";
 import { useAgentDeltas } from "@/hooks/useAgentDeltas";
@@ -146,6 +147,23 @@ export function AgentSessionViewer({
         session is a conversation — one you can still change the course of.
       */}
       <section className="flex min-w-0 flex-1 flex-col">
+        {/* `h-8` and a bottom border, level with the sidebar's search row —
+            the same heading chat uses, for the same reason: the two panes are
+            read as one surface and a title that floats inside the scroll area
+            disappears the moment anyone scrolls. */}
+        <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-2">
+          <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate text-sm font-semibold">
+            {view?.head?.title || (view ? "untitled session" : "Sessions")}
+          </span>
+          {view?.head && <StatusBadge status={view.head.status} />}
+          {view?.head && (
+            <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+              {view.head.lastSeq} turn{view.head.lastSeq === 1 ? "" : "s"}
+            </span>
+          )}
+        </div>
+
         {!view ? (
           <p className="p-3 text-sm text-muted-foreground">
             Pick a session to read its transcript.
@@ -154,7 +172,7 @@ export function AgentSessionViewer({
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
             {view.head && (
               <>
-                <AgentSessionHeadBody head={view.head} />
+                <AgentSessionHeadBody head={view.head} titled={false} />
                 {view.definition && (
                   <SessionSetup definition={view.definition} />
                 )}
@@ -257,6 +275,16 @@ function statusRank(status: string): number {
  * the agent, the time — is what the group heading and the open transcript
  * already say.
  */
+/**
+ * Who you have transcripts from, and then what they did.
+ *
+ * Two sections, because they answer different questions. Above, who has ever
+ * published here — pick one to narrow the list. Below, every session grouped by
+ * STATUS and nothing else: a reader scanning this list is looking for what is
+ * happening now, and a second level of nesting by agent buried the one running
+ * session under a heading per agent. The agent's name rides on the session row
+ * instead, where it costs a line nobody has to expand.
+ */
 function SessionList({
   sessions,
   selected,
@@ -268,42 +296,79 @@ function SessionList({
 }) {
   const [open, setOpen] = useState(true);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [query, setQuery] = useState("");
+  /** Which agent the list is narrowed to, or every agent. */
+  const [only, setOnly] = useState<string | null>(null);
 
-  const groups = useMemo(() => {
-    const byStatus = new Map<string, Map<string, DecodedHead[]>>();
+  /** Every agent that has published something here, with what it is doing. */
+  const agents = useMemo(() => {
+    const seen = new Map<string, { total: number; live: number }>();
     for (const head of sessions) {
-      const byAgent = byStatus.get(head.status) ?? new Map();
-      byStatus.set(head.status, byAgent);
-      byAgent.set(head.session.agent, [
-        ...(byAgent.get(head.session.agent) ?? []),
-        head,
-      ]);
+      const at = seen.get(head.session.agent) ?? { total: 0, live: 0 };
+      at.total += 1;
+      if (!(TERMINAL_STATUSES as readonly string[]).includes(head.status))
+        at.live += 1;
+      seen.set(head.session.agent, at);
     }
-    return [...byStatus.entries()].sort(
-      ([a], [b]) => statusRank(a) - statusRank(b),
+    // Busiest first: an agent with a run in flight is the one being watched.
+    return [...seen.entries()].sort(
+      ([, a], [, b]) => b.live - a.live || b.total - a.total,
     );
   }, [sessions]);
 
+  const matching = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return sessions.filter((head) => {
+      if (only && head.session.agent !== only) return false;
+      if (!needle) return true;
+      return (
+        head.title.toLowerCase().includes(needle) ||
+        head.session.session.toLowerCase().includes(needle)
+      );
+    });
+  }, [sessions, query, only]);
+
+  const groups = useMemo(() => {
+    const byStatus = new Map<string, DecodedHead[]>();
+    for (const head of matching)
+      byStatus.set(head.status, [...(byStatus.get(head.status) ?? []), head]);
+    // Newest first inside a status: a list of runs is read from the top.
+    for (const heads of byStatus.values())
+      heads.sort((a, b) => b.started - a.started);
+    return [...byStatus.entries()].sort(
+      ([a], [b]) => statusRank(a) - statusRank(b),
+    );
+  }, [matching]);
+
   if (!open)
     return (
-      <aside className="shrink-0 border-r border-border p-1">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="rounded p-1 text-muted-foreground hover:bg-muted/50"
-          title="Show sessions"
-        >
-          <PanelLeftOpen className="h-4 w-4" />
-        </button>
+      <aside className="shrink-0 border-r border-border">
+        {/* `h-8`, so it sits level with the transcript's heading beside it. */}
+        <div className="flex h-8 items-center px-1">
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="rounded p-1 text-muted-foreground hover:bg-muted/50"
+            title="Show sessions"
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+          </button>
+        </div>
       </aside>
     );
 
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-border">
-      <div className="flex items-center justify-between border-b border-border px-2 py-1">
-        <span className="text-xs text-muted-foreground">
-          {sessions.length} session{sessions.length === 1 ? "" : "s"}
-        </span>
+      {/* The same shape chat uses: one `h-8` row, search filling it, the pane
+          toggle at the end. */}
+      <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border pl-2 pr-1">
+        <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search sessions"
+          className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+        />
         <button
           type="button"
           onClick={() => setOpen(false)}
@@ -321,41 +386,80 @@ function SessionList({
             wraps.
           </p>
         ) : (
-          groups.map(([status, byAgent]) => {
-            const shut = collapsed[status];
-            const count = [...byAgent.values()].reduce(
-              (total, heads) => total + heads.length,
-              0,
-            );
-            return (
-              <div key={status}>
+          <>
+            <SectionLabel>Agents</SectionLabel>
+            {agents.map(([agentKey, counts]) => (
+              <button
+                key={agentKey}
+                type="button"
+                onClick={() => setOnly(only === agentKey ? null : agentKey)}
+                className={cn(
+                  "flex w-full items-center gap-1 px-2 py-0.5 text-left text-xs hover:bg-muted/50",
+                  only === agentKey && "bg-muted",
+                )}
+                title={
+                  only === agentKey
+                    ? "Show every agent's sessions again"
+                    : "Show only this agent's sessions"
+                }
+              >
+                <Bot className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <UserName pubkey={agentKey} className="truncate" />
+                <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+                  {/* Live first, because that is the number worth glancing at. */}
+                  {counts.live > 0
+                    ? `${counts.live}/${counts.total}`
+                    : counts.total}
+                </span>
+              </button>
+            ))}
+
+            <SectionLabel>
+              Sessions
+              {only && (
                 <button
                   type="button"
-                  onClick={() =>
-                    setCollapsed((was) => ({ ...was, [status]: !was[status] }))
-                  }
-                  className="flex w-full items-center gap-1 px-2 py-1 text-left hover:bg-muted/50"
+                  onClick={() => setOnly(null)}
+                  className="ml-1 underline decoration-dotted hover:text-foreground"
                 >
-                  <ChevronRight
-                    className={cn(
-                      "h-3 w-3 shrink-0 text-muted-foreground transition-transform",
-                      !shut && "rotate-90",
-                    )}
-                  />
-                  <StatusBadge status={status} />
-                  <span className="ml-auto text-[11px] text-muted-foreground">
-                    {count}
-                  </span>
+                  clear filter
                 </button>
+              )}
+            </SectionLabel>
 
-                {!shut &&
-                  [...byAgent.entries()].map(([agentKey, heads]) => (
-                    <div key={agentKey}>
-                      <span className="flex items-center gap-1 py-0.5 pr-2 pl-5 text-[11px] text-muted-foreground">
-                        <Bot className="h-3 w-3 shrink-0" />
-                        <UserName pubkey={agentKey} className="truncate" />
+            {groups.length === 0 ? (
+              <p className="px-2 py-1 text-xs text-muted-foreground">
+                Nothing matches.
+              </p>
+            ) : (
+              groups.map(([status, heads]) => {
+                const shut = collapsed[status];
+                return (
+                  <div key={status}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCollapsed((was) => ({
+                          ...was,
+                          [status]: !was[status],
+                        }))
+                      }
+                      className="flex w-full items-center gap-1 px-2 py-1 text-left hover:bg-muted/50"
+                    >
+                      <ChevronRight
+                        className={cn(
+                          "h-3 w-3 shrink-0 text-muted-foreground transition-transform",
+                          !shut && "rotate-90",
+                        )}
+                      />
+                      <StatusBadge status={status} />
+                      <span className="ml-auto text-[11px] text-muted-foreground">
+                        {heads.length}
                       </span>
-                      {heads.map((head) => {
+                    </button>
+
+                    {!shut &&
+                      heads.map((head) => {
                         const active =
                           selected?.agent === head.session.agent &&
                           selected?.session === head.session.session;
@@ -370,24 +474,58 @@ function SessionList({
                               })
                             }
                             className={cn(
-                              "flex w-full items-center gap-1 py-0.5 pr-2 pl-8 text-left text-xs hover:bg-muted/50",
+                              "flex w-full items-center gap-1.5 py-0.5 pr-2 pl-5 text-left text-xs hover:bg-muted/50",
                               active && "bg-muted",
                             )}
-                            title={head.title || head.session.session}
+                            title={sessionLabel(head)}
                           >
                             <span className="truncate">
-                              {head.title || "untitled session"}
+                              {sessionLabel(head)}
                             </span>
+                            {/* Whose run it is, on the row rather than in a
+                                heading above it — dropped when the list is
+                                already narrowed to one agent. */}
+                            {!only && (
+                              <UserName
+                                pubkey={head.session.agent}
+                                className="ml-auto max-w-[40%] shrink-0 truncate text-[11px] text-muted-foreground"
+                              />
+                            )}
                           </button>
                         );
                       })}
-                    </div>
-                  ))}
-              </div>
-            );
-          })
+                  </div>
+                );
+              })
+            )}
+          </>
         )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * What to call a session in a list.
+ *
+ * An agent that titles its run after its own runtime id — `wrun_01M0D…` — has
+ * said nothing a reader can use, and a column of those is a column of noise.
+ * But it is not nothing: it is still the one thing that tells two rows apart,
+ * so it is SHORTENED rather than thrown away. Replacing it with "untitled"
+ * made every row identical, which is strictly worse than an ugly id.
+ */
+function sessionLabel(head: DecodedHead): string {
+  const title = head.title.trim();
+  if (!title) return "untitled session";
+  const machine = /^(wrun_|ses_|sess_|run_)?[0-9A-Za-z]{16,}$/.test(title);
+  return machine ? `${title.slice(0, 12)}…` : title;
+}
+
+/** A heading between the sidebar's two halves. */
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <div className="sticky top-0 z-10 bg-background px-2 pt-2 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+      {children}
+    </div>
   );
 }

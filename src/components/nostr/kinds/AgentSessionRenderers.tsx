@@ -41,7 +41,20 @@ function useCompactNumber() {
   return (value: number) => new Intl.NumberFormat(locale).format(value);
 }
 
-export function AgentSessionHeadBody({ head }: { head: DecodedHead }) {
+export function AgentSessionHeadBody({
+  head,
+  /**
+   * Drop the title row, for a caller that already renders one.
+   *
+   * The session viewer puts the title and status in its pane heading, where
+   * they survive scrolling. Repeating them a line below is the reader seeing
+   * the same sentence twice and wondering which one is authoritative.
+   */
+  titled = true,
+}: {
+  head: DecodedHead;
+  titled?: boolean;
+}) {
   const format = useCompactNumber();
   const usage = head.usage;
 
@@ -53,11 +66,15 @@ export function AgentSessionHeadBody({ head }: { head: DecodedHead }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="truncate font-medium">
-          {head.title || "untitled session"}
-        </span>
-        <StatusBadge status={head.status} />
+        {titled && (
+          <>
+            <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="truncate font-medium">
+              {head.title || "untitled session"}
+            </span>
+            <StatusBadge status={head.status} />
+          </>
+        )}
         {/*
           Where it ran, beside what it is. A transcript is read away from the
           conversation that produced it, so this is the only answer to "where
