@@ -71,7 +71,17 @@ kilobytes; the head points at it through `agent`.
 | `about`   | `<string>` | no | no |
 | `tool`    | `<tool-name>`, `<description>`, `<parameters>` | yes | no |
 | `try`     | `<starter prompt>` | no | no |
+| `repo`    | `<name>`, `<url>`, `<path>`, `<description>` | no | no |
 | `alt`     | `<string>` ([NIP-31](31.md)) | no | yes |
+
+`repo` says what the agent has checked out and WHERE — the path inside its own
+sandbox. The path is the load-bearing element: a client offering "start a run on
+this repository" must name a directory the agent will recognise, and one it
+guessed at produces a prompt the agent silently ignores and a session that looks
+like it worked. The elements are positional, with empty strings for what is
+absent, so a missing url cannot shift the path into its place. It is not
+indexable: an agent's checkouts are not something a relay should let anyone
+enumerate by, and a reader holding the definition already holds them.
 
 `tool` is indexable, so `{"#tool":["nostr.req"]}` finds every agent that can do a thing. Trailing elements are dropped when absent: a bare tool is a two-element tag, a fully described one is four. `<parameters>` is the tool's schema — usually JSON Schema — as a JSON string, which is the price of the content being prose rather than a document. A reader that cannot parse it treats the tool as having no schema rather than discarding the tool.
 
@@ -87,6 +97,7 @@ kilobytes; the head points at it through `agent`.
     ["about", "Answers questions about Nostr REQs."],
     ["tool", "nostr.req", "Query relays", "{\"type\":\"object\",\"properties\":{\"kinds\":{\"type\":\"array\"}}}"],
     ["try", "what kinds does this relay serve?"],
+    ["repo", "grimoire", "https://github.com/purrgrammer/grimoire", "/workspace/grimoire", "The Nostr explorer this agent assists with"],
     ["alt", "Hex — a Nostr agent answering REQ questions"]
   ]
 }
@@ -111,6 +122,8 @@ One run's current state. `content` is a human-readable summary and MAY be empty.
 | `usage`    | `<in>`, `<out>`, `<cache-read>`, `<cache-write>` | no | no |
 | `cost`     | `<amount>`, `<currency>`, `estimated` | no | no |
 | `input`    | `<request-id>` — one per request the run is blocked on | no | no |
+| `transport` | `nip-17`\|`nip-29`\|… — the protocol this run is happening on | no | no |
+| `channel`  | the room, in that protocol's own notation | no | no |
 | `delta-relay` | `<relay>` — where this session's `21777`s are published | no | no |
 | `agent`    | `31779:<pubkey>:<d>` — the definition or snapshot describing this run | no | no |
 | `alt`      | `<string>` | no | yes |
@@ -122,6 +135,20 @@ and list prices rather than billed by a provider — plenty of providers report 
 cost at all, and a transcript with usage and a blank where the money goes is no
 use to anyone auditing spend. A reader that ignores the third element gets a
 number that is approximately right; one that reads it can say so.
+
+`transport` and `channel` say WHERE the run is happening, which a transcript
+read away from its conversation cannot otherwise answer. They are two tags
+because they answer different questions: the protocol decides whether a reader
+can offer to open the room at all, and the channel names the room inside it —
+written the way that protocol writes rooms, so a client can act on it rather
+than reformat it. A NIP-17 channel is the correspondent's pubkey; a NIP-29 one
+is `<relay-host>'<group-id>`, [NIP-29](29.md)'s own notation, in which two groups
+sharing an id on different relays are correctly two rooms.
+
+Neither is indexable, deliberately. A single-letter tag would let a relay group
+every session an agent ever ran with one person — precisely the association the
+gift wrap exists to withhold — and no reader needs to query by it, since a reader
+holding the head already holds the session.
 
 `delta-relay` exists because deltas ride `kind:21059`, which a recipient's DM
 inbox relay is entitled to refuse — and in practice they do. A publisher that
@@ -273,6 +300,28 @@ thing to keep consistent.
 
 Unknown commands are ignored rather than refused, exactly as unknown part types
 and unknown statuses are: it is a newer client talking.
+
+## Starting a Run
+
+There is no verb for it, and that is deliberate.
+
+An agent opens a session for a message that threads onto nothing and continues
+one for a message that replies — a rule the transport already needs for its own
+sake, since a new subject inheriting an hour of unrelated context is the failure
+it prevents. So starting a run is sending an ordinary message with no `e` tag,
+and a `1779` verb for it would be a second way to say a thing already said.
+
+A client scoping a run to a repository puts that in the message, as words. There
+is no field an agent runtime would read as "work here": the receiving end is a
+model reading a chat message, so a sentence naming the repository is what
+functions. A client SHOULD show the composed message before sending it — a
+preamble the client wrote is text the operator did not, and it is the operator
+the whole message will be attributed to.
+
+What travels SHOULD be the repository's clone URL rather than a path, unless the
+path came from that agent's own `repo` tag. A path is a claim about the inside of
+someone else's machine, and a wrong one produces a prompt the agent silently
+ignores and a session that looks like it worked.
 
 ## Blocked Sessions
 
