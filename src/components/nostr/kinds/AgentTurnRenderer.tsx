@@ -12,6 +12,7 @@ import { parseAgentEvent } from "@/lib/agent-session/decode";
 import { isKnownPart } from "@/lib/agent-session/types";
 import type { DecodedTurn, TurnPart } from "@/lib/agent-session/types";
 import { Markdown } from "@/components/Markdown";
+import { RichText } from "@/components/nostr/RichText";
 import { Label } from "@/components/ui/label";
 import { ToolExchangeRow, ToolResultRow } from "@/components/agent/tool-parts";
 import {
@@ -66,7 +67,13 @@ function Reasoning({ text }: { text: string }) {
   );
 }
 
-function AgentPart({ part }: { part: TurnPart }) {
+function AgentPart({
+  part,
+  side,
+}: {
+  part: TurnPart;
+  side?: "user" | "agent";
+}) {
   if (!isKnownPart(part))
     // A part type this build does not know. The rest of the turn still renders
     // — that is the point of leaving the list open.
@@ -80,10 +87,20 @@ function AgentPart({ part }: { part: TurnPart }) {
 
   switch (part.type) {
     case "text":
-      // Markdown, not `RichText`: this is a model's prose, and the same renderer
-      // the `ai` window uses. A transcript full of literal asterisks is the
-      // failure this exists to avoid.
-      return <Markdown>{part.text}</Markdown>;
+      /**
+       * Whose prose it is decides which renderer reads it.
+       *
+       * A model writes markdown, so the agent side gets the same renderer the
+       * `ai` window uses — a transcript full of literal asterisks is the failure
+       * that avoids. A person writes Nostr: an npub or an nevent in a question
+       * is a reference to someone or something, and `RichText` is what turns it
+       * into the name or the note rather than sixty characters of base32.
+       */
+      return side === "user" ? (
+        <RichText content={part.text} className="text-sm" />
+      ) : (
+        <Markdown>{part.text}</Markdown>
+      );
 
     case "reasoning":
       return <Reasoning text={part.text} />;
@@ -240,12 +257,17 @@ export function TranscriptBlockBody({ block }: { block: TranscriptBlock }) {
         )}
       </div>
 
+      {/*
+        The prompt sits right and carries no container.
+        A bubble says "message in a chat app"; this is a transcript, and the
+        agent's side has no bubble to answer it with — one filled block against
+        an unfilled one reads as emphasis nobody meant. Position is enough to say
+        who spoke.
+      */}
       <div
         className={cn(
           "flex min-w-0 flex-col gap-2",
-          isUser
-            ? "max-w-[85%] rounded-lg bg-secondary px-4 py-2 text-secondary-foreground"
-            : "w-full",
+          isUser ? "max-w-[85%] text-right" : "w-full",
         )}
       >
         {block.items.length > 0 ? (
@@ -253,7 +275,7 @@ export function TranscriptBlockBody({ block }: { block: TranscriptBlock }) {
             item.kind === "tool" ? (
               <ToolExchangeRow key={`${item.id}-${index}`} item={item} />
             ) : (
-              <AgentPart key={index} part={item.part} />
+              <AgentPart key={index} part={item.part} side={block.side} />
             ),
           )
         ) : (
