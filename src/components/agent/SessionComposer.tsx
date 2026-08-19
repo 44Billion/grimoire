@@ -85,6 +85,12 @@ export function SessionComposer({
       >
         <PromptInputBody>
           <PromptInputTextarea
+            /*
+             * `field-sizing-content` sizes the box to its text, so an empty
+             * composer shrank to the width of its own placeholder and sat
+             * centred in the row. The text was never centred; the element was.
+             */
+            className="w-full text-left"
             placeholder={
               over
                 ? "This session has ended."
