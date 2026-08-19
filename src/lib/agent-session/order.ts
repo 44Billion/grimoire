@@ -8,21 +8,16 @@
  */
 
 import { MAX_COUNTER } from "./decode";
-import type {
-  DecodedHead,
-  DecodedMilestone,
-  DecodedTurn,
-  Transport,
-} from "./types";
+import type { DecodedHead, DecodedTurn, Transport } from "./types";
 
 /**
- * What carries `seq`: turns and milestones, and nothing else.
+ * What carries `seq`: the turn, and nothing else.
  *
  * Deltas evaporate at the relay and the head is replaced on it, so neither may
  * consume a sequence number — a number whose event the protocol itself removes
  * is a hole no reader can ever fill.
  */
-export type SequencedEvent = DecodedTurn | DecodedMilestone;
+export type SequencedEvent = DecodedTurn;
 
 /** A `seq` space. Two transports are two streams even for one session. */
 export interface StreamKey {

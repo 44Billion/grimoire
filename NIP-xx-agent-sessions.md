@@ -8,7 +8,7 @@ Agent Sessions
 
 ## Abstract
 
-This NIP defines five event kinds that encode the working transcript of an autonomous agent — an LLM-driven process — as Nostr events: an addressable **agent definition** (`kind:31779`), an addressable **session head** (`kind:31777`), a per-message **turn** (`kind:1777`), a coarse **milestone** (`kind:1778`), and an ephemeral **delta** (`kind:21777`).
+This NIP defines four event kinds that encode the working transcript of an autonomous agent — an LLM-driven process — as Nostr events: an addressable **agent definition** (`kind:31779`), an addressable **session head** (`kind:31777`), a per-message **turn** (`kind:1777`), and an ephemeral **delta** (`kind:21777`).
 
 The same kinds are carried unchanged over three transports: as NIP-59 gift-wrapped rumors to a private audience, as plain signed events in a NIP-29 group, or as rumors inside a Concord plane's stream envelope. Only the envelope and the redaction profile differ; the inner shape never does. A client that can render a session from one transport can render it from all three.
 
@@ -22,9 +22,16 @@ Existing chat kinds (`kind:9`, `kind:14`, `kind:1111`) can carry an agent's pros
 
 NIP-90's job-feedback event is a *regular, stored* kind whose identity is an `e` tag pointing at a job request, and whose lifecycle is bound to a payment negotiation between a customer and a service provider. An agent session is not a job: it has no request event, no bid, no payment leg, and it emits far more feedback than a DVM job does — inlining token-level progress into a stored regular kind would flood relays obliged to keep it forever.
 
-This NIP therefore splits progress by *storage class*: `kind:21777` (ephemeral) for high-frequency deltas, and `kind:1778` (regular) for coarse milestones a reader still wants an hour later. The `status` values (`processing`, `partial`, `success`, `error`, `payment-required`) are taken verbatim from NIP-90, plus `awaiting-input`, so an implementer who already renders `kind:7000` reuses that switch.
+This NIP therefore carries progress in two places, neither of them a stored progress event: `kind:21777` (ephemeral) for the live stream, and the head's `status` for the state a reader arriving later needs. NIP-90's vocabulary is reused where it fits — `awaiting-input` and `payment-required` are its values verbatim, so an implementer who already renders `kind:7000` reuses that switch.
 
-An agent that *is* a DVM MAY additionally emit `kind:7000`. It MUST NOT be the only progress signal, and the `kind:7000` copy carries no session ordering.
+An earlier draft added a stored "milestone" kind for coarse progress. It was cut: almost everything it said restated the turn beside it, two events for one fact, and on a private stream the full transcript is already there. What it alone could carry moved onto the head. The costs of that are real and stated rather than hidden:
+
+- **Stored progress inside an unfinished turn is gone.** A turn is published only when complete, so a reader who was offline while a four-minute tool call ran learns nothing about that window afterwards; the head says the session is `active` and the deltas that described it have evaporated.
+- **A blocked state has no history.** The head is replaceable, so an agent that asked for input twice and was ignored twice looks identical to one that asked once.
+
+An agent that *is* a DVM MAY emit `kind:7000` alongside. It MUST NOT be the only progress signal, and the `kind:7000` copy carries no session ordering.
+
+`kind:1778` is burned. It MUST NOT be reused for anything in this family.
 
 ## Kinds
 
@@ -33,7 +40,6 @@ An agent that *is* a DVM MAY additionally emit `kind:7000`. It MUST NOT be the o
 | `31779` | addressable (30000-39999) | Agent Definition | one per `(pubkey, d)` | An agent has one current description. `d` is the agent's slug, so one key MAY host several agents. |
 | `31777` | addressable (30000-39999) | Session Head     | one per `(pubkey, d)` | A session has one current state. `d` is the session id, so one agent runs many concurrent sessions. |
 | `1777`  | regular (0-9999)          | Session Turn     | permanent | The transcript is append-only. Nothing overwrites a turn; a correction is a new turn. |
-| `1778`  | regular (0-9999)          | Milestone        | permanent | Coarse progress a late joiner must still be able to fetch. |
 | `21777` | ephemeral (20000-29999)   | Delta            | none      | Token-level output. Relays MUST NOT store it; a client that missed a delta recovers the same content from the `kind:1777` that follows. |
 
 Envelope kinds are reused unchanged: `kind:1059` gift wrap and `kind:13` seal (NIP-59) for stored private copies, `kind:21059` for private deltas so the wrap is dropped along with its payload.
@@ -87,7 +93,7 @@ Addressable. Authored by the agent's key. `content` is a human-readable summary 
 | ----------- | ------ | --------- | --- | ----------- |
 | `d`         | `<session-id>` | yes | yes | 64-char lowercase hex, 32 random bytes. Stable for the life of the session across every mirror. |
 | `title`     | `<string>` | no | yes | Short human title. |
-| `status`    | `active`\|`idle`\|`done`\|`error`\|`aborted` | no | yes | The last three are terminal. |
+| `status`    | `active`\|`idle`\|`awaiting-input`\|`payment-required`\|`done`\|`error`\|`aborted` | no | yes | The last three are terminal. `awaiting-input` and `payment-required` are NIP-90's values verbatim. |
 | `p`         | `<pubkey>`, `<relay>`, `operator` | yes | yes | The human on whose behalf the agent runs. Exactly one. |
 | `p`         | `<pubkey>`, `<relay>`, `observer` | yes | no | Further recipients of the private stream. |
 | `stream`    | `<transport>`, `<address>`, `<visibility>`, `<redaction>` | no | yes | One per mirror. `<transport>` is `nip17`\|`nip29`\|`concord`. |
@@ -196,37 +202,6 @@ blob-ref    = { "sha256", "url", "size", "mime",
 }
 ```
 
-## Milestone — `kind:1778`
-
-Regular. `content` is **plain human-readable text** — the opposite choice from a turn, and deliberately so: a milestone exists to be shown to a person in a sidebar or a room, and any client that can render `kind:9` can render this.
-
-**A milestone exists for what a turn cannot say.** A turn is published only when it is complete, it is gutted under the `public` profile, and it cannot describe a state that has no message in it. So a milestone is for:
-
-- **progress inside a turn that has not finished** — a tool call still running after several seconds. Deltas cover that window live, but they evaporate at the relay, so a reader who was asleep or joined late has nothing else;
-- **a public mirror**, where a redacted turn carries almost nothing and one plain sentence carries the whole point;
-- **a state that is not a message**: `awaiting-input`, `payment-required`, or a failure with no turn to attach it to. The head's `status` cannot serve here — it is replaceable, so asking twice and being ignored twice leaves no history.
-
-An agent **MUST NOT** emit a milestone that only restates a turn it has already published or is about to publish. "Calling Bash" as a milestone and then the same `tool_call` block in the next turn is two events for one fact, and on a private stream it is pure cost, since the full transcript is already there. On a private stream an agent SHOULD emit milestones only for the long-running and blocked cases above.
-
-An agent SHOULD emit fewer than one milestone per second and MUST NOT emit one per token — that is what a delta is.
-
-| tag       | values | indexable | req | description |
-| --------- | ------ | --------- | --- | ----------- |
-| `a`       | `31777:<agent>:<session>` | yes | yes | Session. |
-| `seq`     | `<integer>` | no | yes | Shares the stream's counter with `kind:1777`. |
-| `prev`    | `<event-id>` | no | yes* | As for a turn. |
-| `status`  | `processing`\|`partial`\|`success`\|`error`\|`payment-required`\|`awaiting-input` | yes | yes | NIP-90 vocabulary. |
-| `turn`    | `<integer>` | no | no | Turn this falls inside. |
-| `step`    | `<n>`, `<total>` | no | no | `<total>` MAY be `?`. |
-| `tool`    | `<tool-name>`, `<tool-call-id>` | yes | no | |
-| `e`       | `<event-id>`, `<relay>`, `turn` | yes | no | The turn this milestone describes. |
-| `p`       | `<pubkey>`, `<relay>`, `<role>` | yes | yes | |
-| `h`       | `<group-id>` | yes | cond | NIP-29 mirrors only. |
-| `redaction`| profile | no | yes | |
-| `alt`     | `<string>` | no | yes | |
-
-Within one stream, `seq` is unique across `1777` and `1778`. The head and the deltas take none.
-
 ## Delta — `kind:21777`
 
 Ephemeral. Relays MUST NOT store it, and a client MUST NOT treat its absence as data loss: everything it carries is repeated in the `kind:1777` that closes the turn.
@@ -253,7 +228,7 @@ An agent SHOULD coalesce deltas into fragments of at least 50 ms or 32 character
 NIP-59 requires a gift wrap's `created_at` to be randomized up to two days in the past and a seal's up to one hour. Only the **rumor's** `created_at` is the agent's real clock, and it is unsigned — a hint, not a proof. Ordering therefore rests on `seq`, which lives inside the sealed payload and is covered by the seal's signature.
 
 1. **Group by stream.** A stream is the pair (`a` address, transport the event arrived on). Sequence numbers from a private NIP-17 copy and a public NIP-29 copy of the same session are in **different spaces** and MUST NOT be compared.
-2. **Sort by `seq` ascending**, over `1777` and `1778` only — the two kinds that carry one.
+2. **Sort by `seq` ascending**. Only `kind:1777` carries one; the head and the deltas take none.
 3. **Tie-break** on equal `seq`: lower rumor `created_at` first, then lower `ms`, then lexicographically smaller event `id`. A duplicate `seq` SHOULD be surfaced as a warning — it is the visible signature of a replayed or forged event.
 4. **Never sort by `created_at` across the wrap boundary.** A client that sorts a private transcript by the outer timestamp renders it in near-random order over a two-day window. Display timestamps come from the rumor and SHOULD be clamped: a rumor more than 900 seconds in the future is displayed with its receipt time and flagged.
 5. **Chain check.** `prev` names the event at `seq - 1`. A reader holding both and finding a mismatch MUST treat the stream as forked from that point and MUST NOT silently merge the branches.
@@ -263,7 +238,7 @@ NIP-59 requires a gift wrap's `created_at` to be randomized up to two days in th
 A gap is any missing `seq` below the head's `last-seq`. A client:
 
 - MUST render an explicit gap marker rather than closing the hole silently;
-- SHOULD try to fill it. On a public transport that is `{"kinds":[1777,1778],"#a":["31777:…"]}` and a local filter on `seq`. There is no relay-side `seq` filter, and this NIP deliberately mints no indexable counter — sessions are small enough to fetch whole, and an indexable per-event counter would leak progress to the relay on private streams too;
+- SHOULD try to fill it. On a public transport that is `{"kinds":[1777],"#a":["31777:…"]}` and a local filter on `seq`. There is no relay-side `seq` filter, and this NIP deliberately mints no indexable counter — sessions are small enough to fetch whole, and an indexable per-event counter would leak progress to the relay on private streams too;
 - on a wrapped transport cannot query at all, since inner tags are invisible to relays. It refetches the wrap window (`{"kinds":[1059,21059],"#p":[<self>]}`) and re-derives; a gap that survives a full refetch is permanent, and the client says so;
 - MUST NOT block rendering on a gap. A missing delta is a non-event; a missing turn is a hole in history.
 
@@ -281,9 +256,9 @@ A relay sees an event of kind `1059`/`21059` from a key that exists for one even
 
 Events are published plain and signed by the agent's key, with `["h","<group-id>"]`, to the group's relay only.
 
-Group relays gate by `kind:39000`'s `supported_kinds`. If it is present and lists neither `1777` nor `1778`, the mirror MUST degrade: publish the milestone as a `kind:9` whose `content` is the milestone text, carrying the same `a`, `seq`, `status` and `h` tags. A conforming client dedupes such a `kind:9` against the `kind:1778` with the same `(a, seq)`. If `supported_kinds` lacks `9` as well, the group is not a valid mirror target and the agent MUST refuse the stream rather than publish into a black hole.
+Group relays gate by `kind:39000`'s `supported_kinds`. If it is present and does not list `1777`, the mirror MUST degrade: publish each turn as a `kind:9` whose `content` is the turn's `alt` text, carrying the same `a`, `seq` and `h` tags. A conforming client dedupes such a `kind:9` against the `kind:1777` with the same `(a, seq)`. If `supported_kinds` lacks `9` as well, the group is not a valid mirror target and the agent MUST refuse the stream rather than publish into a black hole.
 
-Deltas SHOULD NOT be mirrored to a group unless it explicitly lists `21777`.
+A public mirror therefore carries `public`-profile turns, and that is the whole of what a group sees: the assistant's prose with paths stripped, no thinking, no tool arguments, no output, no cost. Deltas SHOULD NOT be mirrored to a group unless it explicitly lists `21777`.
 
 ### Concord
 
@@ -329,7 +304,7 @@ A client MUST treat a session as run by a given human only when both halves hold
 
 **What an unauthenticated observer can forge.** Anyone can publish a `kind:1777` carrying any `a` tag; relays index tags, they do not police them. The defences are:
 
-- **Author equality.** A client MUST discard any `1777`/`1778`/`21777` whose `pubkey` differs from the pubkey component of its own `a` address. The address contains the agent's key, so this alone kills the naive forgery.
+- **Author equality.** A client MUST discard any `1777`/`21777` whose `pubkey` differs from the pubkey component of its own `a` address. The address contains the agent's key, so this alone kills the naive forgery.
 - **Seal equality.** For wrapped copies the gift wrap's signature proves nothing — it is a throwaway key by design. The **seal's** signature is the authorship proof: made by the agent's persistent key over the encrypted rumor. A client MUST verify that the seal's author is the rumor's author and reject otherwise; a mismatch is someone forwarding another agent's words as their own.
 - **Chain continuity.** `prev` and `seq` make silent insertion into an existing transcript detectable.
 - **One address per event.** A relay indexes every `a` tag it sees, so an event carrying two addresses is returned by a REQ for either. A client MUST reject an event with more than one `a` address, or an attacker's event — honest about its own session, and so passing the author check — is filed inside somebody else's transcript.
@@ -353,13 +328,13 @@ In a NIP-29 group the events are signed directly, so the event signature is the 
 To **read** a public session:
 
 1. `REQ {"kinds":[31777],"authors":[<agent>],"#d":[<session>]}` for the head.
-2. `REQ {"kinds":[1777,1778],"#a":["31777:<agent>:<session>"]}` for the transcript.
+2. `REQ {"kinds":[1777],"#a":["31777:<agent>:<session>"]}` for the transcript.
 3. Discard events whose `pubkey` is not the address's pubkey.
 4. Sort by `seq`; render `alt` when `content` cannot be parsed.
 5. Compare what is held against `last-seq` and show a gap marker.
 
 To **read** a private session, add: subscribe `{"kinds":[1059],"#p":[<self>]}`, decrypt the wrap, decrypt the seal, verify the seal's author is the rumor's author, then continue from step 3. Handling `21059` and live deltas is optional.
 
-To **publish**, a minimal agent needs: a persistent key with a `kind:0`, one `31777` head kept current, one `1777` per message carrying `a`/`seq`/`prev`/`turn`/`role`/`p`/`alt`, and a terminal head update. Definitions, milestones, deltas, blob refs and multi-stream mirroring are all optional.
+To **publish**, a minimal agent needs: a persistent key with a `kind:0`, one `31777` head kept current, one `1777` per message carrying `a`/`seq`/`prev`/`turn`/`role`/`p`/`alt`, and a terminal head update. Definitions, deltas, blob refs and multi-stream mirroring are all optional.
 
 A client MUST NOT require deltas to render a session, and MUST NOT require blob fetching to render a turn.

@@ -618,13 +618,6 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     nip: "",
     icon: Bot,
   },
-  1778: {
-    kind: 1778,
-    name: "Agent Milestone",
-    description: "Agent session progress milestone",
-    nip: "",
-    icon: Activity,
-  },
   // Moderation
   1984: {
     kind: 1984,

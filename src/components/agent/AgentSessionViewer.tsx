@@ -10,10 +10,7 @@ import {
 } from "@/services/agent-store";
 import type { DecodedHead } from "@/lib/agent-session/types";
 import { AgentTurnBody } from "@/components/nostr/kinds/AgentTurnRenderer";
-import {
-  AgentMilestoneBody,
-  AgentSessionHeadBody,
-} from "@/components/nostr/kinds/AgentSessionRenderers";
+import { AgentSessionHeadBody } from "@/components/nostr/kinds/AgentSessionRenderers";
 import { Label } from "@/components/ui/label";
 import Timestamp from "@/components/Timestamp";
 import { UserName } from "@/components/nostr/UserName";
@@ -171,17 +168,6 @@ export function AgentSessionViewer({
                     seq {view.duplicates.join(", ")} arrived twice
                   </span>
                 )}
-              </div>
-            )}
-
-            {view.milestones.length > 0 && (
-              <div className="flex flex-col gap-1 border-b border-border pb-2">
-                {view.milestones.map((milestone) => (
-                  <AgentMilestoneBody
-                    key={milestone.id}
-                    milestone={milestone}
-                  />
-                ))}
               </div>
             )}
 

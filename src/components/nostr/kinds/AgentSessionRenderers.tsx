@@ -1,13 +1,9 @@
 import { useMemo } from "react";
-import { Activity, Bot } from "lucide-react";
+import { Bot } from "lucide-react";
 
 import type { NostrEvent } from "@/types/nostr";
 import { parseAgentEvent } from "@/lib/agent-session/decode";
-import type {
-  DecodedDefinition,
-  DecodedHead,
-  DecodedMilestone,
-} from "@/lib/agent-session/types";
+import type { DecodedDefinition, DecodedHead } from "@/lib/agent-session/types";
 import { Label } from "@/components/ui/label";
 import { UserName } from "@/components/nostr/UserName";
 import { BaseEventContainer } from "./BaseEventRenderer";
@@ -66,45 +62,6 @@ export function AgentSessionHeadRenderer({ event }: { event: NostrEvent }) {
       ) : (
         <p className="text-sm text-muted-foreground">
           A session head this client could not read.
-        </p>
-      )}
-    </BaseEventContainer>
-  );
-}
-
-export function AgentMilestoneBody({
-  milestone,
-}: {
-  milestone: DecodedMilestone;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Activity className="h-3 w-3 shrink-0 text-muted-foreground" />
-      <span className="text-sm">{milestone.text}</span>
-      <StatusLabel status={milestone.status} />
-      {milestone.step && (
-        <Label size="sm">
-          step {milestone.step.n}/{milestone.step.total}
-        </Label>
-      )}
-      {milestone.tool && <Label size="sm">{milestone.tool.name}</Label>}
-    </div>
-  );
-}
-
-export function AgentMilestoneRenderer({ event }: { event: NostrEvent }) {
-  const milestone = useMemo(() => {
-    const decoded = parseAgentEvent(event as never);
-    return decoded?.type === "milestone" ? decoded : null;
-  }, [event]);
-
-  return (
-    <BaseEventContainer event={event}>
-      {milestone ? (
-        <AgentMilestoneBody milestone={milestone} />
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          A milestone this client could not read.
         </p>
       )}
     </BaseEventContainer>

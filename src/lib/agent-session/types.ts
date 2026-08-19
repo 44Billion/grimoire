@@ -36,18 +36,22 @@ export type TurnRole = "user" | "assistant" | "tool";
 export type StopReason =
   "end_turn" | "max_tokens" | "tool_use" | "content_filter" | "error";
 
-/** NIP-90 kind-7000 vocabulary, verbatim, plus one this NIP needs. */
-export type MilestoneStatus =
-  | "processing"
-  | "partial"
-  | "success"
-  | "error"
-  | "payment-required"
-  | "awaiting-input";
-
 export type DeltaKind = "text" | "thinking" | "tool" | "heartbeat";
 
-export type SessionStatus = "active" | "idle" | "done" | "error" | "aborted";
+/**
+ * `awaiting-input` and `payment-required` are NIP-90's kind-7000 vocabulary,
+ * verbatim. They live here rather than on a progress event of their own, which
+ * costs the HISTORY of a blocked state — the head is replaceable, so asking
+ * twice and being ignored twice looks the same as asking once.
+ */
+export type SessionStatus =
+  | "active"
+  | "idle"
+  | "awaiting-input"
+  | "payment-required"
+  | "done"
+  | "error"
+  | "aborted";
 
 export const TERMINAL_STATUSES: readonly SessionStatus[] = [
   "done",
@@ -168,18 +172,6 @@ export interface AgentTurnInput {
   ms?: number;
 }
 
-export interface MilestoneInput {
-  status: MilestoneStatus;
-  text: string;
-  turn?: number;
-  step?: { n: number; total: number | "?" };
-  tool?: { name: string; callId?: string };
-  /** The turn event this milestone describes, when it exists. */
-  turnEventId?: string;
-  alt?: string;
-  createdAt?: number;
-}
-
 export interface DeltaInput {
   turn: number;
   /** Counter local to the turn, reset at turn start. Deltas never take `seq`. */
@@ -197,8 +189,8 @@ export interface SessionHeadInput {
   observers?: { pubkey: string; relay?: string }[];
   streams: StreamDescriptor[];
   /**
-   * Highest `seq` emitted on this stream, over turns and milestones. The head
-   * itself takes no sequence number.
+   * Highest turn `seq` emitted on this stream. The head itself takes no
+   * sequence number.
    */
   lastSeq: number;
   /** Id of the most recent turn on this stream. */
@@ -261,19 +253,6 @@ export interface DecodedTurn extends DecodedBase {
   ms?: number;
 }
 
-export interface DecodedMilestone extends DecodedBase {
-  type: "milestone";
-  seq: number;
-  prev?: string;
-  status: MilestoneStatus;
-  text: string;
-  turn?: number;
-  step?: { n: number; total: number | "?" };
-  tool?: { name: string; callId?: string };
-  turnEventId?: string;
-  ms?: number;
-}
-
 export interface DecodedDelta extends DecodedBase {
   type: "delta";
   turn: number;
@@ -317,8 +296,4 @@ export interface DecodedDefinition {
 }
 
 export type AgentSessionEvent =
-  | DecodedTurn
-  | DecodedMilestone
-  | DecodedDelta
-  | DecodedHead
-  | DecodedDefinition;
+  DecodedTurn | DecodedDelta | DecodedHead | DecodedDefinition;

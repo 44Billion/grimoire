@@ -29,7 +29,6 @@ import { createConversationIdentifier } from "applesauce-common/helpers/messages
 import type { Rumor } from "applesauce-common/helpers/gift-wrap";
 import db, { type DmRumorRow } from "./db";
 import {
-  KIND_MILESTONE as AGENT_KIND_MILESTONE,
   KIND_SESSION_HEAD as AGENT_KIND_SESSION_HEAD,
   KIND_TURN as AGENT_KIND_TURN,
 } from "@/lib/agent-session/kinds";
@@ -53,11 +52,7 @@ export const DM_SIDE_KINDS = [DM_DELETE_KIND, DM_REACTION_KIND];
  * and the sidebar all filter on them, so an agent event cannot appear in, bump
  * or badge a conversation. `src/services/agent-store.ts` reads them instead.
  */
-export const DM_AGENT_KINDS = [
-  AGENT_KIND_TURN,
-  AGENT_KIND_MILESTONE,
-  AGENT_KIND_SESSION_HEAD,
-];
+export const DM_AGENT_KINDS = [AGENT_KIND_TURN, AGENT_KIND_SESSION_HEAD];
 const ACCEPTED_KINDS = new Set([
   ...DM_ROW_KINDS,
   ...DM_SIDE_KINDS,

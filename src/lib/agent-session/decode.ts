@@ -10,7 +10,6 @@
 import {
   KIND_AGENT_DEFINITION,
   KIND_DELTA,
-  KIND_MILESTONE,
   KIND_SESSION_HEAD,
   KIND_TURN,
 } from "./kinds";
@@ -23,10 +22,8 @@ import type {
   DecodedDefinition,
   DecodedDelta,
   DecodedHead,
-  DecodedMilestone,
   DecodedTurn,
   DeltaKind,
-  MilestoneStatus,
   RedactionProfile,
   SessionStatus,
   StreamDescriptor,
@@ -37,17 +34,11 @@ import type {
 } from "./types";
 
 const ROLES: readonly string[] = ["user", "assistant", "tool"];
-const STATUSES: readonly string[] = [
-  "processing",
-  "partial",
-  "success",
-  "error",
-  "payment-required",
-  "awaiting-input",
-];
 const SESSION_STATUSES: readonly string[] = [
   "active",
   "idle",
+  "awaiting-input",
+  "payment-required",
   "done",
   "error",
   "aborted",
@@ -197,8 +188,6 @@ export function parseAgentEvent(
   switch (rumor.kind) {
     case KIND_TURN:
       return parseTurn(rumor, options);
-    case KIND_MILESTONE:
-      return parseMilestone(rumor, options);
     case KIND_DELTA:
       return parseDelta(rumor, options);
     case KIND_SESSION_HEAD:
@@ -244,52 +233,6 @@ function parseTurn(
     model: modelOf(rumor),
     usage: usageOf(rumor),
     cost: costOf(rumor),
-    ms: msOf(rumor),
-  };
-}
-
-function parseMilestone(
-  rumor: UnsignedRumor & { id: string },
-  options: ParseOptions,
-): DecodedMilestone | null {
-  const session = sessionOf(rumor);
-  const seq = counter(value(rumor, "seq"));
-  const status = value(rumor, "status");
-  const operator = operatorOf(rumor);
-  if (!session || seq === undefined || !operator) return null;
-  if (!STATUSES.includes(status ?? "")) return null;
-
-  const prev = value(rumor, "prev");
-  if (seq > 1 && !prev) return null;
-
-  const stepTag = tag(rumor, "step");
-  const step = stepTag?.[1]
-    ? {
-        n: counter(stepTag[1]) ?? 0,
-        total: stepTag[2] === "?" ? ("?" as const) : (counter(stepTag[2]) ?? 0),
-      }
-    : undefined;
-  const toolTag = tag(rumor, "tool");
-
-  return {
-    type: "milestone",
-    id: rumor.id,
-    pubkey: rumor.pubkey,
-    created_at: rumor.created_at,
-    session,
-    transport: options.transport,
-    redaction: profileOf(rumor),
-    alt: value(rumor, "alt"),
-    seq,
-    prev,
-    status: status as MilestoneStatus,
-    text: rumor.content,
-    turn: counter(value(rumor, "turn")),
-    step,
-    tool: toolTag?.[1]
-      ? { name: toolTag[1], callId: toolTag[2] || undefined }
-      : undefined,
-    turnEventId: rumor.tags.find((t) => t[0] === "e" && t[3] === "turn")?.[1],
     ms: msOf(rumor),
   };
 }

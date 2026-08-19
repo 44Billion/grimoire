@@ -15,22 +15,17 @@
 import Dexie from "dexie";
 
 import db, { type DmRumorRow } from "./db";
-import {
-  KIND_MILESTONE,
-  KIND_SESSION_HEAD,
-  KIND_TURN,
-} from "@/lib/agent-session/kinds";
+import { KIND_SESSION_HEAD, KIND_TURN } from "@/lib/agent-session/kinds";
 import { parseAgentEvent } from "@/lib/agent-session/decode";
 import { mergeStream, newestHeads } from "@/lib/agent-session/order";
 import type {
   AgentSessionEvent,
   DecodedHead,
-  DecodedMilestone,
   DecodedTurn,
   Rumor,
 } from "@/lib/agent-session/types";
 
-const STORED_KINDS = new Set([KIND_TURN, KIND_MILESTONE, KIND_SESSION_HEAD]);
+const STORED_KINDS = new Set([KIND_TURN, KIND_SESSION_HEAD]);
 
 function toRumor(row: DmRumorRow): Rumor {
   return {
@@ -70,7 +65,6 @@ export async function listAgentSessions(
 export interface AgentSessionView {
   head: DecodedHead | null;
   turns: DecodedTurn[];
-  milestones: DecodedMilestone[];
   /** Sequence numbers the stream is missing below the head's `last-seq`. */
   gaps: number[];
   /** Sequence numbers where `prev` disagrees with what we hold. */
@@ -90,11 +84,9 @@ export async function readAgentSession(
   const events = rows
     .map(decode)
     .filter(
-      (event): event is DecodedTurn | DecodedMilestone | DecodedHead =>
+      (event): event is DecodedTurn | DecodedHead =>
         !!event &&
-        (event.type === "turn" ||
-          event.type === "milestone" ||
-          event.type === "head") &&
+        (event.type === "turn" || event.type === "head") &&
         event.session.agent === agent &&
         event.session.session === session,
     );
@@ -105,19 +97,12 @@ export async function readAgentSession(
   // A head carries no `seq` — it is replaceable, so a number it consumed would
   // be a hole on any relay that dropped the superseded version. It supplies the
   // ceiling for gap detection and nothing else.
-  const sequenced = events.filter(
-    (e): e is DecodedTurn | DecodedMilestone => e.type !== "head",
-  );
+  const sequenced = events.filter((e): e is DecodedTurn => e.type === "turn");
   const [stream] = mergeStream(sequenced, head ? [head] : []);
 
   return {
     head,
-    turns: (stream?.ordered ?? []).filter(
-      (e): e is DecodedTurn => e.type === "turn",
-    ),
-    milestones: (stream?.ordered ?? []).filter(
-      (e): e is DecodedMilestone => e.type === "milestone",
-    ),
+    turns: stream?.ordered ?? [],
     gaps: stream?.gaps.flatMap((gap) => gap.missing) ?? [],
     forks: stream?.forks.map((fork) => fork.seq) ?? [],
     duplicates: stream?.duplicates.map((duplicate) => duplicate.seq) ?? [],

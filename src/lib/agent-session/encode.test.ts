@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildAgentDefinition,
   buildDelta,
-  buildMilestone,
   buildSessionHead,
   buildTurn,
   parseSessionAddress,
@@ -31,7 +30,6 @@ const vectors = JSON.parse(
   definition: string;
   head: string;
   turn: string;
-  milestone: string;
   delta: string;
 };
 
@@ -103,21 +101,6 @@ describe("golden vectors", () => {
       { pubkey: OPERATOR },
       "full",
     );
-    const milestone = buildMilestone(
-      AGENT,
-      ref,
-      {
-        status: "processing",
-        text: "Running npm test",
-        turn: 1,
-        step: { n: 3, total: 5 },
-        tool: { name: "Bash", callId: "tc_01" },
-        createdAt: AT,
-      },
-      { seq: 2, prev: turn.id },
-      { pubkey: OPERATOR },
-      "full",
-    );
     const delta = buildDelta(
       AGENT,
       ref,
@@ -130,7 +113,6 @@ describe("golden vectors", () => {
       definition: definition.id,
       head: head.id,
       turn: turn.id,
-      milestone: milestone.id,
       delta: delta.id,
     }).toEqual(vectors);
   });

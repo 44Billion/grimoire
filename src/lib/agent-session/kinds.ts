@@ -11,7 +11,7 @@
  * The envelope is never reinvented: a private copy is a rumor inside the
  * ordinary NIP-59 stack (`1059` wrap, `13` seal), an ephemeral one swaps the
  * wrap for `21059` so the relay drops it with its payload, and a Concord plane
- * uses Concord's own stream envelope. Only `1777`/`1778`/`21777`/`31777`/`31779`
+ * uses Concord's own stream envelope. Only `1777`/`21777`/`31777`/`31779`
  * are this NIP's.
  */
 
@@ -24,9 +24,6 @@ export const KIND_SESSION_HEAD = 31777;
 /** Session Turn — regular, append-only. A correction is a new turn. */
 export const KIND_TURN = 1777;
 
-/** Milestone — regular. Coarse progress a late joiner can still fetch. */
-export const KIND_MILESTONE = 1778;
-
 /**
  * Delta — ephemeral. Token-level output; relays MUST NOT store it. Everything a
  * delta carries is repeated in the `1777` that closes the turn, so a client that
@@ -34,34 +31,35 @@ export const KIND_MILESTONE = 1778;
  */
 export const KIND_DELTA = 21777;
 
+/**
+ * 1778 is deliberately unused. It held a "milestone" — a coarse stored progress
+ * line — until it turned out to restate what the turn beside it already said.
+ * What it alone could carry moved onto the head's `status`. Burned rather than
+ * recycled, so a reader that once saw one never mistakes a later kind for it.
+ */
+
 /** Every kind this NIP defines. */
 export const AGENT_SESSION_KINDS = [
   KIND_AGENT_DEFINITION,
   KIND_SESSION_HEAD,
   KIND_TURN,
-  KIND_MILESTONE,
   KIND_DELTA,
 ] as const;
 
 /**
- * The kinds that carry stream sequence. `seq`, `prev`, `last-seq` and gap
- * detection apply to these and never to a delta: deltas evaporate at the relay,
- * so if they burned sequence numbers every stored transcript would show holes
- * below `last-seq` forever, and a reader could not tell "that seq was a delta"
- * from "history is missing".
+ * The kind that carries stream sequence: the turn, and only the turn.
+ *
+ * A delta evaporates at the relay and a head is replaced on it, so neither may
+ * burn a sequence number — a number whose event the protocol itself removes is a
+ * hole no reader can ever fill, on a stream that tells them to try.
  */
-export const SEQUENCED_KINDS = [
-  KIND_SESSION_HEAD,
-  KIND_TURN,
-  KIND_MILESTONE,
-] as const;
+export const SEQUENCED_KINDS = [KIND_TURN] as const;
 
 /** Kinds a private stream stores (and therefore hands to the DM pipeline). */
 export const STORED_AGENT_KINDS = [
   KIND_AGENT_DEFINITION,
   KIND_SESSION_HEAD,
   KIND_TURN,
-  KIND_MILESTONE,
 ] as const;
 
 export function isAgentSessionKind(kind: number): boolean {

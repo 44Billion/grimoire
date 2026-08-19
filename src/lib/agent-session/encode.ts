@@ -11,7 +11,6 @@ import { getEventHash } from "nostr-tools";
 import {
   KIND_AGENT_DEFINITION,
   KIND_DELTA,
-  KIND_MILESTONE,
   KIND_SESSION_HEAD,
   KIND_TURN,
 } from "./kinds";
@@ -20,7 +19,6 @@ import type {
   AgentTurnInput,
   Cost,
   DeltaInput,
-  MilestoneInput,
   RedactionProfile,
   Rumor,
   SessionHeadInput,
@@ -146,46 +144,6 @@ export function buildTurn(
     created_at: now(input.createdAt),
     tags,
     content: JSON.stringify(input.blocks),
-  });
-}
-
-// ── Milestone ────────────────────────────────────────────────────────────────
-
-export function buildMilestone(
-  agentPubkey: string,
-  session: SessionRef,
-  input: MilestoneInput,
-  cursor: { seq: number; prev?: string },
-  operator: { pubkey: string; relay?: string },
-  redaction: RedactionProfile,
-): Rumor {
-  const tags: string[][] = [
-    sessionTag(session),
-    ...cursorTags(cursor.seq, cursor.prev),
-    ["status", input.status],
-    ["p", operator.pubkey, operator.relay ?? "", "operator"],
-  ];
-
-  if (input.turn !== undefined) tags.push(["turn", String(input.turn)]);
-  if (input.step)
-    tags.push(["step", String(input.step.n), String(input.step.total)]);
-  if (input.tool)
-    tags.push([
-      "tool",
-      input.tool.name,
-      ...(input.tool.callId ? [input.tool.callId] : []),
-    ]);
-  if (input.turnEventId)
-    tags.push(["e", input.turnEventId, session.relay ?? "", "turn"]);
-  tags.push(["redaction", redaction]);
-  if (input.alt) tags.push(["alt", input.alt]);
-
-  return stamp({
-    kind: KIND_MILESTONE,
-    pubkey: agentPubkey,
-    created_at: now(input.createdAt),
-    tags,
-    content: input.text,
   });
 }
 

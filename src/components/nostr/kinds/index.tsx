@@ -57,7 +57,6 @@ import { LiveActivityRenderer } from "./LiveActivityRenderer";
 import { AgentTurnRenderer } from "./AgentTurnRenderer";
 import {
   AgentDefinitionRenderer,
-  AgentMilestoneRenderer,
   AgentSessionHeadRenderer,
 } from "./AgentSessionRenderers";
 import { LiveActivityDetailRenderer } from "./LiveActivityDetailRenderer";
@@ -305,7 +304,6 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   30267: ZapstoreAppSetRenderer, // Zapstore App Collection
   30311: LiveActivityRenderer, // Live Streaming Event (NIP-53)
   1777: AgentTurnRenderer, // Agent session turn (NIP-xx)
-  1778: AgentMilestoneRenderer, // Agent milestone (NIP-xx)
   31777: AgentSessionHeadRenderer, // Agent session head (NIP-xx)
   31779: AgentDefinitionRenderer, // Agent definition (NIP-xx)
   30382: TrustedAssertionRenderer, // User Assertion (NIP-85)
