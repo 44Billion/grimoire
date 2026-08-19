@@ -239,7 +239,7 @@ export function useZapPayment(opts: UseZapPaymentOptions) {
   const payAndSettle = useCallback(
     async (bolt11: string, payment: ZapPayment): Promise<ZapResult> => {
       setStatus("paying");
-      let preimage: string | null = null;
+      let preimage: string | null;
       try {
         const result = await Promise.race([
           payInvoice(bolt11),

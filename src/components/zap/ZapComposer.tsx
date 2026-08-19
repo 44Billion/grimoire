@@ -58,7 +58,7 @@ const STORAGE_KEY_CUSTOM_AMOUNTS = "grimoire_zap_custom_amounts";
 const STORAGE_KEY_AMOUNT_USAGE = "grimoire_zap_amount_usage";
 
 /** Format amount with k/m suffix for large numbers. */
-export function formatAmount(amount: number): string {
+function formatAmount(amount: number): string {
   if (amount >= 1000000) {
     return `${(amount / 1000000).toFixed(amount % 1000000 === 0 ? 0 : 1)}m`;
   }
