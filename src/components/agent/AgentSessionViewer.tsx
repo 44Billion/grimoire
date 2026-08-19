@@ -14,7 +14,7 @@ import { LiveTurnBody } from "@/components/agent/LiveTurn";
 import { useAgentDeltas } from "@/hooks/useAgentDeltas";
 import { groupTurns } from "@/components/agent/transcript";
 import { AgentSessionHeadBody } from "@/components/nostr/kinds/AgentSessionRenderers";
-import { Label } from "@/components/ui/label";
+import { StatusBadge } from "@/components/agent/status";
 import Timestamp from "@/components/Timestamp";
 import { UserName } from "@/components/nostr/UserName";
 import { cn } from "@/lib/utils";
@@ -151,7 +151,7 @@ export function AgentSessionViewer({
                     {head.title || "untitled session"}
                   </span>
                   <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Label size="sm">{head.status}</Label>
+                    <StatusBadge status={head.status} />
                     <UserName pubkey={head.session.agent} />
                     <Timestamp timestamp={head.created_at} />
                   </span>

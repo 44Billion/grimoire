@@ -26,71 +26,8 @@ import type { DecodedHead } from "@/lib/agent-session/types";
 import { useAddWindow } from "@/core/state";
 import { useAgentActivity } from "@/hooks/useAgentActivity";
 import { UserName } from "@/components/nostr/UserName";
+import { StatusDot, statusStyle } from "@/components/agent/status";
 import { cn } from "@/lib/utils";
-
-/**
- * A status, as a coloured dot.
- *
- * The colours are grimoire's own tokens rather than picked hues, so a status
- * reads the same as everything else that means the same thing: `success` is
- * green and is what a run in progress uses, because to a reader a live agent is
- * a healthy one; `warning` is what needs them; `destructive` is what broke.
- *
- * A running session PULSES. That is the one status a reader looks at repeatedly,
- * and motion says "still going" without a word — while the word is still there
- * beside it, because a dot alone is a status you have to learn.
- */
-const STATUS_STYLE: Record<
-  string,
-  { dot: string; text: string; label?: string; pulse?: boolean }
-> = {
-  active: {
-    dot: "bg-success",
-    text: "text-success",
-    label: "running",
-    pulse: true,
-  },
-  "awaiting-input": {
-    dot: "bg-warning",
-    text: "text-warning",
-    label: "waiting for you",
-    pulse: true,
-  },
-  idle: { dot: "bg-info", text: "text-info" },
-  done: { dot: "bg-muted-foreground", text: "text-muted-foreground" },
-  error: { dot: "bg-destructive", text: "text-destructive" },
-  aborted: { dot: "bg-muted-foreground", text: "text-muted-foreground" },
-};
-
-function StatusDot({
-  status,
-  /** Fragments are arriving, so pulse whatever the head last said. */
-  live = false,
-}: {
-  status: string;
-  live?: boolean;
-}) {
-  const style = STATUS_STYLE[status] ?? {
-    dot: "bg-muted-foreground",
-    text: "text-muted-foreground",
-  };
-
-  return (
-    <span className="relative flex h-2 w-2 shrink-0" title={status}>
-      {(style.pulse || live) && (
-        <span
-          className={cn(
-            "absolute inline-flex h-full w-full animate-ping rounded-full opacity-60",
-            style.dot,
-          )}
-        />
-      )}
-      <span
-        className={cn("relative inline-flex h-2 w-2 rounded-full", style.dot)}
-      />
-    </span>
-  );
-}
 
 /**
  * One session's row.
@@ -108,10 +45,7 @@ function SessionRow({
   onOpen: () => void;
 }) {
   const activity = useAgentActivity(head.session.agent, head.session.session);
-  const style = STATUS_STYLE[head.status] ?? {
-    dot: "bg-muted-foreground",
-    text: "text-muted-foreground",
-  };
+  const style = statusStyle(head.status);
 
   return (
     <button

@@ -5,13 +5,9 @@ import type { NostrEvent } from "@/types/nostr";
 import { parseAgentEvent } from "@/lib/agent-session/decode";
 import type { DecodedDefinition, DecodedHead } from "@/lib/agent-session/types";
 import { Label } from "@/components/ui/label";
+import { StatusBadge } from "@/components/agent/status";
 import { useLocale } from "@/hooks/useLocale";
 import { BaseEventContainer } from "./BaseEventRenderer";
-
-/** Terminal statuses read differently from a run still going. */
-function StatusLabel({ status }: { status: string }) {
-  return <Label size="sm">{status}</Label>;
-}
 
 /**
  * One number, named. The point of the row is to be readable at a glance, so the
@@ -66,7 +62,7 @@ export function AgentSessionHeadBody({ head }: { head: DecodedHead }) {
         <span className="truncate font-medium">
           {head.title || "untitled session"}
         </span>
-        <StatusLabel status={head.status} />
+        <StatusBadge status={head.status} />
       </div>
       <div className="flex flex-wrap items-end gap-x-5 gap-y-2">
         {usage && (
