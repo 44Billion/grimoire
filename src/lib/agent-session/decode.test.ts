@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { getEventHash } from "nostr-tools";
 
-import { buildDelta, buildTurn, sessionAddress } from "./encode";
+import {
+  buildAgentDefinition,
+  buildDelta,
+  buildSessionHead,
+  buildTurn,
+  sessionAddress,
+} from "./encode";
 import { parseAgentEvent, sealMatchesRumor } from "./decode";
 import type { Rumor, SessionRef, UnsignedRumor } from "./types";
 
@@ -153,5 +159,79 @@ describe("parseAgentEvent — hostile counters and addresses", () => {
     });
 
     expect(parseAgentEvent(twoFaced)).toBeNull();
+  });
+});
+
+describe("the shapes that changed", () => {
+  it("reads a definition's content as the prompt itself", () => {
+    const def = buildAgentDefinition(AGENT, {
+      slug: "hex",
+      name: "Hex",
+      instructions:
+        "You are Hex.\n\nAnswer with a REQ filter when one will do.",
+      tools: [{ name: "nostr.req", description: "Query relays" }],
+      createdAt: 1,
+    });
+
+    expect(def.content).toBe(
+      "You are Hex.\n\nAnswer with a REQ filter when one will do.",
+    );
+    expect(def.tags).toContainEqual(["v", "1"]);
+    expect(def.tags).toContainEqual(["tool", "nostr.req", "Query relays"]);
+
+    const decoded = parseAgentEvent(def);
+    expect(decoded).toMatchObject({
+      type: "definition",
+      version: 1,
+      instructions:
+        "You are Hex.\n\nAnswer with a REQ filter when one will do.",
+      tools: [{ name: "nostr.req", description: "Query relays" }],
+    });
+  });
+
+  it("keeps the event that started a session", () => {
+    const head = buildSessionHead(AGENT, SESSION, {
+      title: "a run",
+      status: "active",
+      operator: { pubkey: OPERATOR },
+      trigger: { id: "d".repeat(64), relay: "wss://relay.example" },
+      lastSeq: 1,
+      started: 1,
+      createdAt: 2,
+    });
+
+    expect(head.tags).toContainEqual([
+      "e",
+      "d".repeat(64),
+      "wss://relay.example",
+      "trigger",
+    ]);
+    expect(parseAgentEvent(head)).toMatchObject({
+      trigger: { id: "d".repeat(64), relay: "wss://relay.example" },
+    });
+  });
+
+  it("keeps a block type it does not know, and the blocks around it", () => {
+    // The list is open: a turn from a later revision must still render.
+    const turn = buildTurn(
+      AGENT,
+      ref,
+      {
+        role: "assistant",
+        blocks: [
+          { type: "text", text: "before" },
+          { type: "audio", url: "https://example/x.opus", seconds: 4 },
+          { type: "text", text: "after" },
+        ],
+        turn: 1,
+        createdAt: 1,
+      },
+      { seq: 1 },
+      { pubkey: OPERATOR },
+    );
+
+    const decoded = parseAgentEvent(turn);
+    const blocks = decoded && "blocks" in decoded ? decoded.blocks : [];
+    expect(blocks.map((b) => b.type)).toEqual(["text", "audio", "text"]);
   });
 });

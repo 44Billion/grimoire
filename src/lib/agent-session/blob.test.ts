@@ -13,7 +13,7 @@ describe("fitBlock", () => {
 
     expect(fitted.type).toBe("text");
     expect("text" in fitted && fitted.text).toContain(TRUNCATION_MARKER);
-    expect("truncated" in fitted && fitted.truncated).toEqual({
+    expect((fitted as { truncated?: unknown }).truncated).toEqual({
       bytes: 20_000,
       sha256: "sha:20000",
     });
@@ -62,7 +62,9 @@ describe("fitBlock", () => {
 
     expect("output" in fitted && fitted.output).toContain(TRUNCATION_MARKER);
     expect("ref" in fitted).toBe(false);
-    expect("truncated" in fitted && fitted.truncated?.bytes).toBe(50_000);
+    expect((fitted as { truncated?: { bytes: number } }).truncated?.bytes).toBe(
+      50_000,
+    );
   });
 
   it("leaves a block that already fits alone", async () => {

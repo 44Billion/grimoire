@@ -6,7 +6,8 @@
  * explicit: the block says how much it dropped and the digest of what it dropped.
  */
 
-import type { ContentBlock, BlobRef, Truncation } from "./types";
+import { isKnownBlock } from "./types";
+import type { BlobRef, Truncation, TurnBlock } from "./types";
 
 export const TEXT_INLINE_MAX = 8 * 1024;
 export const TOOL_OUTPUT_INLINE_MAX = 16 * 1024;
@@ -47,9 +48,11 @@ function clip(text: string, max: number): string {
  * reject.
  */
 export async function fitBlock(
-  block: ContentBlock,
+  block: TurnBlock,
   options: ExternalizeOptions,
-): Promise<ContentBlock> {
+): Promise<TurnBlock> {
+  if (!isKnownBlock(block)) return block;
+
   const textMax = options.textMax ?? TEXT_INLINE_MAX;
   const outputMax = options.outputMax ?? TOOL_OUTPUT_INLINE_MAX;
 
@@ -88,7 +91,9 @@ export async function fitBlock(
 }
 
 /** Bring one block under a byte share, whatever kind it is. */
-function squeeze(block: ContentBlock, share: number): ContentBlock {
+function squeeze(block: TurnBlock, share: number): TurnBlock {
+  if (!isKnownBlock(block)) return block;
+
   if (block.type === "text" || block.type === "thinking")
     return block.text.length <= share
       ? block
@@ -115,7 +120,7 @@ function squeeze(block: ContentBlock, share: number): ContentBlock {
 }
 
 /** What replaces a block there was no room for. Never a silent disappearance. */
-function dropped(count: number): ContentBlock {
+function dropped(count: number): TurnBlock {
   return {
     type: "text",
     text: `${TRUNCATION_MARKER} ${count} block${count === 1 ? "" : "s"} omitted: this turn exceeded what a relay will accept`,
@@ -133,10 +138,10 @@ function dropped(count: number): ContentBlock {
  * one.
  */
 export async function fitTurn(
-  blocks: ContentBlock[],
+  blocks: TurnBlock[],
   options: ExternalizeOptions,
-): Promise<{ blocks: ContentBlock[]; lossy: boolean }> {
-  const fitted: ContentBlock[] = [];
+): Promise<{ blocks: TurnBlock[]; lossy: boolean }> {
+  const fitted: TurnBlock[] = [];
   for (const block of blocks) fitted.push(await fitBlock(block, options));
 
   if (JSON.stringify(fitted).length <= TURN_MAX_BYTES)
@@ -148,7 +153,7 @@ export async function fitTurn(
   if (JSON.stringify(elided).length <= TURN_MAX_BYTES)
     return { blocks: elided, lossy: true };
 
-  const out: ContentBlock[] = [];
+  const out: TurnBlock[] = [];
   // Headroom for the tags, the JSON scaffolding, and the marker below.
   let budget = TURN_MAX_BYTES - 1024;
 

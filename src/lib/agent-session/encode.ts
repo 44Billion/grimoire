@@ -14,6 +14,7 @@ import {
   KIND_SESSION_HEAD,
   KIND_TURN,
 } from "./kinds";
+import { isKnownBlock } from "./types";
 import type {
   AgentDefinitionInput,
   AgentTurnInput,
@@ -25,6 +26,9 @@ import type {
   UnsignedRumor,
   Usage,
 } from "./types";
+
+/** What revision of the definition's shape an event was written to. */
+export const DEFINITION_VERSION = 1;
 
 /** The address every event in a session points at. */
 export function sessionAddress(agent: string, session: string): string {
@@ -103,6 +107,7 @@ export function buildTurn(
 ): Rumor {
   const tools = new Set<string>();
   for (const block of input.blocks) {
+    if (!isKnownBlock(block)) continue;
     if (block.type === "tool_call" || block.type === "tool_result")
       tools.add(block.name);
   }
@@ -190,6 +195,8 @@ export function buildSessionHead(
 
   for (const observer of input.observers ?? [])
     tags.push(["p", observer.pubkey, observer.relay ?? "", "observer"]);
+  if (input.trigger)
+    tags.push(["e", input.trigger.id, input.trigger.relay ?? "", "trigger"]);
   tags.push(["last-seq", String(input.lastSeq)]);
   tags.push(["started", String(input.started)]);
   if (input.ended !== undefined) tags.push(["ended", String(input.ended)]);
@@ -221,24 +228,28 @@ export function buildAgentDefinition(
 ): Rumor {
   const tags: string[][] = [
     ["d", input.slug],
+    ["v", String(DEFINITION_VERSION)],
     ["name", input.name],
   ];
   if (input.picture) tags.push(["picture", input.picture]);
   if (input.about) tags.push(["about", input.about]);
-  for (const tool of input.tools ?? []) tags.push(["tool", tool.name]);
+  for (const tool of input.tools ?? [])
+    tags.push(
+      tool.description
+        ? ["tool", tool.name, tool.description]
+        : ["tool", tool.name],
+    );
   for (const suggestion of input.suggestions ?? [])
     tags.push(["try", suggestion]);
   if (input.alt) tags.push(["alt", input.alt]);
 
-  const content: Record<string, unknown> = { v: 1 };
-  if (input.instructions) content.instructions = input.instructions;
-  if (input.tools?.length) content.tools = input.tools;
-
+  // The content IS the system prompt. Nothing wraps it, so anyone reading the
+  // raw event reads what the agent was told; a shape change is a `v` bump.
   return stamp({
     kind: KIND_AGENT_DEFINITION,
     pubkey: agentPubkey,
     created_at: now(input.createdAt),
     tags,
-    content: JSON.stringify(content),
+    content: input.instructions ?? "",
   });
 }

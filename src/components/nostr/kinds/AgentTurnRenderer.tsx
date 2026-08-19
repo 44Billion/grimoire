@@ -3,7 +3,8 @@ import { ChevronRight, Wrench } from "lucide-react";
 
 import type { NostrEvent } from "@/types/nostr";
 import { parseAgentEvent } from "@/lib/agent-session/decode";
-import type { ContentBlock, DecodedTurn } from "@/lib/agent-session/types";
+import { isKnownBlock } from "@/lib/agent-session/types";
+import type { DecodedTurn, TurnBlock } from "@/lib/agent-session/types";
 import { RichText } from "@/components/nostr/RichText";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -18,7 +19,7 @@ import { BaseEventContainer } from "./BaseEventRenderer";
  * what a client that cannot read the blocks is supposed to show.
  */
 
-export function AgentTurnBlocks({ blocks }: { blocks: ContentBlock[] }) {
+export function AgentTurnBlocks({ blocks }: { blocks: TurnBlock[] }) {
   return (
     <div className="flex flex-col gap-2">
       {blocks.map((block, index) => (
@@ -65,7 +66,16 @@ function Collapsible({
   );
 }
 
-function AgentBlock({ block }: { block: ContentBlock }) {
+function AgentBlock({ block }: { block: TurnBlock }) {
+  if (!isKnownBlock(block))
+    // A block type this build does not know. The rest of the turn still renders
+    // — that is the point of leaving the list open.
+    return (
+      <Collapsible title={`${block.type} (unrecognised)`}>
+        {JSON.stringify(block, null, 2)}
+      </Collapsible>
+    );
+
   switch (block.type) {
     case "text":
       return <RichText content={block.text} />;

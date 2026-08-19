@@ -38,30 +38,32 @@ Both registries are advisory and neither reserves numbers, so an unregistered ki
 
 Authored by the agent's own key. What the agent *is*, as opposed to what one run of it is doing.
 
+**`content` is the system prompt itself** — plain text, nothing wrapping it, so anyone reading the raw event reads what the agent was told. It is published whole or left empty; a half-published prompt reads as the whole one. Everything else is a tag, `v` included, so a later revision of this shape is a version bump rather than a parse fork.
+
 | tag       | value | indexable | req |
 | --------- | ----- | --------- | --- |
 | `d`       | `<slug>` | yes | yes |
+| `v`       | `1` — the revision of this shape | no | yes |
 | `name`    | `<string>` | no | yes |
 | `picture` | `<url>` | no | no |
 | `about`   | `<string>` | no | no |
-| `tool`    | `<tool-name>` | yes | no |
+| `tool`    | `<tool-name>`, `<description>` | yes | no |
 | `try`     | `<starter prompt>` | no | no |
 | `alt`     | `<string>` ([NIP-31](31.md)) | no | yes |
 
-`content` is `{"v":1, "instructions"?: <system prompt>, "tools"?: [{"name","description","parameters"}]}`.
-
-`tool` is indexable, so `{"#tool":["nostr.req"]}` finds every agent that can do a thing. `instructions` is published verbatim or omitted entirely — a half-published prompt reads as the whole one.
+`tool` is indexable, so `{"#tool":["nostr.req"]}` finds every agent that can do a thing. A tool's parameter schema is deliberately absent: nobody calls an agent's tools but the agent.
 
 ```json
 {
   "kind": 31779,
   "pubkey": "9e1f…agent",
-  "content": "{\"v\":1,\"instructions\":\"You are Hex…\",\"tools\":[{\"name\":\"nostr.req\",\"description\":\"Query relays\",\"parameters\":{}}]}",
+  "content": "You are Hex. Answer with a REQ filter when one will do.",
   "tags": [
     ["d", "hex"],
+    ["v", "1"],
     ["name", "Hex"],
     ["about", "Answers questions about Nostr REQs."],
-    ["tool", "nostr.req"],
+    ["tool", "nostr.req", "Query relays"],
     ["try", "what kinds does this relay serve?"],
     ["alt", "Hex — a Nostr agent answering REQ questions"]
   ]
@@ -79,6 +81,7 @@ One run's current state. `content` is a human-readable summary and MAY be empty.
 | `status`   | `active`\|`idle`\|`awaiting-input`\|`payment-required`\|`done`\|`error`\|`aborted` | no | yes |
 | `p`        | `<pubkey>`, `<relay>`, `operator` — exactly one | yes | yes |
 | `p`        | `<pubkey>`, `<relay>`, `observer` | yes | no |
+| `e`        | `<event-id>`, `<relay>`, `trigger` — the message that started this run | yes | no |
 | `last-seq` | the highest turn `seq` so far, which is also the turn count | no | yes |
 | `started`  | `<unix-seconds>` — the real start, unaffected by NIP-59 | no | yes |
 | `ended`    | `<unix-seconds>`; present iff `status` is terminal | no | no |
@@ -113,6 +116,8 @@ blob-ref    = { "sha256","url","size","mime" }
 ```
 
 `arguments: null` with a digest means the call was too large to carry; the digest still names which call it was. `output: null` with a `ref` means the result was too large to inline.
+
+**The list of block types is open.** Those five are the ones this revision defines and the ones a client should implement; an agent MAY emit others. A client MUST keep a block whose `type` it does not recognise, render what it can around it, and MUST NOT discard the turn — a turn from a later revision is still most of a turn.
 
 | tag     | value | indexable | req |
 | ------- | ----- | --------- | --- |
@@ -152,7 +157,7 @@ blob-ref    = { "sha256","url","size","mime" }
 
 ## Delta — `kind:21777`
 
-What tells a reader the agent is working before the turn lands. `content` is the raw appended fragment, empty for a `heartbeat`.
+What tells a reader the agent is working before the turn lands. `content` is the raw appended fragment: prose for `text`, reasoning for `thinking`, the tool call's arguments as they stream for `tool` (with `tool-id` naming the call), and empty for `heartbeat`, which asserts only that the agent is alive.
 
 | tag       | value | indexable | req |
 | --------- | ----- | --------- | --- |

@@ -84,7 +84,11 @@ export function AgentDefinitionBody({
       {definition.tools.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {definition.tools.map((tool) => (
-            <Label key={tool.name} size="sm" title={tool.description}>
+            <Label
+              key={tool.name}
+              size="sm"
+              title={tool.description ?? tool.name}
+            >
               {tool.name}
             </Label>
           ))}

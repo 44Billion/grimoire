@@ -94,8 +94,36 @@ export interface ImageBlock {
   sha256?: string;
 }
 
+/** The block types this revision defines. */
 export type ContentBlock =
   TextBlock | ThinkingBlock | ToolCallBlock | ToolResultBlock | ImageBlock;
+
+/** A block whose `type` this build does not know. */
+export interface UnknownBlock {
+  type: string;
+  [key: string]: unknown;
+}
+
+/**
+ * What a turn actually carries.
+ *
+ * The list is open on purpose: a turn holding a block from a later revision must
+ * still render the blocks around it, so an unrecognised one is kept and skipped
+ * rather than making the whole turn unreadable.
+ */
+export type TurnBlock = ContentBlock | UnknownBlock;
+
+const KNOWN_BLOCK_TYPES: ReadonlySet<string> = new Set([
+  "text",
+  "thinking",
+  "tool_call",
+  "tool_result",
+  "image",
+]);
+
+export function isKnownBlock(block: TurnBlock): block is ContentBlock {
+  return KNOWN_BLOCK_TYPES.has(block.type);
+}
 
 export interface Truncation {
   /** Length of the original, in bytes. */
@@ -143,7 +171,7 @@ export interface StreamCursor {
 
 export interface AgentTurnInput {
   role: TurnRole;
-  blocks: ContentBlock[];
+  blocks: TurnBlock[];
   turn: number;
   stop?: StopReason;
   model?: { id: string; provider?: string };
@@ -169,6 +197,8 @@ export interface SessionHeadInput {
   status: SessionStatus;
   operator: { pubkey: string; relay?: string };
   observers?: { pubkey: string; relay?: string }[];
+  /** The message that started this run, when one did. */
+  trigger?: { id: string; relay?: string };
   /**
    * The highest turn `seq` so far, which is also the turn count. The head
    * itself takes no sequence number.
@@ -187,8 +217,7 @@ export interface SessionHeadInput {
 
 export interface AgentToolSpec {
   name: string;
-  description: string;
-  parameters: unknown;
+  description?: string;
 }
 
 export interface AgentDefinitionInput {
@@ -196,7 +225,7 @@ export interface AgentDefinitionInput {
   name: string;
   picture?: string;
   about?: string;
-  /** The system prompt, verbatim. Published whole or not at all. */
+  /** The system prompt, verbatim — it becomes the event's `content`. */
   instructions?: string;
   tools?: AgentToolSpec[];
   /** Starter prompts a client offers before the first message. */
@@ -221,7 +250,7 @@ export interface DecodedTurn extends DecodedBase {
   prev?: string;
   turn: number;
   role: TurnRole;
-  blocks: ContentBlock[];
+  blocks: TurnBlock[];
   stop?: StopReason;
   model?: { id: string; provider?: string };
   usage?: Usage;
@@ -243,6 +272,7 @@ export interface DecodedHead extends DecodedBase {
   status: SessionStatus;
   operator: { pubkey: string; relay?: string };
   observers: { pubkey: string; relay?: string }[];
+  trigger?: { id: string; relay?: string };
   lastSeq: number;
   started: number;
   ended?: number;
@@ -258,6 +288,8 @@ export interface DecodedDefinition {
   pubkey: string;
   created_at: number;
   slug: string;
+  /** The `v` tag: which revision of this shape the agent wrote. */
+  version: number;
   name: string;
   picture?: string;
   about?: string;

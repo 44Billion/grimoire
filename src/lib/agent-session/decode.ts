@@ -16,7 +16,6 @@ import {
 import { parseSessionAddress } from "./encode";
 import type {
   AgentSessionEvent,
-  AgentToolSpec,
   ContentBlock,
   Cost,
   DecodedDefinition,
@@ -252,6 +251,10 @@ function parseHead(rumor: UnsignedRumor & { id: string }): DecodedHead | null {
     title: value(rumor, "title") ?? "",
     status: status as SessionStatus,
     operator,
+    trigger: (() => {
+      const t = rumor.tags.find((tag) => tag[0] === "e" && tag[1]);
+      return t?.[1] ? { id: t[1], relay: t[2] || undefined } : undefined;
+    })(),
     observers: rumor.tags
       .filter((t) => t[0] === "p" && t[3] === "observer")
       .map((t) => personOf(t))
@@ -273,38 +276,21 @@ function parseDefinition(
   const name = value(rumor, "name");
   if (!slug || !name) return null;
 
-  let instructions: string | undefined;
-  let tools: AgentToolSpec[] = [];
-  try {
-    const parsed: unknown = JSON.parse(rumor.content || "{}");
-    if (parsed && typeof parsed === "object") {
-      const body = parsed as { instructions?: unknown; tools?: unknown };
-      if (typeof body.instructions === "string")
-        instructions = body.instructions;
-      if (Array.isArray(body.tools))
-        tools = body.tools.filter(
-          (tool): tool is AgentToolSpec =>
-            !!tool &&
-            typeof tool === "object" &&
-            typeof (tool as AgentToolSpec).name === "string",
-        );
-    }
-  } catch {
-    // A definition with unparseable content is still a definition: name, about
-    // and the tool tags survive, and that is enough to render its card.
-  }
-
   return {
     type: "definition",
     id: rumor.id,
     pubkey: rumor.pubkey,
     created_at: rumor.created_at,
     slug,
+    version: counter(value(rumor, "v")) ?? 1,
     name,
     picture: value(rumor, "picture"),
     about: value(rumor, "about"),
-    instructions,
-    tools,
+    // The content is the system prompt itself, verbatim and unwrapped.
+    instructions: rumor.content || undefined,
+    tools: rumor.tags
+      .filter((t) => t[0] === "tool" && t[1])
+      .map((t) => ({ name: t[1]!, description: t[2] || undefined })),
     suggestions: rumor.tags
       .filter((t) => t[0] === "try" && t[1])
       .map((t) => t[1]!),
