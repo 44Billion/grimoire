@@ -23,12 +23,10 @@ import { useState } from "react";
 import {
   BookText,
   ChevronRight,
-  CircleDot,
   FileText,
   FolderSearch,
   Globe,
   Hash,
-  ListTodo,
   MessageSquare,
   Pencil,
   Radio,
@@ -37,7 +35,6 @@ import {
   SquareTerminal,
   Terminal,
   User,
-  Users,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
@@ -205,88 +202,15 @@ const PRESENTERS: Record<string, ToolPresenter> = {
     },
   },
 
-  /** `{url, format?}` → `{content, contentType, url, truncated}`. */
-  web_fetch: {
-    icon: Globe,
-    summary: (args) => str(args.url),
-    outcome: (parsed) => str(record(parsed)?.contentType),
-    detail: (parsed) => {
-      const content = str(record(parsed)?.content);
-      return content ? <Block>{content}</Block> : undefined;
-    },
-  },
-
   /** No published schema; the query is what a reader wants either way. */
   web_search: {
     icon: Globe,
     summary: (args) => str(args.query) ?? str(args.q),
   },
 
-  /** `{todos:[…]}` → `{counts:{total,completed,…}, todos}`. */
-  todo: {
-    icon: ListTodo,
-    summary: (args) => {
-      const todos = Array.isArray(args.todos) ? args.todos : undefined;
-      if (!todos) return undefined;
-      return `${todos.length} item${todos.length === 1 ? "" : "s"}`;
-    },
-    outcome: (parsed) => {
-      const counts = record(record(parsed)?.counts);
-      const done = num(counts?.completed);
-      const total = num(counts?.total);
-      return done !== undefined && total !== undefined
-        ? `${done}/${total} done`
-        : undefined;
-    },
-    detail: (parsed) => {
-      const todos = record(parsed)?.todos;
-      if (!Array.isArray(todos)) return undefined;
-      return (
-        <ul className="flex flex-col gap-1 text-xs">
-          {todos.map((entry, index) => {
-            const item = record(entry);
-            const status = str(item?.status) ?? "pending";
-            return (
-              <li key={index} className="flex items-start gap-1">
-                <CircleDot
-                  className={cn(
-                    "mt-0.5 h-3 w-3 shrink-0",
-                    status === "completed"
-                      ? "text-primary"
-                      : status === "in_progress"
-                        ? "text-foreground"
-                        : "text-muted-foreground",
-                  )}
-                />
-                <span
-                  className={cn(
-                    status === "completed" && "text-muted-foreground",
-                  )}
-                >
-                  {str(item?.content) ?? JSON.stringify(entry)}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      );
-    },
-  },
-
   load_skill: {
     icon: Sparkles,
     summary: (args) => str(args.name) ?? str(args.skill),
-  },
-
-  /** A subagent. Its own transcript is not in this session's chain. */
-  agent: {
-    icon: Users,
-    summary: (args) => str(args.name) ?? str(args.agent) ?? str(args.prompt),
-  },
-
-  ask_question: {
-    icon: Wrench,
-    summary: (args) => str(args.question),
   },
 
   // ── grimoire's and Hex's own tools ──────────────────────────────────────────
