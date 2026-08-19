@@ -32,6 +32,7 @@ import { getTagValue } from "applesauce-core/helpers";
 import { getSeenRelays } from "applesauce-core/helpers/relays";
 import { isAddressableKind } from "@/lib/nostr-kinds";
 import { getEmojiTags } from "@/lib/emoji-helpers";
+import { claimZapTarget } from "@/lib/zap-targets";
 import type { EmojiTag } from "@/lib/emoji-helpers";
 
 interface ChatMessageContextMenuProps {
@@ -98,6 +99,16 @@ export function ChatMessageContextMenu({
    * wrap around it was for.
    */
   const idIsPublic = !adapter?.getCapabilities().messageIdsArePrivate;
+
+  /**
+   * Whether this protocol carries the zap itself instead of NIP-57.
+   *
+   * A sealed protocol cannot use the public flow at all: the receipt would name
+   * the recipient, the amount and this message's id on relays that would then
+   * know the conversation happened. The zap window opens in private mode
+   * instead.
+   */
+  const canZapPrivately = Boolean(adapter?.sendZap && conversation && message);
 
   const deleteMessage = async () => {
     if (!adapter?.deleteMessage || !conversation) return;
@@ -184,6 +195,25 @@ export function ChatMessageContextMenu({
     });
   };
 
+  /**
+   * The same zap window, for a message whose id cannot be handed outward.
+   *
+   * The window carries a HANDLE, not the rumor id: window props are published
+   * inside spellbooks, so the id stays in memory — see `@/lib/zap-targets`.
+   */
+  const openPrivateZapWindow = () => {
+    if (!adapter || !conversation || !message) return;
+    addWindow("zap", {
+      recipientPubkey: message.author,
+      zapTarget: claimZapTarget({
+        conversation,
+        adapter,
+        messageId: message.id,
+        recipientPubkey: message.author,
+      }),
+    });
+  };
+
   const handleEmojiSelect = async (emoji: string, customEmoji?: EmojiTag) => {
     if (!conversation || !adapter) {
       console.error(
@@ -231,11 +261,21 @@ export function ChatMessageContextMenu({
                 <Smile className="size-4 mr-2" />
                 React
               </ContextMenuItem>
-              {zapConfig?.supported && (
-                <ContextMenuItem onClick={openZapWindow}>
+              {/* A protocol that seals its messages announces zaps itself —
+                  see `adapter.sendZap`. Everything else gets the public NIP-57
+                  window. */}
+              {canZapPrivately ? (
+                <ContextMenuItem onClick={openPrivateZapWindow}>
                   <Zap className="size-4 mr-2" />
                   Zap
                 </ContextMenuItem>
+              ) : (
+                zapConfig?.supported && (
+                  <ContextMenuItem onClick={openZapWindow}>
+                    <Zap className="size-4 mr-2" />
+                    Zap
+                  </ContextMenuItem>
+                )
               )}
               <ContextMenuSeparator />
             </>

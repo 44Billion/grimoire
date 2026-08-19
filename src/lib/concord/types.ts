@@ -1,9 +1,9 @@
 /**
  * Concord core types — the runtime model the rest of the client operates on.
  *
- * Ported from armada `bc19d1f` (`src/concord/lib/types.ts`), minus armada's Git
- * attachment extension (which needs its own parser) and minus the voice keys
- * (CORD-07 is out of scope). Both are recoverable from the reference if wanted.
+ * Ported from armada `bc19d1f` (`src/concord/lib/types.ts`), minus the voice
+ * keys (CORD-07 is out of scope), which is recoverable from the reference if
+ * wanted. Armada's Git attachment extension is read in `git.ts`.
  *
  * Fields grimoire never READS are still carried where the Community List
  * round-trips them (`Community.controlRoot`): that document is replaceable and
@@ -17,6 +17,7 @@
  */
 
 import type { GroupKey } from "@/lib/concord/derive";
+import type { GitRepositoryAttachment } from "@/lib/concord/git";
 
 /** Protocol recommendation for a community's relay set (CORD-02 §6). */
 export const MAX_COMMUNITY_RELAYS = 5;
@@ -232,6 +233,12 @@ export interface Channel {
   category?: string;
   /** Sidebar position (`armada.order`); undefined sorts last, by name. */
   position?: number;
+  /**
+   * Git repositories attached RIGHT NOW (`armada.git`), newest attachment
+   * first. Empty for a channel with none, and for a held-but-unfolded private
+   * channel — that one has no metadata yet to read them from.
+   */
+  repositories: GitRepositoryAttachment[];
   /**
    * Stream keys across every held epoch, newest first (reads span rekeys). A
    * retired epoch carries its rotation's publish time as `retiredAt` — the

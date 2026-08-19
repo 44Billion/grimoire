@@ -30,18 +30,21 @@ export const SubmitShortcut = Extension.create<SubmitShortcutOptions>({
   },
 
   addKeyboardShortcuts() {
+    const submit = () => {
+      this.options.submitRef.current(this.editor);
+      return true;
+    };
+
+    // Both, deliberately: `Mod` is Cmd on macOS, so Ctrl+Enter — what anyone
+    // arriving from a terminal or another chat client presses — did nothing
+    // there at all.
     const shortcuts: Record<string, () => boolean> = {
-      "Mod-Enter": () => {
-        this.options.submitRef.current(this.editor);
-        return true;
-      },
+      "Mod-Enter": submit,
+      "Ctrl-Enter": submit,
     };
 
     if (this.options.enterSubmits) {
-      shortcuts["Enter"] = () => {
-        this.options.submitRef.current(this.editor);
-        return true;
-      };
+      shortcuts["Enter"] = submit;
     }
 
     return shortcuts;

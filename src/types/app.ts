@@ -29,6 +29,7 @@ export type AppId =
   | "post"
   | "settings"
   | "log"
+  | "ai"
   | "win";
 
 export interface WindowInstance {

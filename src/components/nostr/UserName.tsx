@@ -6,6 +6,7 @@ import { isGrimoireMember } from "@/lib/grimoire-members";
 import { BadgeCheck, Flame } from "lucide-react";
 import { useIsSupporter } from "@/hooks/useIsSupporter";
 import { EmojiText } from "./EmojiText";
+import { BotMarker } from "./BotMarker";
 
 interface UserNameProps {
   pubkey: string;
@@ -93,6 +94,7 @@ export function UserName({
           )}
         />
       )}
+      <BotMarker pubkey={pubkey} />
       {!isGrimoire && isSupporter && (
         <Flame
           className={cn(

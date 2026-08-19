@@ -14,7 +14,7 @@ import { useState } from "react";
 import { ChevronRight, ScrollText, Wrench } from "lucide-react";
 
 import type { DecodedDefinition } from "@/lib/agent-session/types";
-import { Markdown } from "@/components/Markdown";
+import { MessageResponse } from "@/components/ai-elements/message";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
@@ -70,7 +70,7 @@ export function SessionSetup({
           {hasPrompt && (
             <div className="max-h-96 overflow-y-auto text-xs">
               {/* The prompt is markdown, and was written to be read. */}
-              <Markdown>{definition.instructions!}</Markdown>
+              <MessageResponse>{definition.instructions!}</MessageResponse>
             </div>
           )}
         </div>

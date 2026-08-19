@@ -163,6 +163,20 @@ export interface MessageMetadata {
   zapRecipient?: string; // Pubkey of zap recipient
   // NIP-61 nutzap-specific metadata
   nutzapUnit?: string; // Unit for nutzap amount (sat, usd, eur, etc.)
+  /**
+   * Public git activity interleaved into a chat, for a Concord channel attached
+   * to a NIP-34 repository. Present only on `type: "system"` rows.
+   */
+  git?: {
+    /** What happened, already in words: "opened issue", "closed", … */
+    action: string;
+    /** The ticket's own title or subject, when it has one. */
+    subject?: string;
+    /** The event the row is about — an issue, a patch, or a status. */
+    pointer: EventPointer;
+    /** For a status row, the ticket it names. */
+    ticket?: EventPointer;
+  };
 }
 
 /**

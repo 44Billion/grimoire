@@ -179,6 +179,19 @@ export function getQuotePointer(
   return getEventPointerFromQTag(qTag);
 }
 
+/**
+ * Does this account say it is automated?
+ *
+ * NIP-24's `bot` on the account's own kind 0 — a claim it makes about itself,
+ * never a judgement made here. Accepts the string form because clients publish
+ * it: kind 0 content is JSON written by hand often enough that `"bot": "true"`
+ * is in the wild, and reading it as false would mislabel a bot as a person.
+ */
+export function isAutomatedProfile(metadata?: ProfileContent): boolean {
+  const bot: unknown = metadata?.bot;
+  return bot === true || bot === "true";
+}
+
 export function getDisplayName(
   pubkey: string,
   metadata?: ProfileContent,

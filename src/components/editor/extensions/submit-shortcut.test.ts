@@ -50,6 +50,28 @@ describe("SubmitShortcut", () => {
       expect(submitFn).toHaveBeenCalledWith(editor);
     });
 
+    it("should call submit handler on Ctrl-Enter, which Mod is not on macOS", () => {
+      // `Mod` maps to Cmd on macOS, so this binding is the only thing that makes
+      // Ctrl+Enter — what people arriving from a terminal press — do anything.
+      const submitFn = vi.fn();
+      const submitRef = { current: submitFn };
+
+      editor = new Editor({
+        extensions: [
+          StarterKit,
+          SubmitShortcut.configure({
+            submitRef,
+            enterSubmits: false,
+          }),
+        ],
+        content: "<p>Hello</p>",
+      });
+
+      editor.commands.keyboardShortcut("Ctrl-Enter");
+      expect(submitFn).toHaveBeenCalledTimes(1);
+      expect(submitFn).toHaveBeenCalledWith(editor);
+    });
+
     it("should call submit handler on Mod-Enter even when enterSubmits is true", () => {
       const submitFn = vi.fn();
       const submitRef = { current: submitFn };

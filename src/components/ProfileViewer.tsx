@@ -32,6 +32,7 @@ import { relayListCache } from "@/services/relay-list-cache";
 import { useEffect, useState } from "react";
 import type { Subscription } from "rxjs";
 import { useGrimoire } from "@/core/state";
+import { AskHexButton } from "./ai/AskHexButton";
 import { USER_SERVER_LIST_KIND, getServersFromEvent } from "@/services/blossom";
 import blossomServerCache from "@/services/blossom-server-cache";
 
@@ -245,6 +246,11 @@ export function ProfileViewer({ pubkey }: ProfileViewerProps) {
 
         {/* Right: Profile icon and Relay dropdown */}
         <div className="flex items-center gap-3 flex-shrink-0">
+          {/* Ask about this person, grounded in the cached metadata. */}
+          <AskHexButton
+            target={{ type: "event", value: identifier }}
+            title="Ask Hex about this profile"
+          />
           <div className="flex items-center gap-1 text-muted-foreground">
             <UserIcon className="size-3" />
             <span>Profile</span>

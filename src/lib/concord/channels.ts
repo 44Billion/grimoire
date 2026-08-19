@@ -20,6 +20,7 @@ import {
   type GroupKey,
 } from "@/lib/concord/derive";
 import type { FoldedControl } from "@/lib/concord/control";
+import { activeGitRepositories } from "@/lib/concord/git";
 import {
   NAME_MAX_BYTES,
   utf8Len,
@@ -271,6 +272,7 @@ export function channelsView(
         isPrivate: false,
         category: channelCategory(def.metadata),
         position: channelPosition(def.metadata),
+        repositories: activeGitRepositories(def.metadata),
         // Writes go to the root stream; private-era streams stay readable.
         streams: [...rootStreams, ...channelStreams],
         current: rootStreams[0],
@@ -291,6 +293,7 @@ export function channelsView(
       isPrivate: true,
       category: channelCategory(def.metadata),
       position: channelPosition(def.metadata),
+      repositories: activeGitRepositories(def.metadata),
       // A Private Channel reads ONLY its channel-key streams — the current key
       // and every retained prior — so a rotation never erases the conversation.
       // It deliberately does NOT fold in the root-derived stream every public
@@ -325,6 +328,8 @@ export function channelsView(
       idHex,
       name: held.name || idHex.slice(0, 8),
       isPrivate: true,
+      // No folded metadata yet, so nothing to read an attachment out of.
+      repositories: [],
       streams: [stream, ...priorStreams],
       current: stream,
       voice: voiceKeysOf(held.key, held.id, held.epoch),

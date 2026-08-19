@@ -23,6 +23,8 @@
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
   --animate-skeleton-pulse: skeleton-pulse 1.5s ease-in-out infinite;
+  /* A download with no total: the band moves, the bar claims no percentage. */
+  --animate-download-band: download-band 1.4s ease-in-out infinite;
 
   @keyframes accordion-down {
     from {
@@ -39,6 +41,15 @@
     }
     to {
       height: 0;
+    }
+  }
+
+  @keyframes download-band {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(300%);
     }
   }
 

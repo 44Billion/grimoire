@@ -13,7 +13,7 @@ import { isKnownPart } from "@/lib/agent-session/types";
 import type { DecodedTurn, TurnPart } from "@/lib/agent-session/types";
 import { Check, Users } from "lucide-react";
 
-import { Markdown } from "@/components/Markdown";
+import { MessageResponse } from "@/components/ai-elements/message";
 import { InputRequestRow } from "@/components/agent/InputRequest";
 import { RichText } from "@/components/nostr/RichText";
 import { Label } from "@/components/ui/label";
@@ -25,7 +25,7 @@ import {
 } from "@/components/agent/transcript";
 import { UserName } from "@/components/nostr/UserName";
 import Timestamp from "@/components/Timestamp";
-import { ProviderLogo, splitModel } from "@/components/ProviderLogo";
+import { ProviderLogo, splitModel } from "@/components/ai/ProviderLogo";
 import { cn } from "@/lib/utils";
 import { BaseEventContainer } from "./BaseEventRenderer";
 
@@ -108,7 +108,7 @@ function AgentPart({
       return side === "user" ? (
         <RichText content={part.text} className="text-sm" />
       ) : (
-        <Markdown>{part.text}</Markdown>
+        <MessageResponse>{part.text}</MessageResponse>
       );
 
     case "reasoning":

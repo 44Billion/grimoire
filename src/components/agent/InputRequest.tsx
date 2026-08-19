@@ -97,10 +97,17 @@ export function InputRequestRow({
         )}
       </ConfirmationTitle>
 
-      <ConfirmationActions>
+      {/*
+       * Wrapping, because these options are whatever the run asked — four of
+       * them, or one whose label is a sentence — inside a window a person is
+       * free to make narrow. A row that cannot wrap pushes the last button out
+       * of the pane, and the option you cannot see is the one you cannot pick.
+       */}
+      <ConfirmationActions className="flex-wrap">
         {(part.options ?? []).map((option) => (
           <ConfirmationAction
             key={option.id}
+            className="h-auto max-w-full min-h-8 py-1 text-left whitespace-normal"
             variant={
               option.style === "danger"
                 ? "destructive"
@@ -130,7 +137,7 @@ export function InputRequestRow({
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
             placeholder="Your answer"
-            className="h-8 text-sm"
+            className="h-8 min-w-0 text-sm"
           />
           <Button size="sm" type="submit" disabled={sending !== null}>
             Send

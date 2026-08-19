@@ -12,7 +12,7 @@
 
 import { Bot, Brain, Wrench } from "lucide-react";
 
-import { Markdown } from "@/components/Markdown";
+import { MessageResponse } from "@/components/ai-elements/message";
 import { UserName } from "@/components/nostr/UserName";
 import type { LiveTurn as LiveTurnState } from "@/hooks/useAgentDeltas";
 import { cn } from "@/lib/utils";
@@ -69,7 +69,7 @@ export function LiveTurnBody({
 
         {text && (
           <div className="relative">
-            <Markdown>{text}</Markdown>
+            <MessageResponse>{text}</MessageResponse>
             {/* A caret, because a preview that looks finished reads as an answer. */}
             <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-foreground align-text-bottom" />
           </div>

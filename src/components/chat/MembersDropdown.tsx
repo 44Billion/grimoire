@@ -1,4 +1,4 @@
-import { Bot, Users2 } from "lucide-react";
+import { Users2 } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import {
   DropdownMenu,
@@ -7,7 +7,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { UserName } from "@/components/nostr/UserName";
 import { Label } from "@/components/ui/label";
-import { useProfile } from "@/hooks/useProfile";
 import type { Participant } from "@/types/chat";
 import { groupParticipants } from "./participant-order";
 
@@ -57,25 +56,14 @@ export function MembersDropdown({ participants }: MembersDropdownProps) {
   );
 }
 
-/**
- * One person. The bot mark is NIP-24's `bot` on their own kind 0 — a claim the
- * account makes about itself, not a judgement made here, which is why it is a
- * quiet icon rather than a badge beside the role.
- */
+/** One person. The bot mark rides along inside `UserName`. */
 function MemberRow({ participant }: { participant: Participant }) {
-  const profile = useProfile(participant.pubkey);
   return (
     <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-muted/50 transition-colors">
       <UserName
         pubkey={participant.pubkey}
         className="text-sm truncate flex-1 min-w-0"
       />
-      {profile?.bot && (
-        <Bot
-          className="size-3 shrink-0 text-muted-foreground"
-          aria-label="Automated account"
-        />
-      )}
       {participant.role && participant.role !== "member" && (
         <Label size="sm" className="flex-shrink-0">
           {participant.role}

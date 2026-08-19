@@ -42,6 +42,13 @@ const synced = vi.hoisted(() =>
   }),
 );
 
+vi.mock("applesauce-common/helpers/bolt11", async (importOriginal) => {
+  const { mockParseBolt11 } = await import("@/test/bolt11-mock");
+  return mockParseBolt11(
+    await importOriginal<typeof import("applesauce-common/helpers/bolt11")>(),
+  );
+});
+
 vi.mock("@/services/concord-publish", () => ({ publishWrap: published }));
 vi.mock("@/services/concord-channel-sync", () => ({ syncChannel: synced }));
 vi.mock("@/services/accounts", () => ({
@@ -84,6 +91,7 @@ function channel(): Channel {
     idHex: channelIdHex,
     name: "general",
     isPrivate: false,
+    repositories: [],
     streams: [{ epoch: 0n, group }],
     current: { epoch: 0n, group },
     voice: voiceKeysOf(root, channelId, 0n),
@@ -854,6 +862,84 @@ describe("a message a moderator took down", () => {
     await vi.waitFor(() => expect(feed.last()).toHaveLength(1));
     expect(feed.last()[0].metadata?.deleted).toBeUndefined();
     expect(feed.last()[0].content).toBe("the words that were removed");
+    feed.stop();
+  });
+});
+
+/**
+ * A private zap reaches the reader as its own row citing what it paid for.
+ *
+ * The fold has already refused every unproven one, so a row here means value
+ * verifiably moved — and the zap rumor itself must never surface as a message.
+ */
+describe("a verified private zap in the timeline", () => {
+  const TARGET = "ab".repeat(32);
+  const ZAP = "cd".repeat(32);
+  const PAYER = "ee".repeat(32);
+  const AUTHOR = "ff".repeat(32);
+  const PREIMAGE = "11".repeat(32);
+
+  function watch(a: ReturnType<typeof adapter>) {
+    const seen: Message[][] = [];
+    const sub = a.loadMessages(conversation).subscribe((m) => seen.push(m));
+    return {
+      last: () => seen[seen.length - 1],
+      stop: () => sub.unsubscribe(),
+    };
+  }
+
+  async function seedZap(): Promise<void> {
+    const { paymentHashOf, mockInvoice } = await import("@/test/bolt11-mock");
+    await writeChatRumors(idHex, [
+      {
+        rumorId: TARGET,
+        author: AUTHOR,
+        kind: KIND_MESSAGE,
+        content: "worth sats",
+        tags: [],
+        ms: 1000,
+        createdAt: 1,
+        channel: channelIdHex,
+      },
+      {
+        rumorId: ZAP,
+        author: PAYER,
+        kind: 9735,
+        content: "nice",
+        tags: [
+          ["e", TARGET],
+          ["p", AUTHOR],
+          ["k", String(KIND_MESSAGE)],
+          ["amount", "21000"],
+          [
+            "bolt11",
+            mockInvoice(21_000, { paymentHash: paymentHashOf(PREIMAGE) }),
+          ],
+          ["preimage", PREIMAGE],
+        ],
+        ms: 2000,
+        createdAt: 2,
+        channel: channelIdHex,
+      },
+    ]);
+  }
+
+  it("renders the zap as a zap row, not as a message", async () => {
+    await seedZap();
+    const a = adapter();
+    const feed = watch(a);
+    await vi.waitFor(() => expect(feed.last()).toHaveLength(2));
+
+    const [message, zap] = feed.last();
+    expect(message.type).toBe("user");
+    expect(zap.type).toBe("zap");
+    expect(zap.author).toBe(PAYER);
+    expect(zap.content).toBe("nice");
+    expect(zap.metadata?.zapAmount).toBe(21);
+    expect(zap.metadata?.zapRecipient).toBe(AUTHOR);
+    // The row cites the message it paid for, so the reader can see what was
+    // zapped — resolved through the adapter, since a rumor id is on no relay.
+    expect(zap.replyTo).toEqual({ id: TARGET });
     feed.stop();
   });
 });

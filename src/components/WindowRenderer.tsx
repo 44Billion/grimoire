@@ -69,6 +69,7 @@ const SettingsViewer = lazy(() =>
 const EventLogViewer = lazy(() =>
   import("./EventLogViewer").then((m) => ({ default: m.EventLogViewer })),
 );
+const AiViewer = lazy(() => import("./AiViewer"));
 
 // Loading fallback component
 function ViewerLoading() {
@@ -318,6 +319,7 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
             addressPointer={window.props.addressPointer}
             customTags={window.props.customTags}
             relays={window.props.relays}
+            zapTarget={window.props.zapTarget}
             onClose={onClose}
           />
         );
@@ -330,6 +332,17 @@ export function WindowRenderer({ window, onClose }: WindowRendererProps) {
         break;
       case "log":
         content = <EventLogViewer />;
+        break;
+      case "ai":
+        content = (
+          <AiViewer
+            conversation={window.props.conversation}
+            prompt={window.props.prompt}
+            system={window.props.system}
+            target={window.props.target}
+            windowId={window.id}
+          />
+        );
         break;
       default:
         content = (

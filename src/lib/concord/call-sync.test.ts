@@ -32,6 +32,7 @@ function channel(epoch = 0n): Channel {
     idHex: CHANNEL,
     name: "#general",
     isPrivate: false,
+    repositories: [],
     streams: [{ epoch, group }],
     current: { epoch, group },
     voice: voiceKeysOf(root, channelId, epoch),

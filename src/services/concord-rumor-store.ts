@@ -456,8 +456,15 @@ export async function observedAuthors(
 
 /** Chat kinds that occupy a timeline row. */
 const CHAT_ROW_KINDS = [9, 1111, 1068, 31922, 31923, 1740];
-/** Chat kinds that decorate another rumor rather than standing alone. */
-const CHAT_SIDE_KINDS = [7, 5, 3302];
+/**
+ * Chat kinds that decorate another rumor rather than standing alone.
+ *
+ * A private zap (9735) is one of these on the wire even though the reader draws
+ * it as its own row: it names a message with an `e` tag, it arrives after what
+ * it pays for, and it must ride along unbudgeted — a zapped message displaced
+ * from the page by the zaps on it would take them with it.
+ */
+const CHAT_SIDE_KINDS = [7, 5, 3302, 9735];
 
 /**
  * One channel's stored chat rumors, newest first.

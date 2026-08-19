@@ -34,6 +34,7 @@ function channel(
     idHex: pk(idSeed),
     name: `#${idSeed}`,
     isPrivate: false,
+    repositories: [],
     streams: [
       current,
       ...priorSeeds.map((seed, i) => ({

@@ -86,9 +86,14 @@ export default function RunCommandPage() {
     );
   }
 
-  // Construct a minimal WindowInstance for rendering
+  // Construct a minimal WindowInstance for rendering.
+  //
+  // The id is per-command, not a constant: anything keyed by window id — an `ai`
+  // conversation, a post draft — is shared by every page that carries the same
+  // id, so a single `"pop-out"` made two unrelated `/run` chats one conversation.
+  // Stable across a reload, because it is derived from the command itself.
   const windowInstance = {
-    id: "pop-out",
+    id: `pop-out:${parsed.fullInput}`,
     appId: parsed.command.appId,
     props: parsed.props,
     customTitle: parsed.globalFlags?.windowProps?.title,

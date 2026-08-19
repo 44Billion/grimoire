@@ -14,6 +14,13 @@ import {
   FileText,
   MessageSquare,
   Check,
+  CircleCheck,
+  CircleDot,
+  CircleSlash,
+  CircleDashed,
+  GitMerge,
+  GitPullRequest,
+  FileDiff,
 } from "lucide-react";
 import { nip19 } from "nostr-tools";
 import type { EventPointer, AddressPointer } from "nostr-tools/nip19";
@@ -56,6 +63,7 @@ import {
   type GroupedSystemMessage,
 } from "@/lib/chat/group-system-messages";
 import { UserName } from "./nostr/UserName";
+import { BotMarker } from "./nostr/BotMarker";
 import { RichText } from "./nostr/RichText";
 import Timestamp from "./Timestamp";
 import { ReplyPreview } from "./chat/ReplyPreview";
@@ -606,6 +614,21 @@ const DeliveryStatus = memo(function DeliveryStatus({
 /**
  * MessageItem - Memoized message component for performance
  */
+/**
+ * One icon per verb, so a glance separates a merge from a close without
+ * reading. Keyed on the action string `gitActivityRows` writes.
+ */
+const GIT_ACTION_ICONS: Record<string, typeof GitPullRequest> = {
+  "opened issue": CircleDot,
+  "sent a patch": FileDiff,
+  "opened a pull request": GitPullRequest,
+  opened: CircleDot,
+  resolved: CircleCheck,
+  merged: GitMerge,
+  closed: CircleSlash,
+  "marked as draft": CircleDashed,
+};
+
 const MessageItem = memo(function MessageItem({
   message,
   adapter,
@@ -629,11 +652,15 @@ const MessageItem = memo(function MessageItem({
   /** Briefly marked, because a jump just landed here. */
   isFlashing?: boolean;
 }) {
+  const addWindow = useAddWindow();
   // Get relays for this conversation (memoized to prevent unnecessary re-subscriptions)
   const relays = useMemo(
     () => getConversationRelays(conversation),
     [conversation],
   );
+
+  // Sat amounts are numbers, so they answer to the reader's locale.
+  const { locale } = useLocale();
 
   // Whether this message names the reader. Protocol-generic: NIP-29's factory
   // emits the same `p` tag Concord now sends.
@@ -694,6 +721,31 @@ const MessageItem = memo(function MessageItem({
     );
   }
 
+  // Public git activity in a Concord channel attached to a repository. As
+  // quiet as a system row and shaped like one — a line of muted text the eye
+  // passes over — except the subject, which is the one thing on the row worth
+  // clicking and so the one thing that carries colour.
+  if (message.metadata?.git) {
+    const { action, subject, pointer } = message.metadata.git;
+    const Icon = GIT_ACTION_ICONS[action] ?? GitPullRequest;
+    return (
+      <div className="flex items-center gap-1 px-3 py-1 text-xs text-muted-foreground">
+        <Icon className="size-3 shrink-0" />
+        <UserName pubkey={message.author} className="text-xs" />
+        <span className="shrink-0">{action}</span>
+        {subject && (
+          <button
+            type="button"
+            onClick={() => addWindow("open", { pointer })}
+            className="truncate text-left font-medium text-primary hover:underline"
+          >
+            {subject}
+          </button>
+        )}
+      </div>
+    );
+  }
+
   // System messages (join/leave) have special styling
   if (message.type === "system") {
     return (
@@ -731,13 +783,16 @@ const MessageItem = memo(function MessageItem({
       [zapReplyEventId],
     );
 
-    // Only show reply preview if:
-    // 1. The event exists in our store
-    // 2. The event is a chat kind (includes messages, nutzaps, live chat, and zap receipts)
+    // Show the reply preview whenever the zap names a target, unless the target
+    // resolves to something that is not a chat message. A sealed protocol's
+    // target is never in the shared EventStore — its id is a rumor id — so
+    // requiring it there would hide what every private zap was paid for.
+    // `ReplyPreview` resolves those through `adapter.loadReplyMessage`, exactly
+    // as the ordinary message path above does.
     const shouldShowReplyPreview =
       zapReplyPointer &&
-      replyEvent &&
-      (CHAT_KINDS as readonly number[]).includes(replyEvent.kind);
+      (!replyEvent ||
+        (CHAT_KINDS as readonly number[]).includes(replyEvent.kind));
 
     return (
       <div className="pl-2 my-1">
@@ -756,7 +811,7 @@ const MessageItem = memo(function MessageItem({
               />
               <Zap className="size-4 fill-yellow-500 text-yellow-500" />
               <span className="text-yellow-500 font-bold">
-                {(message.metadata?.zapAmount || 0).toLocaleString("en", {
+                {(message.metadata?.zapAmount || 0).toLocaleString(locale, {
                   notation: "compact",
                 })}
               </span>
@@ -1741,6 +1796,21 @@ export function ChatViewer({
     }
   }, [conversation?.protocol, addWindow]);
 
+  /**
+   * The other person in a 1:1 DM, when there is exactly one.
+   *
+   * NIP-17 only, and only for two participants: a group DM's heading names
+   * several people, and one of their flags would say something false about the
+   * rest.
+   */
+  const dmOthers =
+    conversation?.protocol === "nip-17" && pubkey
+      ? (conversation.participants ?? [])
+          .map((participant) => participant.pubkey)
+          .filter((candidate) => candidate !== pubkey)
+      : [];
+  const dmPeer = dmOthers.length === 1 ? dmOthers[0] : undefined;
+
   // Get live activity metadata if this is a NIP-53 chat (with type guard)
   const liveActivity = isLiveActivityMetadata(
     conversation?.metadata?.liveActivity,
@@ -1957,6 +2027,9 @@ export function ChatViewer({
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+            {/* Says the counterpart is automation, from their kind 0. A DM
+                heading is where someone decides how much to trust an answer. */}
+            <BotMarker pubkey={dmPeer} className="w-4 h-4" />
             {/* Copy Chat ID button */}
             {getChatIdentifier(conversation) && (
               <button

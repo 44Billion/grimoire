@@ -26,6 +26,20 @@ function createMessage(
   };
 }
 
+describe("git activity rows", () => {
+  it("are never grouped away — grouping keeps content and drops the pointer", () => {
+    const git = (id: string, author: string): Message => ({
+      ...createMessage(id, "system", "opened issue Same title", author, 1000),
+      metadata: {
+        git: { action: "opened issue", pointer: { id: `e${id}` } },
+      },
+    });
+    const result = groupSystemMessages([git("1", "alice"), git("2", "bob")]);
+    expect(result).toHaveLength(2);
+    expect(result.every((r) => !isGroupedSystemMessage(r))).toBe(true);
+  });
+});
+
 describe("groupSystemMessages", () => {
   describe("basic grouping", () => {
     it("should group consecutive system messages with same content", () => {
