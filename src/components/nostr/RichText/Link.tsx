@@ -10,7 +10,7 @@ import { PlainLink } from "../LinkPreview";
 import { CompactMediaRenderer } from "../CompactMediaRenderer";
 import { useDecryptedMedia } from "@/hooks/useDecryptedMedia";
 import { useRichTextOptions, useRichTextEvent } from "../RichText";
-import { findImetaForUrl } from "@/lib/imeta";
+import { findImetaForUrl, mediaTypeOf } from "@/lib/imeta";
 import { useSettings } from "@/hooks/useSettings";
 
 function MediaPlaceholder({ type }: { type: "image" | "video" | "audio" }) {
@@ -67,8 +67,19 @@ export function Link({ node }: LinkNodeProps) {
   }
   const src = media.url;
 
+  /**
+   * What this is, from the imeta when it says, from the URL otherwise.
+   *
+   * `isImageURL` and friends read the extension, and a content-addressed URL
+   * has none — `https://blossom.example/<sha256>` is every encrypted
+   * attachment, since the ciphertext's hash is its address. Those all rendered
+   * as plain links: decrypted correctly, verified correctly, and then shown as
+   * a line of blue text.
+   */
+  const declared = mediaTypeOf(imeta);
+
   // Render appropriate link type
-  if (isImageURL(href)) {
+  if (declared === "image" || (!declared && isImageURL(href))) {
     if (shouldShowMedia && options.showImages) {
       if (!src) return <MediaPlaceholder type="image" />;
       if (!loadMedia) {
@@ -94,7 +105,7 @@ export function Link({ node }: LinkNodeProps) {
     return <MediaPlaceholder type="image" />;
   }
 
-  if (isVideoURL(href)) {
+  if (declared === "video" || (!declared && isVideoURL(href))) {
     if (shouldShowMedia && options.showVideos) {
       if (!src) return <MediaPlaceholder type="video" />;
       if (!loadMedia) {
@@ -119,7 +130,7 @@ export function Link({ node }: LinkNodeProps) {
     return <MediaPlaceholder type="video" />;
   }
 
-  if (isAudioURL(href)) {
+  if (declared === "audio" || (!declared && isAudioURL(href))) {
     if (shouldShowMedia && options.showAudio) {
       if (!src) return <MediaPlaceholder type="audio" />;
       if (!loadMedia) {

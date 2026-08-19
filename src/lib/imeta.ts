@@ -239,3 +239,30 @@ export function getAspectRatioFromDimensions(dim?: string): string | undefined {
   // Return as CSS aspect-ratio value
   return `${width}/${height}`;
 }
+
+/**
+ * What kind of media a URL points at, believing the `imeta` over the URL.
+ *
+ * A URL's extension is a guess that usually works and fails exactly where it
+ * matters most: a Blossom URL is `https://host/<sha256>` with no extension at
+ * all, so extension-based detection calls a screenshot a plain link and renders
+ * it as one. Every attachment sent through a content-addressed host — which is
+ * every encrypted attachment, since the ciphertext's hash IS its address — hit
+ * that path.
+ *
+ * `m` is the sender's own statement of what the bytes are, and for an ENCRYPTED
+ * attachment it is the only statement there is: the URL serves ciphertext, so
+ * sniffing the response would say `application/octet-stream` no matter what is
+ * inside. Trusted for dispatch only — it decides which renderer runs, never
+ * whether the bytes are safe, which is what `ox` is for.
+ */
+export function mediaTypeOf(
+  entry: ImetaEntry | undefined,
+): "image" | "video" | "audio" | undefined {
+  const mime = entry?.m;
+  if (!mime) return undefined;
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  return undefined;
+}
