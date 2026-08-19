@@ -28,7 +28,6 @@ function turn(
     },
     { seq, prev },
     { pubkey: OPERATOR },
-    "full",
   );
   const decoded = parseAgentEvent(rumor, { transport });
   expect(decoded?.type).toBe("turn");
@@ -85,21 +84,16 @@ describe("mergeStream", () => {
 
   it("uses the head's last-seq as the ceiling for gap detection", () => {
     const events: SequencedEvent[] = chain(2, () => 1_755_500_000);
-    const headRumor = buildSessionHead(
-      AGENT,
-      SESSION,
-      {
-        title: "t",
-        status: "active",
-        operator: { pubkey: OPERATOR },
-        streams: [],
-        lastSeq: 5,
-        turns: 2,
-        started: 1_755_499_000,
-        createdAt: 1_755_500_000,
-      },
-      "full",
-    );
+    const headRumor = buildSessionHead(AGENT, SESSION, {
+      title: "t",
+      status: "active",
+      operator: { pubkey: OPERATOR },
+      streams: [],
+      lastSeq: 5,
+      turns: 2,
+      started: 1_755_499_000,
+      createdAt: 1_755_500_000,
+    });
     const head = parseAgentEvent(headRumor) as DecodedHead;
     const [stream] = mergeStream(events, [head]);
 
@@ -158,21 +152,16 @@ describe("newestHeads", () => {
   it("folds a session's head republishes to the newest", () => {
     const heads = [1_755_500_000, 1_755_500_500, 1_755_500_200].map(
       (createdAt) => {
-        const rumor = buildSessionHead(
-          AGENT,
-          SESSION,
-          {
-            title: `at ${createdAt}`,
-            status: "active",
-            operator: { pubkey: OPERATOR },
-            streams: [],
-            lastSeq: 1,
-            turns: 1,
-            started: 1_755_499_000,
-            createdAt,
-          },
-          "full",
-        );
+        const rumor = buildSessionHead(AGENT, SESSION, {
+          title: `at ${createdAt}`,
+          status: "active",
+          operator: { pubkey: OPERATOR },
+          streams: [],
+          lastSeq: 1,
+          turns: 1,
+          started: 1_755_499_000,
+          createdAt,
+        });
         return parseAgentEvent(rumor) as DecodedHead;
       },
     );
@@ -190,21 +179,16 @@ describe("hostile input", () => {
     // clamped, `mergeStream` walked 1..last-seq and a single event took the tab
     // out with a RangeError or an out-of-memory.
     const events = chain(1, () => 1_755_500_000);
-    const headRumor = buildSessionHead(
-      AGENT,
-      SESSION,
-      {
-        title: "hostile",
-        status: "active",
-        operator: { pubkey: OPERATOR },
-        streams: [],
-        lastSeq: 1,
-        turns: 1,
-        started: 1,
-        createdAt: 1_755_500_000,
-      },
-      "full",
-    );
+    const headRumor = buildSessionHead(AGENT, SESSION, {
+      title: "hostile",
+      status: "active",
+      operator: { pubkey: OPERATOR },
+      streams: [],
+      lastSeq: 1,
+      turns: 1,
+      started: 1,
+      createdAt: 1_755_500_000,
+    });
     const hostile = {
       ...headRumor,
       tags: headRumor.tags.map((t) =>
@@ -222,21 +206,16 @@ describe("hostile input", () => {
 
   it("caps how many missing sequence numbers it will name", () => {
     const events = chain(1, () => 1_755_500_000);
-    const headRumor = buildSessionHead(
-      AGENT,
-      SESSION,
-      {
-        title: "sparse",
-        status: "active",
-        operator: { pubkey: OPERATOR },
-        streams: [],
-        lastSeq: 50_000,
-        turns: 1,
-        started: 1,
-        createdAt: 1_755_500_000,
-      },
-      "full",
-    );
+    const headRumor = buildSessionHead(AGENT, SESSION, {
+      title: "sparse",
+      status: "active",
+      operator: { pubkey: OPERATOR },
+      streams: [],
+      lastSeq: 50_000,
+      turns: 1,
+      started: 1,
+      createdAt: 1_755_500_000,
+    });
     const head = parseAgentEvent(headRumor) as DecodedHead;
 
     const [stream] = mergeStream(events, [head]);

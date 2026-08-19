@@ -41,33 +41,26 @@ function turn(seq: number, prev: string | undefined, createdAt = nowSecs()) {
     },
     { seq, prev },
     { pubkey: ME },
-    "full",
   ) as unknown as DmRumor;
 }
 
 function head(lastSeq: number, createdAt = nowSecs()) {
-  return buildSessionHead(
-    AGENT,
-    SESSION,
-    {
-      title: "a run",
-      status: "active",
-      operator: { pubkey: ME },
-      streams: [
-        {
-          transport: "nip17",
-          address: ME,
-          visibility: "private",
-          redaction: "full",
-        },
-      ],
-      lastSeq,
-      turns: lastSeq,
-      started: createdAt - 60,
-      createdAt,
-    },
-    "full",
-  ) as unknown as DmRumor;
+  return buildSessionHead(AGENT, SESSION, {
+    title: "a run",
+    status: "active",
+    operator: { pubkey: ME },
+    streams: [
+      {
+        transport: "nip17",
+        address: ME,
+        visibility: "private",
+      },
+    ],
+    lastSeq,
+    turns: lastSeq,
+    started: createdAt - 60,
+    createdAt,
+  }) as unknown as DmRumor;
 }
 
 describe("agent kinds in the DM store", () => {
@@ -104,7 +97,6 @@ describe("agent kinds in the DM store", () => {
       { role: "assistant", blocks: [], turn: 1 },
       { seq: 1 },
       { pubkey: "b".repeat(64) },
-      "full",
     ) as unknown as DmRumor;
 
     expect(toDmRow(ME, notMine)).toMatchObject({

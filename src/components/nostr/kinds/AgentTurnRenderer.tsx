@@ -77,7 +77,7 @@ function AgentBlock({ block }: { block: ContentBlock }) {
       return (
         <Collapsible tone="tool" title={`↳ ${block.name}`}>
           {block.arguments === null
-            ? `arguments redacted${block.arguments_digest ? ` (${block.arguments_digest})` : ""}`
+            ? `arguments too large to carry${block.arguments_digest ? ` (${block.arguments_digest})` : ""}`
             : JSON.stringify(block.arguments, null, 2)}
         </Collapsible>
       );
@@ -92,7 +92,7 @@ function AgentBlock({ block }: { block: ContentBlock }) {
             {block.output ??
               (block.ref
                 ? `stored out of band: ${block.ref.size} bytes, ${block.ref.sha256}`
-                : "output not carried at this redaction level")}
+                : "this turn carried no output")}
           </Collapsible>
           {block.truncated && (
             <Label size="sm">{block.truncated.bytes} bytes truncated</Label>

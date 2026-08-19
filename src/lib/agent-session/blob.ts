@@ -100,8 +100,7 @@ function squeeze(block: ContentBlock, share: number): ContentBlock {
       : { ...block, output: clip(block.output, share) };
 
   // Arguments are arbitrary JSON with no honest clipping point, so an oversize
-  // call drops them for its digest — the same shape the `public` profile uses,
-  // which readers already know how to render.
+  // call drops them for a digest that still names which call it was.
   if (block.type === "tool_call" && block.arguments !== null) {
     const encoded = JSON.stringify(block.arguments);
     if (encoded.length <= share) return block;

@@ -24,7 +24,6 @@ import type {
   DecodedHead,
   DecodedTurn,
   DeltaKind,
-  RedactionProfile,
   SessionStatus,
   StreamDescriptor,
   Transport,
@@ -49,7 +48,6 @@ const DELTA_KINDS: readonly string[] = [
   "tool",
   "heartbeat",
 ];
-const PROFILES: readonly string[] = ["full", "summary", "public"];
 const TRANSPORTS: readonly string[] = ["nip17", "nip29", "concord"];
 
 function tag(rumor: UnsignedRumor, name: string): string[] | undefined {
@@ -82,11 +80,6 @@ function integer(raw: string | undefined): number | undefined {
 function counter(raw: string | undefined): number | undefined {
   const parsed = integer(raw);
   return parsed !== undefined && parsed <= MAX_COUNTER ? parsed : undefined;
-}
-
-function profileOf(rumor: UnsignedRumor): RedactionProfile {
-  const raw = value(rumor, "redaction");
-  return PROFILES.includes(raw ?? "") ? (raw as RedactionProfile) : "full";
 }
 
 function personOf(
@@ -222,7 +215,6 @@ function parseTurn(
     created_at: rumor.created_at,
     session,
     transport: options.transport,
-    redaction: profileOf(rumor),
     alt: value(rumor, "alt"),
     seq,
     prev,
@@ -258,7 +250,6 @@ function parseDelta(
     created_at: rumor.created_at,
     session,
     transport: options.transport,
-    redaction: profileOf(rumor),
     turn,
     part,
     delta: delta as DeltaKind,
@@ -286,9 +277,6 @@ function parseHead(
       transport: t[1] as Transport,
       address: t[2],
       visibility: t[3] === "public" ? "public" : "private",
-      redaction: PROFILES.includes(t[4] ?? "")
-        ? (t[4] as RedactionProfile)
-        : "full",
     });
   }
 
@@ -299,7 +287,6 @@ function parseHead(
     created_at: rumor.created_at,
     session: { agent: rumor.pubkey, session: sessionId },
     transport: options.transport,
-    redaction: profileOf(rumor),
     alt: value(rumor, "alt"),
     title: value(rumor, "title") ?? "",
     status: status as SessionStatus,

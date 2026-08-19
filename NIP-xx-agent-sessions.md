@@ -10,7 +10,7 @@ Agent Sessions
 
 Four kinds encode what an autonomous agent did: an **agent definition**, a **session head**, one **turn** per message, and an ephemeral **delta** while a turn is still being written.
 
-The kinds are identical over every transport. A private copy is a NIP-59 rumor inside a gift wrap; a public copy is a plain signed event in a NIP-29 group. Only the envelope and the redaction profile differ.
+The kinds are identical over every transport. A private copy is a NIP-59 rumor inside a gift wrap; a public copy is a plain signed event in a NIP-29 group. Only the envelope differs.
 
 ## Kinds
 
@@ -68,7 +68,7 @@ One run's current state. `content` is a human-readable summary and MAY be empty.
 | `status`    | `active`\|`idle`\|`awaiting-input`\|`payment-required`\|`done`\|`error`\|`aborted` | no | yes |
 | `p`         | `<pubkey>`, `<relay>`, `operator` — exactly one | yes | yes |
 | `p`         | `<pubkey>`, `<relay>`, `observer` | yes | no |
-| `stream`    | `<transport>`, `<address>`, `<visibility>`, `<redaction>`; one per mirror | no | yes |
+| `stream`    | `<transport>`, `<address>`, `<visibility>`; one per mirror | no | yes |
 | `last-seq`  | highest turn `seq` on this stream | no | yes |
 | `head`      | id of the newest turn | no | no |
 | `turns`     | `<integer>` | no | yes |
@@ -76,9 +76,8 @@ One run's current state. `content` is a human-readable summary and MAY be empty.
 | `ended`     | `<unix-seconds>`; present iff `status` is terminal | no | no |
 | `model`     | `<model-id>`, `<provider>` | no | no |
 | `usage`     | `<in>`, `<out>`, `<cache-read>`, `<cache-write>` | no | no |
-| `cost`      | `<amount>`, `<currency>`; omitted under `public` | no | no |
+| `cost`      | `<amount>`, `<currency>` | no | no |
 | `agent`     | `31779:<pubkey>:<slug>` | no | no |
-| `redaction` | `full`\|`summary`\|`public` | no | yes |
 | `alt`       | `<string>` | no | yes |
 
 The last three statuses are terminal; `awaiting-input` and `payment-required` are [NIP-90](90.md)'s values verbatim. `<transport>` is `nip17`\|`nip29`\|`concord`.
@@ -106,7 +105,7 @@ blob-ref    = { "sha256","url","size","mime",
                 "encryption"?: { "algorithm":"aes-gcm","key","nonce","ox" } }
 ```
 
-`arguments: null` with a digest means the arguments were redacted; the digest still proves which call it was. `output: null` with a `ref` means the result was too large to inline.
+`arguments: null` with a digest means the call was too large to carry; the digest still names which call it was. `output: null` with a `ref` means the result was too large to inline.
 
 | tag         | value | indexable | req |
 | ----------- | ----- | --------- | --- |
@@ -123,7 +122,6 @@ blob-ref    = { "sha256","url","size","mime",
 | `usage`     | `<in>`, `<out>`, `<cache-read>`, `<cache-write>` | no | no |
 | `cost`      | `<amount>`, `<currency>` | no | no |
 | `tool`      | one per distinct tool in `content` | yes | no |
-| `redaction` | profile | no | yes |
 | `alt`       | plain-text rendering — what a client that cannot parse the blocks shows | no | yes |
 
 ```json
@@ -142,7 +140,6 @@ blob-ref    = { "sha256","url","size","mime",
     ["usage", "18432", "921", "16000", "2432"],
     ["cost", "0.084", "USD"],
     ["tool", "Bash"],
-    ["redaction", "full"],
     ["alt", "Assistant: found it. Calling Bash."]
   ]
 }
@@ -160,7 +157,6 @@ blob-ref    = { "sha256","url","size","mime",
 | `delta`     | `text`\|`thinking`\|`tool`\|`heartbeat` | no | yes |
 | `tool-id`   | required when `delta` is `tool` | no | cond |
 | `p`         | `<pubkey>`, `<relay>`, `<role>` | yes | yes |
-| `redaction` | profile | no | yes |
 
 **A delta takes no `seq`.** Deltas evaporate at the relay; a number one had consumed would be a permanent hole. A `part` discontinuity means the reader discards that turn's partial buffer and waits for the turn.
 
@@ -170,7 +166,7 @@ An agent SHOULD coalesce deltas into fragments of at least 50 ms or 32 character
 
 NIP-59 randomises a wrap's `created_at` up to two days back and a seal's up to an hour. Only the rumor's `created_at` is the agent's clock, and it is unsigned — a hint, not a proof. Order rests on `seq`, which is inside the sealed payload and covered by the seal's signature.
 
-1. **Group by stream** = (`a` address, transport it arrived on). A private and a public copy of one session have **independent `seq` spaces** and MUST NOT be compared: a redacted mirror drops whole events, so a shared counter would hand the public reader unfillable gaps.
+1. **Group by stream** = (`a` address, transport it arrived on). A private and a public copy of one session have **independent `seq` spaces** and MUST NOT be compared: a mirror need not carry every event, so a shared counter would hand its reader unfillable gaps.
 2. **Sort by `seq`.** Only `kind:1777` carries one.
 3. **Tie-break** on equal `seq`: lower `created_at`, then lower `ms`, then smaller event `id`. A duplicate `seq` SHOULD be surfaced — it is the visible signature of a replayed or forged event.
 4. **Never sort by `created_at` across the wrap boundary.** A rumor more than 900 seconds in the future is displayed with its receipt time and flagged.
@@ -186,22 +182,9 @@ A gap is any missing `seq` below the head's `last-seq`. A client MUST render it 
 
 **Concord.** The rumors are identical; the envelope is Concord's — a wrap authored by the plane's derived stream key, read back by `#channel`. Authorship inside is still the seal's signature.
 
-Across mirrors the session id, `turn`, `role` and the `operator` `p` tag MUST be identical; `seq`, `redaction`, `last-seq` and `head` differ per stream. A client merging two mirrors keys on `(session-id, turn, role, block-index)` — never the event id, which necessarily differs.
+Across mirrors the session id, `turn`, `role` and the `operator` `p` tag MUST be identical; `seq`, `last-seq` and `head` are per stream. A client merging two mirrors keys on `(session-id, turn, role, block-index)` — never the event id, which necessarily differs.
 
-## Redaction Profiles
-
-| | `full` | `summary` | `public` |
-| --- | --- | --- | --- |
-| `text` | verbatim | verbatim | paths stripped |
-| `thinking` | verbatim | dropped | dropped |
-| tool `arguments` | verbatim | verbatim | `null` + digest |
-| tool `output` | verbatim or `ref` | first 1 KiB + `truncated` | dropped; `ok` only |
-| `image` | verbatim | verbatim | dropped |
-| `cost` | present | present | **omitted** |
-| paths, home dirs, `file://`, `ssh://` | verbatim | verbatim | **stripped** from `text` and `alt` |
-| deltas | emitted | emitted | not emitted |
-
-Applied **before signing** — there is no post-hoc redaction on Nostr. A client MUST NOT infer that a `public` copy is complete, and SHOULD show a redaction affordance wherever `arguments` is `null` with a digest.
+An agent decides what it puts in each stream. A public mirror is published as written, so an agent that must not leak a filesystem path, a tool argument or its own reasoning to a group MUST NOT put them in the events it sends there. A reader of one stream cannot tell whether another carries more.
 
 ## Identity and Trust
 
@@ -225,7 +208,7 @@ An event SHOULD stay under 64 KiB and MUST stay under 256 KiB; a wrapped copy is
 
 Truncation is explicit: the block gains `truncated` describing the **original**, and the retained text carries the marker `…[truncated]`, which a client MUST render. An oversize tool result is referenced instead — uploaded to a content-addressed store, `output: null` plus a `ref` whose `sha256` is over the plaintext and is authoritative; a client that fetches the blob MUST verify it. On a private stream the blob SHOULD be encrypted first, since the host would otherwise hold exactly the plaintext the wrap was protecting.
 
-A publisher MUST NOT emit an event it knows exceeds the limit. When a turn is still too large, `thinking` is elided first, then every block is fitted against a total budget — an oversize `tool_call` drops its arguments for a digest. A block there was no room for is replaced by a marker naming how many were omitted: a turn that quietly lost half its content reads as a whole one. A turn that cannot be fitted at all is split across several `1777` sharing a `turn` with consecutive `seq`.
+A publisher MUST NOT emit an event it knows exceeds the limit. When a turn is still too large, `thinking` is elided first, then every block is fitted against a total budget — an oversize `tool_call` drops its arguments for a digest that still names the call. A block there was no room for is replaced by a marker naming how many were omitted: a turn that quietly lost half its content reads as a whole one. A turn that cannot be fitted at all is split across several `1777` sharing a `turn` with consecutive `seq`.
 
 ## What a Minimal Client Must Implement
 

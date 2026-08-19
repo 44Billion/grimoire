@@ -25,8 +25,6 @@ export interface Rumor extends UnsignedRumor {
 
 // ── Vocabulary ───────────────────────────────────────────────────────────────
 
-export type RedactionProfile = "full" | "summary" | "public";
-
 export type Transport = "nip17" | "nip29" | "concord";
 
 export type Visibility = "private" | "public";
@@ -77,7 +75,7 @@ export interface ToolCallBlock {
   type: "tool_call";
   id: string;
   name: string;
-  /** `null` under the `public` profile; `arguments_digest` still proves which call it was. */
+  /** `null` when the call was too large to carry; the digest still names it. */
   arguments: Record<string, unknown> | null;
   arguments_digest?: string;
 }
@@ -145,7 +143,6 @@ export interface StreamDescriptor {
   /** Pubkey for nip17, `relay'group` for nip29, `<plane>/<channel>` for concord. */
   address: string;
   visibility: Visibility;
-  redaction: RedactionProfile;
 }
 
 /** Where a stream's counter currently stands. Encoders take it, never keep it. */
@@ -218,7 +215,7 @@ export interface AgentDefinitionInput {
   name: string;
   picture?: string;
   about?: string;
-  /** The system prompt, verbatim. Omitted entirely rather than redacted. */
+  /** The system prompt, verbatim. Published whole or not at all. */
   instructions?: string;
   tools?: AgentToolSpec[];
   /** Starter prompts a client offers before the first message. */
@@ -235,7 +232,6 @@ export interface DecodedBase {
   created_at: number;
   session: SessionRef;
   transport?: Transport;
-  redaction: RedactionProfile;
   alt?: string;
 }
 

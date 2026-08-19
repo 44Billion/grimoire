@@ -19,7 +19,6 @@ import type {
   AgentTurnInput,
   Cost,
   DeltaInput,
-  RedactionProfile,
   Rumor,
   SessionHeadInput,
   SessionRef,
@@ -108,7 +107,6 @@ export function buildTurn(
   input: AgentTurnInput,
   cursor: { seq: number; prev?: string },
   operator: { pubkey: string; relay?: string },
-  redaction: RedactionProfile,
 ): Rumor {
   const tools = new Set<string>();
   for (const block of input.blocks) {
@@ -135,7 +133,6 @@ export function buildTurn(
   if (input.usage) tags.push(usageTag(input.usage));
   if (input.cost) tags.push(costTag(input.cost));
   for (const tool of tools) tags.push(["tool", tool]);
-  tags.push(["redaction", redaction]);
   if (input.alt) tags.push(["alt", input.alt]);
 
   return stamp({
@@ -155,7 +152,6 @@ export function buildDelta(
   session: SessionRef,
   input: DeltaInput,
   operator: { pubkey: string; relay?: string },
-  redaction: RedactionProfile,
 ): Rumor {
   if (input.delta === "tool" && !input.toolId)
     throw new Error("agent-session: a tool delta needs a tool-id");
@@ -168,7 +164,6 @@ export function buildDelta(
     ["p", operator.pubkey, operator.relay ?? "", "operator"],
   ];
   if (input.toolId) tags.push(["tool-id", input.toolId]);
-  tags.push(["redaction", redaction]);
 
   return stamp({
     kind: KIND_DELTA,
@@ -193,7 +188,6 @@ export function buildSessionHead(
   agentPubkey: string,
   sessionId: string,
   input: SessionHeadInput,
-  redaction: RedactionProfile,
 ): Rumor {
   const tags: string[][] = [
     ["d", sessionId],
@@ -205,13 +199,7 @@ export function buildSessionHead(
   for (const observer of input.observers ?? [])
     tags.push(["p", observer.pubkey, observer.relay ?? "", "observer"]);
   for (const stream of input.streams)
-    tags.push([
-      "stream",
-      stream.transport,
-      stream.address,
-      stream.visibility,
-      stream.redaction,
-    ]);
+    tags.push(["stream", stream.transport, stream.address, stream.visibility]);
 
   tags.push(["last-seq", String(input.lastSeq)]);
   if (input.head) tags.push(["head", input.head]);
@@ -227,7 +215,6 @@ export function buildSessionHead(
   if (input.usage) tags.push(usageTag(input.usage));
   if (input.cost) tags.push(costTag(input.cost));
   if (input.definition) tags.push(["agent", input.definition]);
-  tags.push(["redaction", redaction]);
   if (input.alt) tags.push(["alt", input.alt]);
 
   return stamp({

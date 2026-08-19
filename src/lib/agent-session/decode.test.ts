@@ -30,7 +30,6 @@ function aTurn() {
     },
     { seq: 1 },
     { pubkey: OPERATOR },
-    "full",
   );
 }
 
@@ -83,7 +82,6 @@ describe("parseAgentEvent — shape", () => {
       { role: "assistant", blocks: [], turn: 2, createdAt: 1 },
       { seq: 2, prev: "b".repeat(64) },
       { pubkey: OPERATOR },
-      "full",
     );
     const orphan = rehash({
       ...turn,
@@ -114,7 +112,6 @@ describe("parseAgentEvent — shape", () => {
       ref,
       { turn: 3, part: 2, delta: "text", text: "…tok", createdAt: 1 },
       { pubkey: OPERATOR },
-      "full",
     );
     const decoded = parseAgentEvent(delta);
     expect(decoded).toMatchObject({

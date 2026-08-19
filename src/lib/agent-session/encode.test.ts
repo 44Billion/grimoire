@@ -46,29 +46,23 @@ describe("golden vectors", () => {
       suggestions: ["what kinds does this relay serve?"],
       createdAt: AT,
     });
-    const head = buildSessionHead(
-      AGENT,
-      SESSION,
-      {
-        title: "relay-subscription refactor",
-        status: "active",
-        operator: { pubkey: OPERATOR },
-        streams: [
-          {
-            transport: "nip17",
-            address: OPERATOR,
-            visibility: "private",
-            redaction: "full",
-          },
-        ],
-        lastSeq: 2,
-        turns: 1,
-        started: AT - 100,
-        definition: `31779:${AGENT}:hex`,
-        createdAt: AT,
-      },
-      "full",
-    );
+    const head = buildSessionHead(AGENT, SESSION, {
+      title: "relay-subscription refactor",
+      status: "active",
+      operator: { pubkey: OPERATOR },
+      streams: [
+        {
+          transport: "nip17",
+          address: OPERATOR,
+          visibility: "private",
+        },
+      ],
+      lastSeq: 2,
+      turns: 1,
+      started: AT - 100,
+      definition: `31779:${AGENT}:hex`,
+      createdAt: AT,
+    });
     const turn = buildTurn(
       AGENT,
       ref,
@@ -99,14 +93,12 @@ describe("golden vectors", () => {
       },
       { seq: 1 },
       { pubkey: OPERATOR },
-      "full",
     );
     const delta = buildDelta(
       AGENT,
       ref,
       { turn: 1, part: 1, delta: "text", text: "Found", createdAt: AT },
       { pubkey: OPERATOR },
-      "full",
     );
 
     expect({
@@ -137,7 +129,6 @@ describe("encode", () => {
         { role: "user", blocks: [], turn: 1, createdAt: AT },
         { seq: 2 },
         { pubkey: OPERATOR },
-        "full",
       ),
     ).toThrow(/needs a prev/);
   });
@@ -158,7 +149,6 @@ describe("encode", () => {
       },
       { seq: 1 },
       { pubkey: OPERATOR },
-      "full",
     );
 
     expect(turn.tags.filter((t) => t[0] === "tool").map((t) => t[1])).toEqual([
@@ -175,7 +165,6 @@ describe("encode", () => {
         { role: "user", blocks: [], turn: 1, ms: 1000, createdAt: AT },
         { seq: 1 },
         { pubkey: OPERATOR },
-        "full",
       ),
     ).toThrow(/0-999/);
   });
@@ -186,7 +175,6 @@ describe("encode", () => {
       ref,
       { turn: 1, part: 9, delta: "heartbeat", text: "ignored", createdAt: AT },
       { pubkey: OPERATOR },
-      "full",
     );
 
     expect(delta.content).toBe("");

@@ -40,7 +40,7 @@ export function AgentSessionHeadBody({ head }: { head: DecodedHead }) {
         <div className="flex flex-wrap gap-1">
           {head.streams.map((stream) => (
             <Label key={`${stream.transport}:${stream.address}`} size="sm">
-              {stream.transport} · {stream.visibility} · {stream.redaction}
+              {stream.transport} · {stream.visibility}
             </Label>
           ))}
         </div>
