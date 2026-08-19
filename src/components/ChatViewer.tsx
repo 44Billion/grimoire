@@ -65,6 +65,7 @@ import { MessageReactions } from "./chat/MessageReactions";
 import { StatusBadge } from "./live/StatusBadge";
 import { ChatMessageContextMenu } from "./chat/ChatMessageContextMenu";
 import { useAddWindow } from "@/core/state";
+import { MessageSessions } from "@/components/agent/MessageSessions";
 import { Button } from "./ui/button";
 import LoginDialog from "./nostr/LoginDialog";
 import {
@@ -878,6 +879,11 @@ const MessageItem = memo(function MessageItem({
               {message.content}
             </span>
           )}
+          {/* What this message set an agent doing, if anything. The link runs
+              from the session to the message, so a run shows up here without the
+              agent having replied — and renders nothing at all for the vast
+              majority of messages, which started nothing. */}
+          <MessageSessions messageId={message.id} />
         </div>
       </div>
     </div>

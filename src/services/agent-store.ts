@@ -107,3 +107,28 @@ export async function readAgentSession(
     duplicates: stream?.duplicates.map((duplicate) => duplicate.seq) ?? [],
   };
 }
+
+/**
+ * The sessions a message set running.
+ *
+ * A head names its trigger — the event that caused the run — so this is the
+ * question a conversation asks: what did this message start? The link runs from
+ * the session to the message rather than the other way round, which is what lets
+ * a client show the runs under a message without the agent having to reply at all.
+ *
+ * Newest head per session, so a run that has published six heads appears once,
+ * in whatever state it last reported.
+ */
+export async function listSessionsForEvent(
+  viewer: string,
+  eventId: string,
+): Promise<DecodedHead[]> {
+  const rows = await scan(viewer, new Set([KIND_SESSION_HEAD]));
+  const heads = rows
+    .map(decode)
+    .filter(
+      (event): event is DecodedHead =>
+        event?.type === "head" && event.trigger?.id === eventId,
+    );
+  return newestHeads(heads).sort((a, b) => a.started - b.started);
+}

@@ -10,6 +10,8 @@ import {
 } from "@/services/agent-store";
 import type { DecodedHead } from "@/lib/agent-session/types";
 import { TranscriptBlockBody } from "@/components/nostr/kinds/AgentTurnRenderer";
+import { LiveTurnBody } from "@/components/agent/LiveTurn";
+import { useAgentDeltas } from "@/hooks/useAgentDeltas";
 import { groupTurns } from "@/components/agent/transcript";
 import { AgentSessionHeadBody } from "@/components/nostr/kinds/AgentSessionRenderers";
 import { Label } from "@/components/ui/label";
@@ -47,6 +49,17 @@ export function AgentSessionViewer({
     session: string;
   } | null>(agent && session ? { agent, session } : null);
   const [view, setView] = useState<AgentSessionView | null>(null);
+
+  /**
+   * Live progress for the open session.
+   *
+   * `settled` is the highest turn already on disk, so the preview clears itself
+   * the moment the real turn lands rather than showing the same words twice.
+   */
+  const settled = view?.turns.length
+    ? (view.turns[view.turns.length - 1]?.turn ?? 0)
+    : 0;
+  const live = useAgentDeltas(selected?.agent, selected?.session, settled);
 
   // Both effects only subscribe and read; every setState lands in an async
   // callback, because the doorbell is the external system here and a render is
@@ -95,48 +108,59 @@ export function AgentSessionViewer({
       </div>
     );
 
+  /**
+   * Named a session, so show that session.
+   *
+   * A window opened from a message is a window about ONE run — the reader clicked
+   * a specific session and a list of every other one is in the way. Opened with no
+   * session, the list is the whole point.
+   */
+  const single = Boolean(agent && session);
+
   return (
     <div className="flex h-full">
-      <aside className="w-64 shrink-0 overflow-y-auto border-r border-border">
-        {sessions.length === 0 ? (
-          <p className="p-3 text-xs text-muted-foreground">
-            No agent sessions yet. An agent publishes them to your inbox as gift
-            wraps.
-          </p>
-        ) : (
-          sessions.map((head) => {
-            const active =
-              selected?.agent === head.session.agent &&
-              selected?.session === head.session.session;
-            return (
-              <button
-                key={`${head.session.agent}:${head.session.session}`}
-                type="button"
-                onClick={() =>
-                  setSelected({
-                    agent: head.session.agent,
-                    session: head.session.session,
-                  })
-                }
-                className={cn(
-                  "flex w-full flex-col gap-1 border-b border-border p-2 text-left",
-                  active && "bg-muted",
-                )}
-              >
-                <span className="flex items-center gap-1 truncate text-sm">
-                  <Bot className="h-3 w-3 shrink-0 text-muted-foreground" />
-                  {head.title || "untitled session"}
-                </span>
-                <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Label size="sm">{head.status}</Label>
-                  <UserName pubkey={head.session.agent} />
-                  <Timestamp timestamp={head.created_at} />
-                </span>
-              </button>
-            );
-          })
-        )}
-      </aside>
+      {!single && (
+        <aside className="w-64 shrink-0 overflow-y-auto border-r border-border">
+          {sessions.length === 0 ? (
+            <p className="p-3 text-xs text-muted-foreground">
+              No agent sessions yet. An agent publishes them to your inbox as
+              gift wraps.
+            </p>
+          ) : (
+            sessions.map((head) => {
+              const active =
+                selected?.agent === head.session.agent &&
+                selected?.session === head.session.session;
+              return (
+                <button
+                  key={`${head.session.agent}:${head.session.session}`}
+                  type="button"
+                  onClick={() =>
+                    setSelected({
+                      agent: head.session.agent,
+                      session: head.session.session,
+                    })
+                  }
+                  className={cn(
+                    "flex w-full flex-col gap-1 border-b border-border p-2 text-left",
+                    active && "bg-muted",
+                  )}
+                >
+                  <span className="flex items-center gap-1 truncate text-sm">
+                    <Bot className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    {head.title || "untitled session"}
+                  </span>
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Label size="sm">{head.status}</Label>
+                    <UserName pubkey={head.session.agent} />
+                    <Timestamp timestamp={head.created_at} />
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </aside>
+      )}
 
       <section className="flex-1 overflow-y-auto p-3">
         {!view ? (
@@ -181,6 +205,10 @@ export function AgentSessionViewer({
                 <TranscriptBlockBody block={block} />
               </article>
             ))}
+
+            {/* The turn being written, if one is. Ephemeral: nothing here is
+                stored, and it vanishes when the stored turn arrives. */}
+            {selected && <LiveTurnBody live={live} agent={selected.agent} />}
 
             {view.turns.length === 0 && (
               <p className="text-sm text-muted-foreground">
