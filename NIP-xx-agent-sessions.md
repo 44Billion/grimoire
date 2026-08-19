@@ -97,6 +97,8 @@ The last three statuses are terminal; `awaiting-input` and `payment-required` ar
 
 Wrapped, no relay can replace it, so a reader keeps the newest `created_at` per `(pubkey, d)`.
 
+Because the head carries running `usage` and `cost`, an agent MAY publish heads and no turns at all: what a session spent then survives without any of what it said.
+
 ## Turn — `kind:1777`
 
 One event per message: a user prompt, an assistant reply, or a tool result. `content` is a JSON array of **content blocks**, in order — the one place structure lives in `content` rather than in tags, because a turn's payload is a sequence, tags are a set, and tool arguments are arbitrary JSON with no honest tag encoding.
@@ -163,6 +165,7 @@ blob-ref    = { "sha256","url","size","mime",
 | tag         | value | indexable | req |
 | ----------- | ----- | --------- | --- |
 | `a`         | `31777:<agent>:<session>` | yes | yes |
+| `h`         | `<group-id>` — the room this progress is for | yes | no |
 | `turn`      | the turn being streamed | no | yes |
 | `part`      | counter local to the turn, from 1, reset at turn start | no | yes |
 | `delta`     | `text`\|`thinking`\|`tool`\|`heartbeat` | no | yes |
@@ -172,6 +175,18 @@ blob-ref    = { "sha256","url","size","mime",
 **A delta takes no `seq`.** Deltas evaporate at the relay; a number one had consumed would be a permanent hole. A `part` discontinuity means the reader discards that turn's partial buffer and waits for the turn.
 
 An agent SHOULD coalesce deltas into fragments of at least 50 ms or 32 characters, MUST NOT emit one over 4 KiB, and MUST NOT emit one per token.
+
+### Progress in the room that asked
+
+An agent invoked from a message is being watched by people who are not reading its transcript. A `heartbeat` delta carrying that room's `h` tag says "this agent is working, and its transcript is at this `a`" — no content, no new kind, ordered by `part` like any other delta. An agent MAY send `thinking` deltas there instead when the room is meant to see them.
+
+A group relay that does not accept `21777` leaves no live signal available. An agent SHOULD then acknowledge the request itself — a `kind:7` reaction on the message it is answering — because a room cannot otherwise tell being worked on from being ignored.
+
+## Linking an Answer to Its Transcript
+
+An agent that answers in a room publishes an ordinary message there — `kind:9` in a group, `kind:14` in a DM — and SHOULD carry `["a", "31777:<agent>:<session>"]` on it. A client that knows this NIP can then offer the transcript from the answer; one that does not ignores an unknown `a` tag, and the message renders as it always did.
+
+This is the whole integration surface for an agent that already publishes plain chat messages: one tag, nothing else changed.
 
 ## Ordering
 
@@ -189,7 +204,7 @@ A gap is any missing `seq` below the head's `last-seq`. A client MUST render it 
 
 **Private (NIP-17/59).** The agent builds the rumor, seals it in a `kind:13` NIP-44-encrypted to each recipient and signed by its own key, and wraps the seal in a `kind:1059` — or `21059` for a delta — signed by a fresh throwaway key, `p`-tagged to the recipient, `created_at` randomised. One wrap per recipient, each under its own key. Recipient relays come from their `kind:10050`, else the NIP-65 inbox; a recipient with neither is undeliverable and MUST be reported, not skipped. The agent SHOULD self-wrap so it can re-read its own transcript. A relay sees a `1059` from a key that exists for one event: not the kind, the session, the agent, the sequence, or that this is an agent at all.
 
-**Public (NIP-29).** Plain signed events with `["h","<group-id>"]`, published to the group's relay only. Group relays gate by `kind:39000`'s `supported_kinds`: if it does not list `1777`, publish each turn as a `kind:9` carrying the turn's `alt` and the same `a`, `seq` and `h` tags, which a client dedupes against the `1777` with the same `(a, seq)`. If `9` is absent too, the group is not a valid target and the agent MUST refuse the stream rather than publish into a black hole. Deltas SHOULD NOT be mirrored unless the group lists `21777`.
+**Public (NIP-29).** Plain signed events with `["h","<group-id>"]`, published to the group's relay only. Group relays gate by `kind:39000`'s `supported_kinds`: if it does not list `1777`, publish each turn as a `kind:9` carrying the turn's `alt` and the same `a`, `seq` and `h` tags, which a client dedupes against the `1777` with the same `(a, seq)`. If `9` is absent too, the group is not a valid target and the agent MUST refuse the stream rather than publish into a black hole. Deltas SHOULD NOT be mirrored to a group unless it lists `21777` — the same constraint that decides whether progress in the room is possible at all.
 
 **Concord.** The rumors are identical; the envelope is Concord's — a wrap authored by the plane's derived stream key, read back by `#channel`. Authorship inside is still the seal's signature.
 
