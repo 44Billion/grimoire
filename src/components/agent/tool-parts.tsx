@@ -216,17 +216,23 @@ const PRESENTERS: Record<string, ToolPresenter> = {
   // ── grimoire's and Hex's own tools ──────────────────────────────────────────
   //
   // The same registry, because a transcript does not care which runtime called
-  // the tool: `nostr_req` is grimoire's `ai` window, `nostr.req` is Hex's, and
-  // both mean a REQ a reader wants summarised as a filter rather than as JSON.
-  // Both spellings are listed rather than normalised — a tool id is a contract,
-  // and guessing that a dot and an underscore are the same tool is how a renderer
-  // starts lying about what ran.
+  // the tool. Hex names its tools `chat.respond` internally, but a provider only
+  // takes `^[a-zA-Z0-9_-]{1,64}$` and the runtime names a tool by its filename,
+  // so what crosses the wire is `chat_respond` — the same underscore spelling
+  // grimoire's own `ai` window uses. The dotted ids are the canonical contract
+  // and never appear in a turn.
 
-  /** `{filters:[…]}` — one or more NIP-01 filters, OR'd. */
-  nostr_req: { icon: Radio, summary: (args) => describeFilters(args.filters) },
-  "nostr.req": {
+  /**
+   * `{filters:[…]}` from grimoire's `ai` window; a flat NIP-01 filter from Hex.
+   *
+   * Two callers, one tool name, two argument shapes — so both are read rather
+   * than one guessed. A summary that silently returns nothing for the other
+   * caller's shape is how a row goes blank for reasons nobody can see.
+   */
+  nostr_req: {
     icon: Radio,
-    summary: (args) => describeFilters(args.filters ?? args.filter),
+    summary: (args) =>
+      describeFilters(args.filters ?? args.filter ?? [stripRelays(args)]),
   },
 
   /** `{pubkey}` → a kind 0. */
@@ -248,9 +254,9 @@ const PRESENTERS: Record<string, ToolPresenter> = {
 
   /** A bech32 entity turned into what it names. */
   decode_bech32: { icon: Hash, summary: (args) => str(args.input) },
-  "nostr.resolve": {
+  nostr_resolve: {
     icon: Hash,
-    summary: (args) => str(args.input) ?? str(args.entity),
+    summary: (args) => str(args.entity) ?? str(args.input),
   },
 
   encode_nevent: { icon: Hash, summary: (args) => shortKey(args.id) },
@@ -281,9 +287,15 @@ const PRESENTERS: Record<string, ToolPresenter> = {
     },
   },
   get_nip_index: { icon: BookText },
-  "grimoire.help": {
+  grimoire_help: {
     icon: BookText,
-    summary: (args) => str(args.topic) ?? str(args.nip) ?? str(args.kind),
+    summary: (args) => {
+      const nip = str(args.nip);
+      if (nip) return `NIP-${nip}`;
+      const kind = num(args.kind);
+      if (kind !== undefined) return `kind ${kind}`;
+      return str(args.command) ?? str(args.topic);
+    },
   },
 
   /** Opening a window is the one tool whose effect the reader can see. */
@@ -293,8 +305,8 @@ const PRESENTERS: Record<string, ToolPresenter> = {
   },
 
   /** Speaking in a room. In a transcript this is the answer, not a tool. */
-  "chat.respond": { icon: MessageSquare, summary: (args) => str(args.text) },
-  "chat.react": { icon: MessageSquare, summary: (args) => str(args.emoji) },
+  chat_respond: { icon: MessageSquare, summary: (args) => str(args.text) },
+  chat_react: { icon: MessageSquare, summary: (args) => str(args.emoji) },
 };
 
 /** A pubkey short enough to sit on one line and still be recognisable. */
@@ -311,6 +323,26 @@ function shortKey(value: unknown): string | undefined {
  * transcript — it is long, it is mostly punctuation, and the parts that matter
  * are three words.
  */
+/**
+ * Hex's flat arguments as the NIP-01 filter they describe.
+ *
+ * Its tool takes the filter's fields directly, with tag filters under a `tags`
+ * object rather than as `#`-prefixed keys, and a `relays` field that is routing
+ * rather than filtering. Turned into the shape the describer already reads,
+ * instead of teaching the describer a second grammar.
+ */
+function stripRelays(args: Record<string, unknown>): Record<string, unknown> {
+  const { relays: _relays, tags, ...rest } = args;
+  const tagged = record(tags);
+  if (!tagged) return rest;
+  return {
+    ...rest,
+    ...Object.fromEntries(
+      Object.entries(tagged).map(([key, value]) => [`#${key}`, value]),
+    ),
+  };
+}
+
 function describeFilters(value: unknown): string | undefined {
   const filters = Array.isArray(value) ? value : value ? [value] : [];
   const described = filters
