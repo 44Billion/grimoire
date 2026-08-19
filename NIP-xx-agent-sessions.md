@@ -198,9 +198,17 @@ blob-ref    = { "sha256", "url", "size", "mime",
 
 ## Milestone — `kind:1778`
 
-Regular. One per phase change, tool invocation, permission request, or terminal outcome. An agent SHOULD emit fewer than one per second and MUST NOT emit one per token.
+Regular. `content` is **plain human-readable text** — the opposite choice from a turn, and deliberately so: a milestone exists to be shown to a person in a sidebar or a room, and any client that can render `kind:9` can render this.
 
-`content` is **plain human-readable text** — the opposite choice from a turn, and deliberately so: a milestone exists to be shown to a person in a sidebar or a room, and any client that can render `kind:9` can render this.
+**A milestone exists for what a turn cannot say.** A turn is published only when it is complete, it is gutted under the `public` profile, and it cannot describe a state that has no message in it. So a milestone is for:
+
+- **progress inside a turn that has not finished** — a tool call still running after several seconds. Deltas cover that window live, but they evaporate at the relay, so a reader who was asleep or joined late has nothing else;
+- **a public mirror**, where a redacted turn carries almost nothing and one plain sentence carries the whole point;
+- **a state that is not a message**: `awaiting-input`, `payment-required`, or a failure with no turn to attach it to. The head's `status` cannot serve here — it is replaceable, so asking twice and being ignored twice leaves no history.
+
+An agent **MUST NOT** emit a milestone that only restates a turn it has already published or is about to publish. "Calling Bash" as a milestone and then the same `tool_call` block in the next turn is two events for one fact, and on a private stream it is pure cost, since the full transcript is already there. On a private stream an agent SHOULD emit milestones only for the long-running and blocked cases above.
+
+An agent SHOULD emit fewer than one milestone per second and MUST NOT emit one per token — that is what a delta is.
 
 | tag       | values | indexable | req | description |
 | --------- | ------ | --------- | --- | ----------- |
