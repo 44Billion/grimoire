@@ -303,9 +303,7 @@ function parseHead(rumor: UnsignedRumor & { id: string }): DecodedHead | null {
       const transport = value(rumor, "transport");
       // The protocol is what makes the room meaningful, so a `channel` with no
       // `transport` beside it is dropped rather than shown as a bare string.
-      return transport
-        ? { transport, id: value(rumor, "channel") }
-        : undefined;
+      return transport ? { transport, id: value(rumor, "channel") } : undefined;
     })(),
     definition: value(rumor, "agent"),
   };
