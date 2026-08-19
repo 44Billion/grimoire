@@ -1,5 +1,12 @@
-import { useEffect, useState } from "react";
-import { AlertTriangle, Bot, GitBranch } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  Bot,
+  ChevronRight,
+  GitBranch,
+  PanelLeftClose,
+  PanelLeftOpen,
+} from "lucide-react";
 
 import { useAccount } from "@/hooks/useAccount";
 import { onDmScopes } from "@/services/dm-bus";
@@ -15,7 +22,6 @@ import { useAgentDeltas } from "@/hooks/useAgentDeltas";
 import { groupTurns } from "@/components/agent/transcript";
 import { AgentSessionHeadBody } from "@/components/nostr/kinds/AgentSessionRenderers";
 import { StatusBadge } from "@/components/agent/status";
-import Timestamp from "@/components/Timestamp";
 import { UserName } from "@/components/nostr/UserName";
 import { cn } from "@/lib/utils";
 
@@ -120,46 +126,11 @@ export function AgentSessionViewer({
   return (
     <div className="flex h-full">
       {!single && (
-        <aside className="w-64 shrink-0 overflow-y-auto border-r border-border">
-          {sessions.length === 0 ? (
-            <p className="p-3 text-xs text-muted-foreground">
-              No agent sessions yet. An agent publishes them to your inbox as
-              gift wraps.
-            </p>
-          ) : (
-            sessions.map((head) => {
-              const active =
-                selected?.agent === head.session.agent &&
-                selected?.session === head.session.session;
-              return (
-                <button
-                  key={`${head.session.agent}:${head.session.session}`}
-                  type="button"
-                  onClick={() =>
-                    setSelected({
-                      agent: head.session.agent,
-                      session: head.session.session,
-                    })
-                  }
-                  className={cn(
-                    "flex w-full flex-col gap-1 border-b border-border p-2 text-left",
-                    active && "bg-muted",
-                  )}
-                >
-                  <span className="flex items-center gap-1 truncate text-sm">
-                    <Bot className="h-3 w-3 shrink-0 text-muted-foreground" />
-                    {head.title || "untitled session"}
-                  </span>
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <StatusBadge status={head.status} />
-                    <UserName pubkey={head.session.agent} />
-                    <Timestamp timestamp={head.created_at} />
-                  </span>
-                </button>
-              );
-            })
-          )}
-        </aside>
+        <SessionList
+          sessions={sessions}
+          selected={selected}
+          onSelect={setSelected}
+        />
       )}
 
       <section className="flex-1 overflow-y-auto p-3">
@@ -219,5 +190,173 @@ export function AgentSessionViewer({
         )}
       </section>
     </div>
+  );
+}
+
+/**
+ * The order statuses are read in.
+ *
+ * What is happening first, what wants something from the reader next, then the
+ * long tail of finished work. A list sorted by time buries a live run under
+ * yesterday's, which is exactly backwards for the one thing a reader opens this
+ * window to watch.
+ */
+const STATUS_ORDER = [
+  "active",
+  "awaiting-input",
+  "idle",
+  "error",
+  "aborted",
+  "done",
+];
+
+function statusRank(status: string): number {
+  const at = STATUS_ORDER.indexOf(status);
+  return at === -1 ? STATUS_ORDER.length : at;
+}
+
+/**
+ * Every session, by status and then by agent.
+ *
+ * Two levels, because both questions get asked: "is anything running" is about
+ * status, and "what has Hex been doing" is about the agent. Grouping by status
+ * first answers the one that changes.
+ *
+ * A row is ONE line. A session's title is the useful half and everything else —
+ * the agent, the time — is what the group heading and the open transcript
+ * already say.
+ */
+function SessionList({
+  sessions,
+  selected,
+  onSelect,
+}: {
+  sessions: DecodedHead[];
+  selected: { agent: string; session: string } | null;
+  onSelect: (next: { agent: string; session: string }) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  const groups = useMemo(() => {
+    const byStatus = new Map<string, Map<string, DecodedHead[]>>();
+    for (const head of sessions) {
+      const byAgent = byStatus.get(head.status) ?? new Map();
+      byStatus.set(head.status, byAgent);
+      byAgent.set(head.session.agent, [
+        ...(byAgent.get(head.session.agent) ?? []),
+        head,
+      ]);
+    }
+    return [...byStatus.entries()].sort(
+      ([a], [b]) => statusRank(a) - statusRank(b),
+    );
+  }, [sessions]);
+
+  if (!open)
+    return (
+      <aside className="shrink-0 border-r border-border p-1">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="rounded p-1 text-muted-foreground hover:bg-muted/50"
+          title="Show sessions"
+        >
+          <PanelLeftOpen className="h-4 w-4" />
+        </button>
+      </aside>
+    );
+
+  return (
+    <aside className="flex w-64 shrink-0 flex-col border-r border-border">
+      <div className="flex items-center justify-between border-b border-border px-2 py-1">
+        <span className="text-xs text-muted-foreground">
+          {sessions.length} session{sessions.length === 1 ? "" : "s"}
+        </span>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="rounded p-1 text-muted-foreground hover:bg-muted/50"
+          title="Hide sessions"
+        >
+          <PanelLeftClose className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {sessions.length === 0 ? (
+          <p className="p-3 text-xs text-muted-foreground">
+            No agent sessions yet. An agent publishes them to your inbox as gift
+            wraps.
+          </p>
+        ) : (
+          groups.map(([status, byAgent]) => {
+            const shut = collapsed[status];
+            const count = [...byAgent.values()].reduce(
+              (total, heads) => total + heads.length,
+              0,
+            );
+            return (
+              <div key={status}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCollapsed((was) => ({ ...was, [status]: !was[status] }))
+                  }
+                  className="flex w-full items-center gap-1 px-2 py-1 text-left hover:bg-muted/50"
+                >
+                  <ChevronRight
+                    className={cn(
+                      "h-3 w-3 shrink-0 text-muted-foreground transition-transform",
+                      !shut && "rotate-90",
+                    )}
+                  />
+                  <StatusBadge status={status} />
+                  <span className="ml-auto text-[11px] text-muted-foreground">
+                    {count}
+                  </span>
+                </button>
+
+                {!shut &&
+                  [...byAgent.entries()].map(([agentKey, heads]) => (
+                    <div key={agentKey}>
+                      <span className="flex items-center gap-1 py-0.5 pr-2 pl-5 text-[11px] text-muted-foreground">
+                        <Bot className="h-3 w-3 shrink-0" />
+                        <UserName pubkey={agentKey} className="truncate" />
+                      </span>
+                      {heads.map((head) => {
+                        const active =
+                          selected?.agent === head.session.agent &&
+                          selected?.session === head.session.session;
+                        return (
+                          <button
+                            key={`${head.session.agent}:${head.session.session}`}
+                            type="button"
+                            onClick={() =>
+                              onSelect({
+                                agent: head.session.agent,
+                                session: head.session.session,
+                              })
+                            }
+                            className={cn(
+                              "flex w-full items-center gap-1 py-0.5 pr-2 pl-8 text-left text-xs hover:bg-muted/50",
+                              active && "bg-muted",
+                            )}
+                            title={head.title || head.session.session}
+                          >
+                            <span className="truncate">
+                              {head.title || "untitled session"}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </aside>
   );
 }
