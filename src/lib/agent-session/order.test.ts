@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildTurn, buildSessionHead } from "./encode";
 import { parseAgentEvent } from "./decode";
 import { mergeStream, newestHeads, type SequencedEvent } from "./order";
-import type { DecodedHead, DecodedTurn, SessionRef, Transport } from "./types";
+import type { DecodedHead, DecodedTurn, SessionRef } from "./types";
 
 const AGENT = "9".repeat(64);
 const OPERATOR = "1".repeat(64);
@@ -11,12 +11,7 @@ const SESSION =
   "3a7c1f9e0b5d4a2c8e6f0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f";
 const ref: SessionRef = { agent: AGENT, session: SESSION };
 
-function turn(
-  seq: number,
-  prev: string | undefined,
-  createdAt: number,
-  transport?: Transport,
-) {
+function turn(seq: number, prev: string | undefined, createdAt: number) {
   const rumor = buildTurn(
     AGENT,
     ref,
@@ -29,21 +24,17 @@ function turn(
     { seq, prev },
     { pubkey: OPERATOR },
   );
-  const decoded = parseAgentEvent(rumor, { transport });
+  const decoded = parseAgentEvent(rumor);
   expect(decoded?.type).toBe("turn");
   return decoded as DecodedTurn;
 }
 
 /** Build a contiguous chain, each turn naming the previous one. */
-function chain(
-  count: number,
-  createdAt: (seq: number) => number,
-  transport?: Transport,
-) {
+function chain(count: number, createdAt: (seq: number) => number) {
   const events: DecodedTurn[] = [];
   let prev: string | undefined;
   for (let seq = 1; seq <= count; seq += 1) {
-    const event = turn(seq, prev, createdAt(seq), transport);
+    const event = turn(seq, prev, createdAt(seq));
     prev = event.id;
     events.push(event);
   }
@@ -88,9 +79,7 @@ describe("mergeStream", () => {
       title: "t",
       status: "active",
       operator: { pubkey: OPERATOR },
-      streams: [],
       lastSeq: 5,
-      turns: 2,
       started: 1_755_499_000,
       createdAt: 1_755_500_000,
     });
@@ -132,20 +121,6 @@ describe("mergeStream", () => {
     expect(stream!.duplicates).toEqual([]);
     expect(stream!.ordered).toHaveLength(2);
   });
-
-  it("never compares seq across transports", () => {
-    const priv = chain(3, () => 1_755_500_000, "nip17");
-    const pub = chain(2, () => 1_755_500_000, "nip29");
-
-    const merged = mergeStream([...priv, ...pub]);
-
-    expect(merged).toHaveLength(2);
-    const byTransport = Object.fromEntries(
-      merged.map((m) => [m.stream.transport, m.ordered.length]),
-    );
-    expect(byTransport).toEqual({ nip17: 3, nip29: 2 });
-    expect(merged.every((m) => m.gaps.length === 0)).toBe(true);
-  });
 });
 
 describe("newestHeads", () => {
@@ -156,9 +131,7 @@ describe("newestHeads", () => {
           title: `at ${createdAt}`,
           status: "active",
           operator: { pubkey: OPERATOR },
-          streams: [],
           lastSeq: 1,
-          turns: 1,
           started: 1_755_499_000,
           createdAt,
         });
@@ -183,9 +156,7 @@ describe("hostile input", () => {
       title: "hostile",
       status: "active",
       operator: { pubkey: OPERATOR },
-      streams: [],
       lastSeq: 1,
-      turns: 1,
       started: 1,
       createdAt: 1_755_500_000,
     });
@@ -210,9 +181,7 @@ describe("hostile input", () => {
       title: "sparse",
       status: "active",
       operator: { pubkey: OPERATOR },
-      streams: [],
       lastSeq: 50_000,
-      turns: 1,
       started: 1,
       createdAt: 1_755_500_000,
     });

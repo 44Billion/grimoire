@@ -8,11 +8,10 @@
  * `31777:<pubkey>:<session>` forever; changing a number orphans every
  * transcript already on a relay.
  *
- * The envelope is never reinvented: a private copy is a rumor inside the
- * ordinary NIP-59 stack (`1059` wrap, `13` seal), an ephemeral one swaps the
- * wrap for `21059` so the relay drops it with its payload, and a Concord plane
- * uses Concord's own stream envelope. Only `1777`/`21777`/`31777`/`31779`
- * are this NIP's.
+ * The envelope is never reinvented: a copy is a rumor inside the ordinary NIP-59
+ * stack (`1059` wrap, `13` seal), and an ephemeral one swaps the wrap for
+ * `21059` so the relay drops it with its payload. Only `1777`/`21777`/`31777`/
+ * `31779` are this NIP's.
  */
 
 /** Agent Definition — addressable, `d` = agent slug. What the agent *is*. */

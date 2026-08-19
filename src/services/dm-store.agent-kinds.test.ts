@@ -49,15 +49,7 @@ function head(lastSeq: number, createdAt = nowSecs()) {
     title: "a run",
     status: "active",
     operator: { pubkey: ME },
-    streams: [
-      {
-        transport: "nip17",
-        address: ME,
-        visibility: "private",
-      },
-    ],
     lastSeq,
-    turns: lastSeq,
     started: createdAt - 60,
     createdAt,
   }) as unknown as DmRumor;

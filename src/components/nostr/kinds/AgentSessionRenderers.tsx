@@ -24,8 +24,7 @@ export function AgentSessionHeadBody({ head }: { head: DecodedHead }) {
         <StatusLabel status={head.status} />
       </div>
       <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-        <Label size="sm">{head.turns} turns</Label>
-        <Label size="sm">seq ≤ {head.lastSeq}</Label>
+        <Label size="sm">{head.lastSeq} turns</Label>
         {head.model && <Label size="sm">{head.model.id}</Label>}
         {head.cost && (
           <Label size="sm">
@@ -36,15 +35,6 @@ export function AgentSessionHeadBody({ head }: { head: DecodedHead }) {
           for <UserName pubkey={head.operator.pubkey} />
         </span>
       </div>
-      {head.streams.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {head.streams.map((stream) => (
-            <Label key={`${stream.transport}:${stream.address}`} size="sm">
-              {stream.transport} · {stream.visibility}
-            </Label>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

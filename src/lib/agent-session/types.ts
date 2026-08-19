@@ -25,10 +25,6 @@ export interface Rumor extends UnsignedRumor {
 
 // ── Vocabulary ───────────────────────────────────────────────────────────────
 
-export type Transport = "nip17" | "nip29" | "concord";
-
-export type Visibility = "private" | "public";
-
 export type TurnRole = "user" | "assistant" | "tool";
 
 export type StopReason =
@@ -113,8 +109,6 @@ export interface BlobRef {
   url: string;
   size: number;
   mime: string;
-  /** Present when the blob was encrypted before upload (private streams). */
-  encryption?: { algorithm: "aes-gcm"; key: string; nonce: string; ox: string };
 }
 
 export interface Usage {
@@ -138,13 +132,6 @@ export interface SessionRef {
   relay?: string;
 }
 
-export interface StreamDescriptor {
-  transport: Transport;
-  /** Pubkey for nip17, `relay'group` for nip29, `<plane>/<channel>` for concord. */
-  address: string;
-  visibility: Visibility;
-}
-
 /** Where a stream's counter currently stands. Encoders take it, never keep it. */
 export interface StreamCursor {
   seq: number;
@@ -165,8 +152,6 @@ export interface AgentTurnInput {
   /** Plain-text rendering for clients that cannot parse the blocks. */
   alt?: string;
   createdAt?: number;
-  /** Sub-second ordering, 0-999, reusing Concord's `ms` grammar. */
-  ms?: number;
 }
 
 export interface DeltaInput {
@@ -184,15 +169,11 @@ export interface SessionHeadInput {
   status: SessionStatus;
   operator: { pubkey: string; relay?: string };
   observers?: { pubkey: string; relay?: string }[];
-  streams: StreamDescriptor[];
   /**
-   * Highest turn `seq` emitted on this stream. The head itself takes no
-   * sequence number.
+   * The highest turn `seq` so far, which is also the turn count. The head
+   * itself takes no sequence number.
    */
   lastSeq: number;
-  /** Id of the most recent turn on this stream. */
-  head?: string;
-  turns: number;
   started: number;
   ended?: number;
   model?: { id: string; provider?: string };
@@ -231,7 +212,6 @@ export interface DecodedBase {
   pubkey: string;
   created_at: number;
   session: SessionRef;
-  transport?: Transport;
   alt?: string;
 }
 
@@ -246,7 +226,6 @@ export interface DecodedTurn extends DecodedBase {
   model?: { id: string; provider?: string };
   usage?: Usage;
   cost?: Cost;
-  ms?: number;
 }
 
 export interface DecodedDelta extends DecodedBase {
@@ -264,10 +243,7 @@ export interface DecodedHead extends DecodedBase {
   status: SessionStatus;
   operator: { pubkey: string; relay?: string };
   observers: { pubkey: string; relay?: string }[];
-  streams: StreamDescriptor[];
   lastSeq: number;
-  head?: string;
-  turns: number;
   started: number;
   ended?: number;
   model?: { id: string; provider?: string };

@@ -92,13 +92,6 @@ function cursorTags(seq: number, prev?: string): string[][] {
   return tags;
 }
 
-function msTag(ms?: number): string[][] {
-  if (ms === undefined) return [];
-  if (!Number.isInteger(ms) || ms < 0 || ms > 999)
-    throw new Error(`agent-session: ms must be an integer 0-999, got ${ms}`);
-  return [["ms", String(ms)]];
-}
-
 // ── Turn ─────────────────────────────────────────────────────────────────────
 
 export function buildTurn(
@@ -120,7 +113,6 @@ export function buildTurn(
     ["turn", String(input.turn)],
     ["role", input.role],
     ["p", operator.pubkey, operator.relay ?? "", "operator"],
-    ...msTag(input.ms),
   ];
 
   if (input.stop) tags.push(["stop", input.stop]);
@@ -198,12 +190,7 @@ export function buildSessionHead(
 
   for (const observer of input.observers ?? [])
     tags.push(["p", observer.pubkey, observer.relay ?? "", "observer"]);
-  for (const stream of input.streams)
-    tags.push(["stream", stream.transport, stream.address, stream.visibility]);
-
   tags.push(["last-seq", String(input.lastSeq)]);
-  if (input.head) tags.push(["head", input.head]);
-  tags.push(["turns", String(input.turns)]);
   tags.push(["started", String(input.started)]);
   if (input.ended !== undefined) tags.push(["ended", String(input.ended)]);
   if (input.model)

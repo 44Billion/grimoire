@@ -8,7 +8,7 @@
  */
 
 import { MAX_COUNTER } from "./decode";
-import type { DecodedHead, DecodedTurn, Transport } from "./types";
+import type { DecodedHead, DecodedTurn } from "./types";
 
 /**
  * What carries `seq`: the turn, and nothing else.
@@ -19,10 +19,9 @@ import type { DecodedHead, DecodedTurn, Transport } from "./types";
  */
 export type SequencedEvent = DecodedTurn;
 
-/** A `seq` space. Two transports are two streams even for one session. */
+/** A `seq` space: one session. */
 export interface StreamKey {
   address: string;
-  transport: Transport | "unknown";
 }
 
 export interface Gap {
@@ -64,20 +63,17 @@ export interface MergedStream {
 const MAX_REPORTED_GAPS = 1000;
 
 function keyOf(event: SequencedEvent): string {
-  return `${event.session.agent}:${event.session.session}|${event.transport ?? "unknown"}`;
+  return `${event.session.agent}:${event.session.session}`;
 }
 
 /**
- * Sort key. `seq` first; then the rumor's own clock and its `ms` refinement;
- * then the id, so two devices holding the same events agree on the order even
- * when a publisher has misbehaved.
+ * Sort key. `seq` first, then the rumor's own clock, then the id — so two
+ * devices holding the same events agree on the order even when a publisher has
+ * misbehaved.
  */
 function compare(a: SequencedEvent, b: SequencedEvent): number {
   if (a.seq !== b.seq) return a.seq - b.seq;
   if (a.created_at !== b.created_at) return a.created_at - b.created_at;
-  const aMs = a.ms ?? 0;
-  const bMs = b.ms ?? 0;
-  if (aMs !== bMs) return aMs - bMs;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
@@ -109,7 +105,6 @@ export function mergeStream(
     const first = bucket[0]!;
     const stream: StreamKey = {
       address: `${first.session.agent}:${first.session.session}`,
-      transport: first.transport ?? "unknown",
     };
 
     // Deduplicate by event id before anything else: the same event can arrive

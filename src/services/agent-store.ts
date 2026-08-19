@@ -39,8 +39,7 @@ function toRumor(row: DmRumorRow): Rumor {
 }
 
 function decode(row: DmRumorRow): AgentSessionEvent | null {
-  // Everything from the private mirror arrived wrapped, so its stream is nip17.
-  return parseAgentEvent(toRumor(row), { transport: "nip17" });
+  return parseAgentEvent(toRumor(row));
 }
 
 async function scan(viewer: string, kinds: Set<number>): Promise<DmRumorRow[]> {

@@ -50,15 +50,7 @@ describe("golden vectors", () => {
       title: "relay-subscription refactor",
       status: "active",
       operator: { pubkey: OPERATOR },
-      streams: [
-        {
-          transport: "nip17",
-          address: OPERATOR,
-          visibility: "private",
-        },
-      ],
       lastSeq: 2,
-      turns: 1,
       started: AT - 100,
       definition: `31779:${AGENT}:hex`,
       createdAt: AT,
@@ -155,18 +147,6 @@ describe("encode", () => {
       "Bash",
       "Read",
     ]);
-  });
-
-  it("rejects an ms outside Concord's 0-999 grammar", () => {
-    expect(() =>
-      buildTurn(
-        AGENT,
-        ref,
-        { role: "user", blocks: [], turn: 1, ms: 1000, createdAt: AT },
-        { seq: 1 },
-        { pubkey: OPERATOR },
-      ),
-    ).toThrow(/0-999/);
   });
 
   it("empties a heartbeat's content", () => {

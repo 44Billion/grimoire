@@ -25,8 +25,6 @@ import type {
   DecodedTurn,
   DeltaKind,
   SessionStatus,
-  StreamDescriptor,
-  Transport,
   TurnRole,
   UnsignedRumor,
   Usage,
@@ -48,7 +46,6 @@ const DELTA_KINDS: readonly string[] = [
   "tool",
   "heartbeat",
 ];
-const TRANSPORTS: readonly string[] = ["nip17", "nip29", "concord"];
 
 function tag(rumor: UnsignedRumor, name: string): string[] | undefined {
   return rumor.tags.find((t) => t[0] === name && t[1] !== undefined);
@@ -118,14 +115,6 @@ function costOf(rumor: UnsignedRumor): Cost | undefined {
   return t?.[1] && t[2] ? { amount: t[1], currency: t[2] } : undefined;
 }
 
-function msOf(rumor: UnsignedRumor): number | undefined {
-  const raw = value(rumor, "ms");
-  if (raw === undefined) return undefined;
-  // Concord's grammar: strict decimal, 0-999, no padding games.
-  if (!/^(0|[1-9]\d{0,2})$/.test(raw)) return undefined;
-  return Number(raw);
-}
-
 /**
  * The session an event claims, and the author check that makes the claim worth
  * anything: the agent's pubkey is inside the address, so an event signed by
@@ -164,11 +153,6 @@ function blocksOf(rumor: UnsignedRumor): ContentBlock[] | null {
   }
 }
 
-export interface ParseOptions {
-  /** Which transport this arrived on. Streams are never merged across transports. */
-  transport?: Transport;
-}
-
 /**
  * Decode one rumor. Returns null for anything that is not a well-formed event of
  * this NIP authored by the agent it names — a caller may render `alt` for a turn
@@ -176,15 +160,14 @@ export interface ParseOptions {
  */
 export function parseAgentEvent(
   rumor: UnsignedRumor & { id: string },
-  options: ParseOptions = {},
 ): AgentSessionEvent | null {
   switch (rumor.kind) {
     case KIND_TURN:
-      return parseTurn(rumor, options);
+      return parseTurn(rumor);
     case KIND_DELTA:
-      return parseDelta(rumor, options);
+      return parseDelta(rumor);
     case KIND_SESSION_HEAD:
-      return parseHead(rumor, options);
+      return parseHead(rumor);
     case KIND_AGENT_DEFINITION:
       return parseDefinition(rumor);
     default:
@@ -192,10 +175,7 @@ export function parseAgentEvent(
   }
 }
 
-function parseTurn(
-  rumor: UnsignedRumor & { id: string },
-  options: ParseOptions,
-): DecodedTurn | null {
+function parseTurn(rumor: UnsignedRumor & { id: string }): DecodedTurn | null {
   const session = sessionOf(rumor);
   const seq = counter(value(rumor, "seq"));
   const turn = counter(value(rumor, "turn"));
@@ -214,7 +194,6 @@ function parseTurn(
     pubkey: rumor.pubkey,
     created_at: rumor.created_at,
     session,
-    transport: options.transport,
     alt: value(rumor, "alt"),
     seq,
     prev,
@@ -225,13 +204,11 @@ function parseTurn(
     model: modelOf(rumor),
     usage: usageOf(rumor),
     cost: costOf(rumor),
-    ms: msOf(rumor),
   };
 }
 
 function parseDelta(
   rumor: UnsignedRumor & { id: string },
-  options: ParseOptions,
 ): DecodedDelta | null {
   const session = sessionOf(rumor);
   const turn = counter(value(rumor, "turn"));
@@ -249,7 +226,6 @@ function parseDelta(
     pubkey: rumor.pubkey,
     created_at: rumor.created_at,
     session,
-    transport: options.transport,
     turn,
     part,
     delta: delta as DeltaKind,
@@ -258,10 +234,7 @@ function parseDelta(
   };
 }
 
-function parseHead(
-  rumor: UnsignedRumor & { id: string },
-  options: ParseOptions,
-): DecodedHead | null {
+function parseHead(rumor: UnsignedRumor & { id: string }): DecodedHead | null {
   const sessionId = value(rumor, "d");
   const status = value(rumor, "status");
   const operator = operatorOf(rumor);
@@ -269,24 +242,12 @@ function parseHead(
   if (!sessionId || !operator || started === undefined) return null;
   if (!SESSION_STATUSES.includes(status ?? "")) return null;
 
-  const streams: StreamDescriptor[] = [];
-  for (const t of rumor.tags) {
-    if (t[0] !== "stream" || !t[1] || !t[2]) continue;
-    if (!TRANSPORTS.includes(t[1])) continue;
-    streams.push({
-      transport: t[1] as Transport,
-      address: t[2],
-      visibility: t[3] === "public" ? "public" : "private",
-    });
-  }
-
   return {
     type: "head",
     id: rumor.id,
     pubkey: rumor.pubkey,
     created_at: rumor.created_at,
     session: { agent: rumor.pubkey, session: sessionId },
-    transport: options.transport,
     alt: value(rumor, "alt"),
     title: value(rumor, "title") ?? "",
     status: status as SessionStatus,
@@ -295,10 +256,7 @@ function parseHead(
       .filter((t) => t[0] === "p" && t[3] === "observer")
       .map((t) => personOf(t))
       .filter((p): p is { pubkey: string; relay?: string } => !!p),
-    streams,
     lastSeq: counter(value(rumor, "last-seq")) ?? 0,
-    head: value(rumor, "head"),
-    turns: counter(value(rumor, "turns")) ?? 0,
     started,
     ended: integer(value(rumor, "ended")),
     model: modelOf(rumor),
