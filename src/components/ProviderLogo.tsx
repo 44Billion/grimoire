@@ -25,6 +25,25 @@ function slugFor(provider: string): string {
   return lower;
 }
 
+/**
+ * Split a model into the vendor that made it and the name people call it.
+ *
+ * A model id carries its own path — `moonshotai/kimi-k3` — and a route may sit in
+ * front of it, so `ppq/moonshotai/kimi-k3` is three segments: who served it, who
+ * built it, and what it is. The vendor is what a logo means, and the last segment
+ * is what anyone actually reads. `provider` is only used when the id carries no
+ * path of its own.
+ */
+export function splitModel(
+  model: string | undefined,
+  provider?: string,
+): { vendor?: string; label?: string } {
+  if (!model) return {};
+  const parts = model.split("/").filter(Boolean);
+  if (parts.length === 1) return { vendor: provider, label: parts[0] };
+  return { vendor: parts[parts.length - 2], label: parts[parts.length - 1] };
+}
+
 export function ProviderLogo({
   provider,
   className,

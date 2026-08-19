@@ -21,7 +21,7 @@ import {
 } from "@/components/agent/transcript";
 import { UserName } from "@/components/nostr/UserName";
 import Timestamp from "@/components/Timestamp";
-import { ProviderLogo } from "@/components/ProviderLogo";
+import { ProviderLogo, splitModel } from "@/components/ProviderLogo";
 import { cn } from "@/lib/utils";
 import { BaseEventContainer } from "./BaseEventRenderer";
 
@@ -165,6 +165,9 @@ export function AgentTurnParts({ parts }: { parts: TurnPart[] }) {
 export function TranscriptBlockBody({ block }: { block: TranscriptBlock }) {
   const isUser = block.side === "user";
   const totals = blockTotals(block);
+  // `ppq/moonshotai/kimi-k3` is a route, a vendor and a name. The logo is the
+  // vendor's; the text is the name. The whole string stays in the tooltip.
+  const model = splitModel(totals.model, totals.provider);
 
   return (
     <div
@@ -204,10 +207,13 @@ export function TranscriptBlockBody({ block }: { block: TranscriptBlock }) {
             {totals.stop && (
               <span className="text-destructive/80">{totals.stop}</span>
             )}
-            {totals.model && (
-              <span className="flex items-center gap-1">
-                <ProviderLogo provider={totals.provider} />
-                {totals.model}
+            {model.label && (
+              <span
+                className="flex items-center gap-1"
+                title={totals.model}
+              >
+                <ProviderLogo provider={model.vendor} />
+                {model.label}
               </span>
             )}
             {(totals.input > 0 || totals.output > 0) && (
