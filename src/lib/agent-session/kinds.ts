@@ -24,6 +24,20 @@ export const KIND_SESSION_HEAD = 31777;
 export const KIND_TURN = 1777;
 
 /**
+ * Session Control — regular, authored by the OPERATOR rather than the agent.
+ *
+ * The only kind here that makes an agent act rather than describing what it did,
+ * which is why its authorisation is a decode-time rule: it is honoured only from
+ * the pubkey the session's own head names as `operator`.
+ *
+ * One kind carrying a `command` tag rather than a kind per verb, for the same
+ * reason a turn carries `role`. The usual argument for splitting — that a relay
+ * can filter on kind — buys nothing: the channel is wrapped, so no relay sees
+ * any of it.
+ */
+export const KIND_SESSION_CONTROL = 1779;
+
+/**
  * Delta — ephemeral. Token-level output; relays MUST NOT store it. Everything a
  * delta carries is repeated in the `1777` that closes the turn, so a client that
  * missed one has lost nothing but liveness.

@@ -40,6 +40,19 @@ const STATUS_STYLE: Record<string, StatusStyle> = {
     pulse: true,
   },
   idle: { dot: "bg-info", text: "text-info" },
+  /**
+   * Blocked on a sign-in the agent cannot do for itself.
+   *
+   * It had no entry at all, so it fell through to the unknown style: a grey dot,
+   * the raw string as its label, and a sort rank below `done`. A session waiting
+   * on a person was filed under "over".
+   */
+  "payment-required": {
+    dot: "bg-warning",
+    text: "text-warning",
+    label: "needs sign-in",
+    pulse: true,
+  },
   done: { dot: "bg-muted-foreground", text: "text-muted-foreground" },
   error: { dot: "bg-destructive", text: "text-destructive" },
   aborted: { dot: "bg-muted-foreground", text: "text-muted-foreground" },

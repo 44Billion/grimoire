@@ -87,7 +87,7 @@ export class DmUndeliverableError extends Error {
  * in a gift wrap, so this is the one delivery path and each caller only decides
  * what rumor to build.
  */
-async function deliverRumor(
+export async function deliverRumor(
   viewer: string,
   signer: EventSigner,
   peerRelays: Map<string, string[]>,

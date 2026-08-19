@@ -277,6 +277,9 @@ function parseHead(rumor: UnsignedRumor & { id: string }): DecodedHead | null {
     model: modelOf(rumor),
     usage: usageOf(rumor),
     cost: costOf(rumor),
+    pending: rumor.tags
+      .filter((t) => t[0] === "input" && t[1])
+      .map((t) => t[1]!),
     deltaRelays: rumor.tags
       .filter((t) => t[0] === "delta-relay" && t[1])
       .map((t) => t[1]!)

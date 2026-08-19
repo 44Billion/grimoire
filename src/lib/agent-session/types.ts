@@ -87,6 +87,34 @@ export interface ToolResultPart {
   truncated?: Truncation;
 }
 
+/**
+ * A question the run is blocked on, in the transcript that asked it.
+ *
+ * Carried in full — prompt, options and the tool it acts on — because a reader
+ * that cannot see the options cannot answer, and one that cannot answer watches
+ * the session stay stuck.
+ */
+export interface InputRequestPart {
+  type: "input_request";
+  requestId: string;
+  prompt: string;
+  /** `tool-approval` | `question` | `session-limit`, per the runtime. */
+  requestKind?: string;
+  /** `confirmation` | `select` | `text` — how the asker meant it to look. */
+  display?: string;
+  allowFreeform?: boolean;
+  options?: { id: string; label: string; description?: string; style?: string }[];
+  tool?: { name: string; callId?: string };
+}
+
+/** What became of it, so a transcript read later is not left hanging. */
+export interface InputResolvedPart {
+  type: "input_resolved";
+  requestId: string;
+  outcome: string;
+  response?: { optionId?: string; text?: string };
+}
+
 export interface ImagePart {
   type: "image";
   url: string;
@@ -96,7 +124,13 @@ export interface ImagePart {
 
 /** The part types this revision defines. */
 export type ContentPart =
-  TextPart | ReasoningPart | ToolCallPart | ToolResultPart | ImagePart;
+  | TextPart
+  | ReasoningPart
+  | ToolCallPart
+  | ToolResultPart
+  | InputRequestPart
+  | InputResolvedPart
+  | ImagePart;
 
 /** A part whose `type` this build does not know. */
 export interface UnknownPart {
@@ -118,6 +152,8 @@ const KNOWN_PART_TYPES: ReadonlySet<string> = new Set([
   "reasoning",
   "tool_call",
   "tool_result",
+  "input_request",
+  "input_resolved",
   "image",
 ]);
 
@@ -303,6 +339,13 @@ export interface DecodedHead extends DecodedBase {
    * run goes perfectly.
    */
   deltaRelays: string[];
+  /**
+   * Requests the run is blocked on, by id.
+   *
+   * The one thing that separates a session waiting on its operator from one that
+   * finished: the runtime's own boundary events are identical for both.
+   */
+  pending: string[];
   definition?: string;
 }
 

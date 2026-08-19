@@ -11,7 +11,10 @@ import type { NostrEvent } from "@/types/nostr";
 import { parseAgentEvent } from "@/lib/agent-session/decode";
 import { isKnownPart } from "@/lib/agent-session/types";
 import type { DecodedTurn, TurnPart } from "@/lib/agent-session/types";
+import { Check } from "lucide-react";
+
 import { Markdown } from "@/components/Markdown";
+import { InputRequestRow } from "@/components/agent/InputRequest";
 import { RichText } from "@/components/nostr/RichText";
 import { Label } from "@/components/ui/label";
 import { ToolExchangeRow, ToolResultRow } from "@/components/agent/tool-parts";
@@ -70,9 +73,15 @@ function Reasoning({ text }: { text: string }) {
 function AgentPart({
   part,
   side,
+  session,
+  pending,
 }: {
   part: TurnPart;
   side?: "user" | "agent";
+  /** Which session this turn belongs to, so a question can be answered. */
+  session?: { agent: string; session: string };
+  /** Requests still open, so an answered one renders as history. */
+  pending?: string[];
 }) {
   if (!isKnownPart(part))
     // A part type this build does not know. The rest of the turn still renders
@@ -150,6 +159,30 @@ function AgentPart({
         </div>
       );
 
+    case "input_request":
+      /**
+       * Rendered as settled here, because a bare part has no session behind it
+       * — the block renderer knows the address and the pending set, and passes
+       * both. A question with no way to answer it is still worth showing; a
+       * button that goes nowhere is not.
+       */
+      return (
+        <InputRequestRow
+          part={part}
+          agent={session?.agent ?? ""}
+          session={session?.session ?? ""}
+          settled={!session || !pending?.includes(part.requestId)}
+        />
+      );
+
+    case "input_resolved":
+      return (
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Check className="h-3 w-3 shrink-0" />
+          {part.response?.optionId ?? part.response?.text ?? part.outcome}
+        </p>
+      );
+
     case "image":
       return (
         <img
@@ -179,7 +212,20 @@ export function AgentTurnParts({ parts }: { parts: TurnPart[] }) {
  * call carries its own result, because on the page they are one row even though
  * the wire had to publish them as two turns.
  */
-export function TranscriptBlockBody({ block }: { block: TranscriptBlock }) {
+export function TranscriptBlockBody({
+  block,
+  /**
+   * Requests the session is still blocked on.
+   *
+   * Passed down rather than read here: a block knows what was asked, and only
+   * the head knows whether it is still being asked. Without it every question
+   * ever asked would render as live, which is worse than none of them doing.
+   */
+  pending,
+}: {
+  block: TranscriptBlock;
+  pending?: string[];
+}) {
   const isUser = block.side === "user";
   const totals = blockTotals(block);
   // `ppq/moonshotai/kimi-k3` is a route, a vendor and a name. The logo is the
@@ -264,7 +310,13 @@ export function TranscriptBlockBody({ block }: { block: TranscriptBlock }) {
             item.kind === "tool" ? (
               <ToolExchangeRow key={`${item.id}-${index}`} item={item} />
             ) : (
-              <AgentPart key={index} part={item.part} side={block.side} />
+              <AgentPart
+                key={index}
+                part={item.part}
+                side={block.side}
+                session={block.turns[0]?.session}
+                pending={pending}
+              />
             ),
           )
         ) : (

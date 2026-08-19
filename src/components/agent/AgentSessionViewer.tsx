@@ -22,6 +22,7 @@ import { useAgentDeltas } from "@/hooks/useAgentDeltas";
 import { groupTurns } from "@/components/agent/transcript";
 import { AgentSessionHeadBody } from "@/components/nostr/kinds/AgentSessionRenderers";
 import { StatusBadge } from "@/components/agent/status";
+import { SessionControls } from "@/components/agent/SessionControls";
 import { UserName } from "@/components/nostr/UserName";
 import { cn } from "@/lib/utils";
 
@@ -145,7 +146,16 @@ export function AgentSessionViewer({
           </p>
         ) : (
           <div className="flex flex-col gap-3">
-            {view.head && <AgentSessionHeadBody head={view.head} />}
+            {view.head && (
+              <>
+                <AgentSessionHeadBody head={view.head} />
+                <SessionControls
+                  agent={view.head.session.agent}
+                  session={view.head.session.session}
+                  status={view.head.status}
+                />
+              </>
+            )}
 
             {(view.gaps.length > 0 ||
               view.forks.length > 0 ||
@@ -178,7 +188,10 @@ export function AgentSessionViewer({
 
             {groupTurns(view.turns, view.head?.operator.pubkey).map((block) => (
               <article key={block.turns[0]!.id} className="pb-1">
-                <TranscriptBlockBody block={block} />
+                <TranscriptBlockBody
+                  block={block}
+                  pending={view.head?.pending}
+                />
               </article>
             ))}
 
@@ -209,6 +222,7 @@ export function AgentSessionViewer({
 const STATUS_ORDER = [
   "active",
   "awaiting-input",
+  "payment-required",
   "idle",
   "error",
   "aborted",
