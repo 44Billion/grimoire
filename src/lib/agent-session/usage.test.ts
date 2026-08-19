@@ -10,8 +10,9 @@ describe("cacheRate", () => {
      * dividing by `input + cacheRead` counts the cached tokens twice and always
      * reads low — 33% where the truth is 50%.
      */
-    expect(cacheRate({ input: 100, output: 10, cacheRead: 50, cacheWrite: 0 }))
-      .toBe(0.5);
+    expect(
+      cacheRate({ input: 100, output: 10, cacheRead: 50, cacheWrite: 0 }),
+    ).toBe(0.5);
   });
 
   it("has no rate when nothing was cached, rather than nought percent", () => {

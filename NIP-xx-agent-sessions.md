@@ -8,7 +8,9 @@ Agent Sessions
 
 ## Abstract
 
-Four kinds encode what an autonomous agent did: an **agent definition**, a **session head**, one **turn** per message, and an ephemeral **delta** while a turn is still being written.
+Five kinds encode an autonomous agent's work and the operator's hand on it.
+
+Four are written by the agent — an **agent definition**, a **session head**, one **turn** per message, and an ephemeral **delta** while a turn is still being written. The fifth goes the other way: a **session control** event, written by the operator, is how a reader answers a question the agent stopped to ask, or redirects it, or stops it.
 
 They are rumors, carried as NIP-59 gift wraps to whoever is meant to read them. A turn's shape — a `role` and an ordered list of `parts`, each `text`, `reasoning`, a tool call or its result — is the shape an agent runtime already has, so publishing is a mapping rather than a translation. Nothing here depends on that envelope — a transport that carries the same rumors carries the same session — but this document specifies only the wrapped case, because that is the only one with an implementation behind it.
 
@@ -16,9 +18,10 @@ They are rumors, carried as NIP-59 gift wraps to whoever is meant to read them. 
 
 | kind    | class       | name             | notes |
 | ------- | ----------- | ---------------- | ----- |
-| `31779` | addressable | Agent Definition | One per `(pubkey, d)`; `d` is the agent's slug. |
+| `31779` | addressable | Agent Definition | One per `(pubkey, d)`. `d` names what it describes: an agent's slug, or a session id for a snapshot of one run. |
 | `31777` | addressable | Session Head     | One per `(pubkey, d)`; `d` is the session id. |
 | `1777`  | regular     | Turn             | Append-only. A correction is a new turn, never an overwrite. |
+| `1779`  | regular     | Session Control  | Written by the OPERATOR, not the agent. The only kind here that makes an agent act. |
 | `21777` | ephemeral   | Delta            | Relays MUST NOT store it. Everything it carries is repeated in the turn that closes it. |
 
 Envelopes are reused unchanged: `kind:1059` wrap with a `kind:13` seal (NIP-59), and `kind:21059` for a delta so the wrap is dropped with its payload.
@@ -29,14 +32,33 @@ The numbers are a family with `kind:777` (spells) and `kind:30777` (spellbooks).
 
 | Registry | Result |
 | --- | --- |
-| Upstream event-kind table (`nostr-protocol/nips` `README.md`, commit `656cecc7c0a815b6a2b218d3b5d6f078b3f4dbab`) | `1777`, `21777`, `31777` and `31779` all unassigned; nothing assigned in `1770`-`1789`, `21770`-`21779` or `31770`-`31789`. |
-| nostrbook.dev (`https://nostrbook.dev/kinds/<n>`) | All four HTTP 404 — no entry. |
+| Upstream event-kind table (`nostr-protocol/nips` `README.md`, commit `656cecc7c0a815b6a2b218d3b5d6f078b3f4dbab`) | `1777`, `1779`, `21777`, `31777` and `31779` all unassigned; nothing assigned in `1770`-`1789`, `21770`-`21779` or `31770`-`31789`. |
+| nostrbook.dev (`https://nostrbook.dev/kinds/<n>`) | All HTTP 404 — no entry. |
+
+`1778` is deliberately unused. It held a coarse stored "milestone" until that
+turned out to restate what the turn beside it already said; what it alone could
+carry moved onto the head's `status`. Burned rather than recycled, so a reader
+that once saw one never mistakes a later kind for it.
 
 Both registries are advisory and neither reserves numbers, so an unregistered kind may still be in use by an unpublished client.
 
 ## Agent Definition — `kind:31779`
 
-Authored by the agent's own key. What the agent *is*, as opposed to what one run of it is doing.
+Authored by the agent's own key. What the agent was set up with.
+
+`d` names what the definition describes, and there are two useful answers. A
+**standing definition** uses the agent's slug and says what the agent is in
+general. A **session snapshot** uses a session id and says what applied to one
+run — the prompt that produced that transcript, and the tools that were on offer
+while it did. An agent whose configuration changes SHOULD publish the snapshot,
+because a standing definition read a month later describes an agent that has
+since been edited, and a reader has no way to tell.
+
+A snapshot is published once and never updated. One that kept up with its subject
+would not be a snapshot. It is its own event rather than tags on the head because
+a head is republished on every status change and every turn, sealed and wrapped
+once per recipient each time, while a prompt and a set of tool schemas is
+kilobytes; the head points at it through `agent`.
 
 **`content` is the system prompt itself** — plain text, nothing wrapping it, so anyone reading the raw event reads what the agent was told. It is published whole or left empty; a half-published prompt reads as the whole one. Everything else is a tag, `v` included, so a later revision of this shape is a version bump rather than a parse fork.
 
@@ -87,11 +109,27 @@ One run's current state. `content` is a human-readable summary and MAY be empty.
 | `ended`    | `<unix-seconds>`; present iff `status` is terminal | no | no |
 | `model`    | `<model-id>`, `<provider>` | no | no |
 | `usage`    | `<in>`, `<out>`, `<cache-read>`, `<cache-write>` | no | no |
-| `cost`     | `<amount>`, `<currency>` | no | no |
-| `agent`    | `31779:<pubkey>:<slug>` | no | no |
+| `cost`     | `<amount>`, `<currency>`, `estimated` | no | no |
+| `input`    | `<request-id>` — one per request the run is blocked on | no | no |
+| `delta-relay` | `<relay>` — where this session's `21777`s are published | no | no |
+| `agent`    | `31779:<pubkey>:<d>` — the definition or snapshot describing this run | no | no |
 | `alt`      | `<string>` | no | yes |
 
 The last three statuses are terminal; `awaiting-input` and `payment-required` are [NIP-90](90.md)'s values verbatim.
+
+A third element on `cost` marks a figure that was **worked out** from token counts
+and list prices rather than billed by a provider — plenty of providers report no
+cost at all, and a transcript with usage and a blank where the money goes is no
+use to anyone auditing spend. A reader that ignores the third element gets a
+number that is approximately right; one that reads it can say so.
+
+`delta-relay` exists because deltas ride `kind:21059`, which a recipient's DM
+inbox relay is entitled to refuse — and in practice they do. A publisher that
+sends deltas anywhere other than the recipient's own inbox MUST say where, or the
+reader watches a status that never moves while the run goes perfectly.
+
+**`input` is what separates a blocked session from a finished one**, and nothing
+else does. See *Blocked Sessions*.
 
 **The head takes no `seq`.** It is addressable, so a relay deletes the version it supersedes — a sequence number it had consumed would name an event that is gone, and every later reader would see a hole it can never fill. Wrapped, no relay can replace it either, so a reader keeps the newest `created_at` per `(pubkey, d)`.
 
@@ -111,13 +149,26 @@ tool_result = { "type":"tool_result", "id","name", "ok": <bool>,
                                       "ref"?: <blob-ref>, "truncated"?: <truncation> }
 image       = { "type":"image",       "url","mime", "sha256"? }
 
+input_request  = { "type":"input_request",  "requestId", "prompt",
+                   "requestKind"?, "display"?, "allowFreeform"?,
+                   "options"?: [ { "id","label","description"?,"style"? } ],
+                   "tool"?: { "name", "callId"? } }
+input_resolved = { "type":"input_resolved", "requestId", "outcome",
+                   "response"?: { "optionId"?, "text"? } }
+
 truncation  = { "bytes", "sha256" }          // of the ORIGINAL
 blob-ref    = { "sha256","url","size","mime" }
 ```
 
 `arguments: null` with a digest means the call was too large to carry; the digest still names which call it was. `output: null` with a `ref` means the result was too large to inline.
 
-**The list of part types is open.** Those five are the ones this revision defines and the ones a client should implement; an agent MAY emit others. A client MUST keep a part whose `type` it does not recognise, render what it can around it, and MUST NOT discard the turn — a turn from a later revision is still most of a turn.
+`input_request` is a question the run stopped to ask, carried in full because a
+reader that cannot see the options cannot answer, and one that cannot answer
+watches the session stay stuck. `input_resolved` records what became of it, so a
+transcript read afterwards is not left hanging. Whether a request is STILL open is
+not a property of a turn — turns are history — and lives on the head's `input`.
+
+**The list of part types is open.** Those seven are the ones this revision defines and the ones a client should implement; an agent MAY emit others. A client MUST keep a part whose `type` it does not recognise, render what it can around it, and MUST NOT discard the turn — a turn from a later revision is still most of a turn.
 
 | tag     | value | indexable | req |
 | ------- | ----- | --------- | --- |
@@ -127,10 +178,11 @@ blob-ref    = { "sha256","url","size","mime" }
 | `turn`  | logical turn index; an assistant reply and its tool results share it | no | yes |
 | `role`  | `user`\|`assistant`\|`tool` | no | yes |
 | `p`     | `<pubkey>`, `<relay>`, `<role>` — as on the head | yes | yes |
+| `subagent` | `<call-id>`, `<child-session-id>`, `<name>` — a child session this turn started | no | no |
 | `stop`  | `end_turn`\|`max_tokens`\|`tool_use`\|`content_filter`\|`error`; assistant only | no | no |
 | `model` | `<model-id>`, `<provider>`; assistant only | no | no |
 | `usage` | `<in>`, `<out>`, `<cache-read>`, `<cache-write>` | no | no |
-| `cost`  | `<amount>`, `<currency>` | no | no |
+| `cost`  | `<amount>`, `<currency>`, `estimated` | no | no |
 | `tool`  | one per distinct tool in `content` | yes | no |
 | `alt`   | plain-text rendering — what a client that cannot parse the parts shows | no | yes |
 
@@ -154,6 +206,95 @@ blob-ref    = { "sha256","url","size","mime" }
   ]
 }
 ```
+
+## Session Control — `kind:1779`
+
+Written by the **operator**, not the agent: the only kind here that makes an agent
+act rather than describing what it did. That inversion is the whole reason this
+section is careful.
+
+One kind carrying a `command` tag rather than a kind per verb, for the same reason
+a turn carries `role` rather than one kind per role. The usual argument for
+splitting — that a relay can filter on kind — buys nothing when the channel is
+wrapped and no relay can see any of it, and the verb set grows.
+
+| tag       | value | indexable | req |
+| --------- | ----- | --------- | --- |
+| `a`       | `31777:<agent>:<session>` — the session this acts on | yes | yes |
+| `p`       | `<agent>` — the key that must act | yes | yes |
+| `command` | `respond`\|`steer`\|`cancel`\|`compact`\|`clear` | no | yes |
+| `request` | the request id being answered; required for `respond` | no | no |
+| `turn`    | the turn being stopped, when `cancel` means a specific one | no | no |
+| `option`  | the chosen option's id, when the question offered any | no | no |
+| `alt`     | `<string>` | no | yes |
+
+`content` is free text: the answer for a `respond`, the message for a `steer`,
+empty otherwise. Prose goes in `content` — the one place this family always puts
+it.
+
+```json
+{
+  "kind": 1779,
+  "pubkey": "7fa5…operator",
+  "content": "",
+  "tags": [
+    ["a", "31777:9e1f…agent:3a7c…4e5f"],
+    ["p", "9e1f…agent"],
+    ["command", "respond"],
+    ["request", "req_01J8…"],
+    ["option", "approve"],
+    ["alt", "Session control: respond"]
+  ]
+}
+```
+
+There is deliberately **no `pause`**. A run parks because something asked it a
+question, not because it was told to wait, and a verb that cannot be honoured is
+worse than one that does not exist.
+
+Three rules matter more than the verb list.
+
+**Authorisation.** An agent MUST honour a control event only from the pubkey its
+own head names as `operator`, and MUST check that where it decodes rather than
+where it acts, so that no later call site can forget to ask. A control event for
+another agent is ignored; one from a stranger is refused, and an implementation
+SHOULD say so out loud, because that is somebody trying.
+
+**Scope, against replay.** A relay hands the same wrap over more than once. Every
+command names what it acts on — `respond` a request, `cancel` a turn — and an
+agent MUST ignore a command whose target has already settled. A bare `cancel`
+redelivered an hour later would otherwise stop a turn that had nothing to do with
+it.
+
+**No acknowledgement event.** The head's status changing *is* the receipt:
+`awaiting-input` becomes `active` when an answer lands. A reader already watches
+the head, and a second event saying what the first one already shows is a second
+thing to keep consistent.
+
+Unknown commands are ignored rather than refused, exactly as unknown part types
+and unknown statuses are: it is a newer client talking.
+
+## Blocked Sessions
+
+A run that stops to ask a question is neither working nor finished, and this is
+the part a client is most likely to get wrong — because a runtime's own boundary
+events usually cannot tell the difference. In the implementation this NIP is
+written from, a parked turn emits exactly what a completed turn emits, with
+identical payloads. **A publisher MUST NOT infer that a session ended from a
+runtime's end-of-turn signal alone.**
+
+What separates them is the head's `input` tags, and nothing else. A request is
+open from the moment it is asked until the moment it is resolved, the status is
+`awaiting-input` for as long as any is open, and a terminal status still wins —
+a run that ended is not waiting for anybody. A publisher MUST keep that set
+durably: held only in memory, a restart re-reads the stream, sees the end-of-turn
+signal, and republishes a session waiting on its operator as done.
+
+`payment-required` is the other blocked state and is **not** answerable through
+`1779`. It means a sign-in the agent cannot perform for itself; a human has to
+open a URL, and the runtime resolves it on its own once they do. A publisher
+SHOULD carry the challenge so the reader knows where to go. A reader SHOULD NOT
+offer to answer it.
 
 ## Delta — `kind:21777`
 
@@ -231,8 +372,13 @@ A turn that quietly lost half its content reads as a whole one, which is worse t
 
 ## What a Minimal Client Must Implement
 
-Read: subscribe `{"kinds":[1059],"#p":[<self>]}`, decrypt the wrap, decrypt the seal, check the seal's author against the rumor's, then check the rumor's author against its `a` address. Sort turns by `seq`, render `alt` when `content` will not parse, and compare what you hold against the head's `last-seq`. Deltas and `21059` are optional.
+Read: subscribe `{"kinds":[1059],"#p":[<self>]}`, decrypt the wrap, decrypt the seal, check the seal's author against the rumor's, then check the rumor's author against its `a` address. Sort turns by `seq`, render `alt` when `content` will not parse, and compare what you hold against the head's `last-seq`. Treat a head carrying `input` tags as waiting rather than finished. Deltas and `21059` are optional.
 
-Publish: a persistent key with a `kind:0`, one `31777` head kept current, and one `1777` per message carrying `a`/`seq`/`prev`/`turn`/`role`/`p`/`alt`. Definitions, deltas and blob refs are all optional.
+Publish: a persistent key with a `kind:0`, one `31777` head kept current, and one `1777` per message carrying `a`/`seq`/`prev`/`turn`/`role`/`p`/`alt`. Definitions, deltas and blob refs are all optional. A publisher that can be blocked MUST keep its open requests on the head, durably.
 
-A client MUST NOT require deltas to render a session, nor blob fetching to render a turn.
+Control is optional to send and **mandatory to authorise**: an agent that reads
+`1779` at all MUST check the author against its own head's `operator` before
+honouring it. An agent that does not read it simply cannot be steered, which is a
+coherent thing to be.
+
+A client MUST NOT require deltas to render a session, nor blob fetching to render a turn, nor a definition to render either.

@@ -103,7 +103,12 @@ export interface InputRequestPart {
   /** `confirmation` | `select` | `text` — how the asker meant it to look. */
   display?: string;
   allowFreeform?: boolean;
-  options?: { id: string; label: string; description?: string; style?: string }[];
+  options?: {
+    id: string;
+    label: string;
+    description?: string;
+    style?: string;
+  }[];
   tool?: { name: string; callId?: string };
 }
 
