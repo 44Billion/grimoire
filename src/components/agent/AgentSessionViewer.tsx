@@ -9,7 +9,8 @@ import {
   type AgentSessionView,
 } from "@/services/agent-store";
 import type { DecodedHead } from "@/lib/agent-session/types";
-import { AgentTurnBody } from "@/components/nostr/kinds/AgentTurnRenderer";
+import { TranscriptBlockBody } from "@/components/nostr/kinds/AgentTurnRenderer";
+import { groupTurns } from "@/components/agent/transcript";
 import { AgentSessionHeadBody } from "@/components/nostr/kinds/AgentSessionRenderers";
 import { Label } from "@/components/ui/label";
 import Timestamp from "@/components/Timestamp";
@@ -171,12 +172,9 @@ export function AgentSessionViewer({
               </div>
             )}
 
-            {view.turns.map((turn) => (
-              <article
-                key={turn.id}
-                className="border-b border-border pb-3 last:border-b-0"
-              >
-                <AgentTurnBody turn={turn} />
+            {groupTurns(view.turns, view.head?.operator.pubkey).map((block) => (
+              <article key={block.turns[0]!.id} className="pb-1">
+                <TranscriptBlockBody block={block} />
               </article>
             ))}
 

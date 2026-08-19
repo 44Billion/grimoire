@@ -5,7 +5,7 @@ import type { NostrEvent } from "@/types/nostr";
 import { parseAgentEvent } from "@/lib/agent-session/decode";
 import type { DecodedDefinition, DecodedHead } from "@/lib/agent-session/types";
 import { Label } from "@/components/ui/label";
-import { UserName } from "@/components/nostr/UserName";
+import { useLocale } from "@/hooks/useLocale";
 import { BaseEventContainer } from "./BaseEventRenderer";
 
 /** Terminal statuses read differently from a run still going. */
@@ -13,7 +13,52 @@ function StatusLabel({ status }: { status: string }) {
   return <Label size="sm">{status}</Label>;
 }
 
+/**
+ * One number, named. The point of the row is to be readable at a glance, so the
+ * figure is the loud part and the word under it is the quiet part.
+ */
+function Stat({
+  label,
+  value,
+  title,
+}: {
+  label: string;
+  value: string;
+  title?: string;
+}) {
+  return (
+    <div className="flex flex-col" title={title}>
+      <span className="font-mono text-sm text-foreground">{value}</span>
+      <span className="text-[10px] tracking-wide text-muted-foreground uppercase">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+/** Thousands separators from the reader's locale, never a hardcoded one. */
+function useCompactNumber() {
+  const { locale } = useLocale();
+  return (value: number) => new Intl.NumberFormat(locale).format(value);
+}
+
 export function AgentSessionHeadBody({ head }: { head: DecodedHead }) {
+  const format = useCompactNumber();
+  const usage = head.usage;
+
+  /**
+   * What share of the prompt was served from cache.
+   *
+   * `cacheRead` is a SUBSET of `input` — Eve fills it from
+   * `inputTokenDetails.cacheReadTokens`, checked against the package rather than
+   * assumed — so the denominator is the input count and the ratio cannot exceed
+   * 100%. It is the number that explains a cheap long session.
+   */
+  const cacheRate =
+    usage && usage.input > 0 && usage.cacheRead > 0
+      ? Math.round((usage.cacheRead / usage.input) * 100)
+      : undefined;
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
@@ -23,17 +68,34 @@ export function AgentSessionHeadBody({ head }: { head: DecodedHead }) {
         </span>
         <StatusLabel status={head.status} />
       </div>
-      <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-        <Label size="sm">{head.lastSeq} turns</Label>
-        {head.model && <Label size="sm">{head.model.id}</Label>}
-        {head.cost && (
-          <Label size="sm">
-            {head.cost.amount} {head.cost.currency}
-          </Label>
+      <div className="flex flex-wrap items-end gap-x-5 gap-y-2">
+        {usage && (
+          <>
+            <Stat label="in" value={format(usage.input)} />
+            <Stat label="out" value={format(usage.output)} />
+            {usage.cacheRead > 0 && (
+              <Stat
+                label="cached"
+                value={format(usage.cacheRead)}
+                title="Input tokens served from the provider's cache"
+              />
+            )}
+            {cacheRate !== undefined && (
+              <Stat
+                label="cache rate"
+                value={`${cacheRate}%`}
+                title={`${format(usage.cacheRead)} of ${format(usage.input)} input tokens came from cache`}
+              />
+            )}
+          </>
         )}
-        <span className="flex items-center gap-1">
-          for <UserName pubkey={head.operator.pubkey} />
-        </span>
+        {head.cost && (
+          <Stat
+            label={head.cost.currency}
+            value={head.cost.amount}
+            title="What this session cost the operator"
+          />
+        )}
       </div>
     </div>
   );

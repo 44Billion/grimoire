@@ -1,66 +1,66 @@
 import { useMemo, useState } from "react";
-import { ChevronRight, Wrench } from "lucide-react";
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Bot,
+  Brain,
+  ChevronRight,
+} from "lucide-react";
 
 import type { NostrEvent } from "@/types/nostr";
 import { parseAgentEvent } from "@/lib/agent-session/decode";
 import { isKnownPart } from "@/lib/agent-session/types";
 import type { DecodedTurn, TurnPart } from "@/lib/agent-session/types";
-import { RichText } from "@/components/nostr/RichText";
+import { Markdown } from "@/components/Markdown";
 import { Label } from "@/components/ui/label";
+import { ToolExchangeRow, ToolResultRow } from "@/components/agent/tool-parts";
+import {
+  blockTotals,
+  groupTurns,
+  type TranscriptBlock,
+} from "@/components/agent/transcript";
+import { UserName } from "@/components/nostr/UserName";
+import Timestamp from "@/components/Timestamp";
+import { ProviderLogo } from "@/components/ProviderLogo";
 import { cn } from "@/lib/utils";
 import { BaseEventContainer } from "./BaseEventRenderer";
 
 /**
- * One turn of an agent's transcript.
+ * One turn of an agent's transcript, laid out like a conversation.
+ *
+ * The grammar is the `ai` window's, because it is the same object: what the
+ * person said sits right in a bubble, what the agent said sits left as prose,
+ * reasoning is folded away, and a tool is a quiet row rather than a block of
+ * JSON. What differs is that this one is READ — there is no streaming cursor and
+ * nothing to approve — so the per-turn metadata (`seq`, model, stop, cost) is
+ * pushed to a footer instead of a header: a reader wants the conversation, and
+ * reaches for the sequence number only when something looks wrong.
  *
  * Everything structured goes through `parseAgentEvent`, which is the security
- * boundary — a turn whose author is not the agent named in its own address
- * never gets here. A turn that fails to parse still renders: its `alt` tag is
- * what a client that cannot read the parts is supposed to show.
+ * boundary — a turn whose author is not the agent named in its own address never
+ * gets here. A turn that fails to parse still renders: its `alt` tag is what a
+ * client that cannot read the parts is supposed to show.
  */
 
-export function AgentTurnParts({ parts }: { parts: TurnPart[] }) {
-  return (
-    <div className="flex flex-col gap-2">
-      {parts.map((part, index) => (
-        <AgentPart key={index} part={part} />
-      ))}
-    </div>
-  );
-}
-
-function Collapsible({
-  title,
-  tone = "muted",
-  children,
-}: {
-  title: string;
-  tone?: "muted" | "tool";
-  children: React.ReactNode;
-}) {
+function Reasoning({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded border border-dotted border-border">
+    <div className="flex flex-col gap-1">
       <button
         type="button"
         onClick={() => setOpen((was) => !was)}
-        className={cn(
-          "flex w-full items-center gap-1 px-2 py-1 text-left text-xs",
-          tone === "tool" ? "text-foreground" : "text-muted-foreground",
-        )}
+        className="flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
       >
         <ChevronRight
-          className={cn(
-            "h-3 w-3 shrink-0 transition-transform",
-            open && "rotate-90",
-          )}
+          className={cn("h-3 w-3 transition-transform", open && "rotate-90")}
         />
-        <span className="truncate font-mono">{title}</span>
+        <Brain className="h-3 w-3" />
+        <span>Reasoning</span>
       </button>
       {open && (
-        <pre className="max-h-64 overflow-auto border-t border-dotted border-border px-2 py-1 font-mono text-xs whitespace-pre-wrap">
-          {children}
-        </pre>
+        <p className="border-l-2 border-border pl-3 text-xs whitespace-pre-wrap text-muted-foreground">
+          {text}
+        </p>
       )}
     </div>
   );
@@ -71,39 +71,52 @@ function AgentPart({ part }: { part: TurnPart }) {
     // A part type this build does not know. The rest of the turn still renders
     // — that is the point of leaving the list open.
     return (
-      <Collapsible title={`${part.type} (unrecognised)`}>
-        {JSON.stringify(part, null, 2)}
-      </Collapsible>
+      <div className="rounded border border-dotted border-border px-2 py-1">
+        <p className="text-xs text-muted-foreground">
+          a {String(part.type)} part, which this build cannot show
+        </p>
+      </div>
     );
 
   switch (part.type) {
     case "text":
-      return <RichText content={part.text} />;
+      // Markdown, not `RichText`: this is a model's prose, and the same renderer
+      // the `ai` window uses. A transcript full of literal asterisks is the
+      // failure this exists to avoid.
+      return <Markdown>{part.text}</Markdown>;
 
     case "reasoning":
-      return <Collapsible title="reasoning">{part.text}</Collapsible>;
+      return <Reasoning text={part.text} />;
 
     case "tool_call":
+      // Reached only when a call arrives with no result in view — grouping pairs
+      // them everywhere else.
       return (
-        <Collapsible tone="tool" title={`↳ ${part.name}`}>
-          {part.arguments === null
-            ? `arguments too large to carry${part.arguments_digest ? ` (${part.arguments_digest})` : ""}`
-            : JSON.stringify(part.arguments, null, 2)}
-        </Collapsible>
+        <ToolExchangeRow
+          item={{
+            kind: "tool",
+            id: part.id,
+            name: part.name,
+            arguments: part.arguments,
+            argumentsDigest: part.arguments_digest,
+          }}
+        />
       );
 
     case "tool_result":
       return (
         <div className="flex flex-col gap-1">
-          <Collapsible
-            tone="tool"
-            title={`${part.name} — ${part.ok ? "ok" : "failed"}`}
-          >
-            {part.output ??
-              (part.ref
-                ? `stored out of band: ${part.ref.size} bytes, ${part.ref.sha256}`
-                : "this turn carried no output")}
-          </Collapsible>
+          <ToolResultRow
+            result={{
+              name: part.name,
+              ok: part.ok,
+              output:
+                part.output ??
+                (part.ref
+                  ? `stored out of band: ${part.ref.size} bytes, ${part.ref.sha256}`
+                  : null),
+            }}
+          />
           {part.truncated && (
             <Label size="sm">{part.truncated.bytes} bytes truncated</Label>
           )}
@@ -112,7 +125,7 @@ function AgentPart({ part }: { part: TurnPart }) {
               href={part.ref.url}
               target="_blank"
               rel="noreferrer"
-              className="text-xs text-muted-foreground underline"
+              className="w-fit text-xs text-muted-foreground underline"
             >
               full output ({part.ref.size} bytes)
             </a>
@@ -131,40 +144,135 @@ function AgentPart({ part }: { part: TurnPart }) {
   }
 }
 
-export function AgentTurnBody({ turn }: { turn: DecodedTurn }) {
-  const tools = turn.parts
-    .filter((part) => part.type === "tool_call" || part.type === "tool_result")
-    .map((part) => ("name" in part ? part.name : ""))
-    .filter(Boolean);
-
+export function AgentTurnParts({ parts }: { parts: TurnPart[] }) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-1">
-        <Label size="sm">{turn.role}</Label>
-        <Label size="sm">#{turn.seq}</Label>
-        {turn.model && <Label size="sm">{turn.model.id}</Label>}
-        {turn.stop && <Label size="sm">{turn.stop}</Label>}
-        {turn.cost && (
-          <Label size="sm">
-            {turn.cost.amount} {turn.cost.currency}
-          </Label>
+      {parts.map((part, index) => (
+        <AgentPart key={index} part={part} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * One side's contribution, as one block.
+ *
+ * The agent's consecutive turns are folded together — a step that reasons, calls
+ * three tools and answers is one thing it did, not four messages — and a tool
+ * call carries its own result, because on the page they are one row even though
+ * the wire had to publish them as two turns.
+ */
+export function TranscriptBlockBody({ block }: { block: TranscriptBlock }) {
+  const isUser = block.side === "user";
+  const totals = blockTotals(block);
+
+  return (
+    <div
+      className={cn(
+        "flex w-full flex-col gap-1",
+        isUser ? "items-end" : "items-start",
+      )}
+    >
+      {/*
+        Who spoke on the left, what it cost on the right, and the gap between
+        them doing the work — the same split the `ai` window uses on an assistant
+        message. A reader following the conversation never has to read past the
+        name; a reader auditing the spend finds every figure in one column.
+      */}
+      <div
+        className={cn(
+          "flex w-full max-w-full flex-wrap items-center gap-x-2 gap-y-0.5",
+          // The prompt's own name belongs over the prompt, which sits right.
+          isUser && "justify-end",
         )}
-        {tools.length > 0 && (
-          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Wrench className="h-3 w-3" />
-            {[...new Set(tools)].join(", ")}
+      >
+        {block.speaker && (
+          <span className="flex items-center gap-1 text-sm">
+            {/* The agent side of a transcript is always a machine. Said with an
+                icon rather than left to a kind 0 that may not declare it. */}
+            {!isUser && <Bot className="h-3.5 w-3.5 text-muted-foreground" />}
+            <UserName pubkey={block.speaker} />
+          </span>
+        )}
+        <span className="text-[11px] text-muted-foreground">
+          <Timestamp timestamp={block.at} />
+        </span>
+
+        {!isUser && (
+          <span className="ml-auto flex items-center gap-2.5 font-mono text-[11px] text-muted-foreground/80">
+            {totals.stop && (
+              <span className="text-destructive/80">{totals.stop}</span>
+            )}
+            {totals.model && (
+              <span className="flex items-center gap-1">
+                <ProviderLogo provider={totals.provider} />
+                {totals.model}
+              </span>
+            )}
+            {(totals.input > 0 || totals.output > 0) && (
+              <>
+                <span
+                  className="flex items-center gap-0.5"
+                  title={`${totals.input.toLocaleString()} input tokens`}
+                >
+                  <ArrowDownToLine className="h-3 w-3" />
+                  {totals.input.toLocaleString()}
+                </span>
+                <span
+                  className="flex items-center gap-0.5"
+                  title={`${totals.output.toLocaleString()} output tokens`}
+                >
+                  <ArrowUpFromLine className="h-3 w-3" />
+                  {totals.output.toLocaleString()}
+                </span>
+              </>
+            )}
+            {totals.cost && (
+              <span title="What this block cost">
+                {totals.cost.amount} {totals.cost.currency}
+              </span>
+            )}
           </span>
         )}
       </div>
-      {turn.parts.length > 0 ? (
-        <AgentTurnParts parts={turn.parts} />
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          {turn.alt ?? "This turn carried nothing this client could read."}
-        </p>
-      )}
+
+      <div
+        className={cn(
+          "flex min-w-0 flex-col gap-2",
+          isUser
+            ? "max-w-[85%] rounded-lg bg-secondary px-4 py-2 text-secondary-foreground"
+            : "w-full",
+        )}
+      >
+        {block.items.length > 0 ? (
+          block.items.map((item, index) =>
+            item.kind === "tool" ? (
+              <ToolExchangeRow key={`${item.id}-${index}`} item={item} />
+            ) : (
+              <AgentPart key={index} part={item.part} />
+            ),
+          )
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {block.turns[0]?.alt ??
+              "This turn carried nothing this client could read."}
+          </p>
+        )}
+      </div>
     </div>
   );
+}
+
+/** One turn on its own, for the feed and detail registries. */
+export function AgentTurnBody({
+  turn,
+  operator,
+}: {
+  turn: DecodedTurn;
+  operator?: string;
+}) {
+  const [block] = groupTurns([turn], operator);
+  return block ? <TranscriptBlockBody block={block} /> : null;
 }
 
 export function AgentTurnRenderer({ event }: { event: NostrEvent }) {
