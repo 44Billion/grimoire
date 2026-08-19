@@ -6,6 +6,7 @@ import { parseAgentEvent } from "@/lib/agent-session/decode";
 import type { DecodedDefinition, DecodedHead } from "@/lib/agent-session/types";
 import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/agent/status";
+import { cacheRate } from "@/lib/agent-session/usage";
 import { useLocale } from "@/hooks/useLocale";
 import { BaseEventContainer } from "./BaseEventRenderer";
 
@@ -42,18 +43,10 @@ export function AgentSessionHeadBody({ head }: { head: DecodedHead }) {
   const format = useCompactNumber();
   const usage = head.usage;
 
-  /**
-   * What share of the prompt was served from cache.
-   *
-   * `cacheRead` is a SUBSET of `input` — Eve fills it from
-   * `inputTokenDetails.cacheReadTokens`, checked against the package rather than
-   * assumed — so the denominator is the input count and the ratio cannot exceed
-   * 100%. It is the number that explains a cheap long session.
-   */
-  const cacheRate =
-    usage && usage.input > 0 && usage.cacheRead > 0
-      ? Math.round((usage.cacheRead / usage.input) * 100)
-      : undefined;
+  // The number that explains a cheap long session. Shared, because the wrong
+  // version of it is easy to write and was written.
+  const rate = cacheRate(usage);
+  const cachePercent = rate === undefined ? undefined : Math.round(rate * 100);
 
   return (
     <div className="flex flex-col gap-2">
@@ -76,10 +69,10 @@ export function AgentSessionHeadBody({ head }: { head: DecodedHead }) {
                 title="Input tokens served from the provider's cache"
               />
             )}
-            {cacheRate !== undefined && (
+            {cachePercent !== undefined && (
               <Stat
                 label="cache rate"
-                value={`${cacheRate}%`}
+                value={`${cachePercent}%`}
                 title={`${format(usage.cacheRead)} of ${format(usage.input)} input tokens came from cache`}
               />
             )}

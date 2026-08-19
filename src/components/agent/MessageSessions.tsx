@@ -28,6 +28,7 @@ import { useAgentActivity } from "@/hooks/useAgentActivity";
 import { UserName } from "@/components/nostr/UserName";
 import { StatusDot, statusStyle } from "@/components/agent/status";
 import { useLocale } from "@/hooks/useLocale";
+import { cacheRate } from "@/lib/agent-session/usage";
 import { cn } from "@/lib/utils";
 
 /**
@@ -91,10 +92,7 @@ function SessionStats({ head }: { head: DecodedHead }) {
   );
 
   const usage = head.usage;
-  const cached =
-    usage && usage.input + usage.cacheRead > 0
-      ? usage.cacheRead / (usage.input + usage.cacheRead)
-      : undefined;
+  const cached = cacheRate(usage);
   const money = head.cost ? Number(head.cost.amount) : undefined;
 
   if (!usage && money === undefined) return null;
@@ -122,9 +120,9 @@ function SessionStats({ head }: { head: DecodedHead }) {
       {cached !== undefined && cached > 0 && (
         <span
           className="flex items-center gap-0.5"
-          title={`${usage!.cacheRead.toLocaleString(locale)} of ${(
-            usage!.input + usage!.cacheRead
-          ).toLocaleString(locale)} input tokens served from cache`}
+          title={`${usage!.cacheRead.toLocaleString(locale)} of ${usage!.input.toLocaleString(
+            locale,
+          )} input tokens served from cache`}
         >
           <Database className="h-2.5 w-2.5" />
           {Math.round(cached * 100)}%
