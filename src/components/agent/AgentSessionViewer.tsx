@@ -26,7 +26,6 @@ import { useAgentDeltas } from "@/hooks/useAgentDeltas";
 import { groupTurns } from "@/components/agent/transcript";
 import { AgentSessionHeadBody } from "@/components/nostr/kinds/AgentSessionRenderers";
 import { StatusBadge } from "@/components/agent/status";
-import { NIPBadge } from "@/components/NIPBadge";
 import { SessionComposer } from "@/components/agent/SessionComposer";
 import { SessionSetup } from "@/components/agent/SessionSetup";
 import {
@@ -232,25 +231,13 @@ export function AgentSessionViewer({
                   : view?.head?.title || "untitled session"}
           </span>
           {/*
-            Status and a turn count describe a RUN. On an agent's page or a
-            repository they described whatever session happened to have been
-            read last, which is a different thing wearing this heading's name.
+            The status, and only the status.
+            A turn count and the protocol are both already in the session's own
+            header a line below — repeated up here they were the same fact
+            twice, and the heading is for saying WHICH session this is.
           */}
           {showing.kind === "session" && view?.head && (
-            <>
-              <StatusBadge status={view.head.status} />
-              {view.head.channel && (
-                // The protocol as the NIP it is, so it is clickable through to
-                // the spec like every other NIP reference in the app.
-                <NIPBadge
-                  nipNumber={nipOf(view.head.channel.transport)}
-                  size="sm"
-                />
-              )}
-              <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
-                {view.head.lastSeq} turn{view.head.lastSeq === 1 ? "" : "s"}
-              </span>
-            </>
+            <StatusBadge status={view.head.status} />
           )}
         </div>
 
@@ -766,17 +753,6 @@ function sessionLabel(head: DecodedHead): string {
   if (!title) return "untitled session";
   const machine = /^(wrun_|ses_|sess_|run_)?[0-9A-Za-z]{16,}$/.test(title);
   return machine ? `${title.slice(0, 12)}…` : title;
-}
-
-/**
- * The NIP a transport is.
- *
- * `nip-17` is NIP-17 — the name already contains the number, so this reads it
- * rather than keeping a second table that can disagree with the first.
- */
-function nipOf(transport: string): string {
-  const digits = /nip-?(\d+)/i.exec(transport)?.[1];
-  return digits ? digits.padStart(2, "0") : transport;
 }
 
 /** A heading between the sidebar's two halves. */

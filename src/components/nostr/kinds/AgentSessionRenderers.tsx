@@ -4,8 +4,8 @@ import { Bot, Hash, MessageSquare, Users } from "lucide-react";
 import type { NostrEvent } from "@/types/nostr";
 import { parseAgentEvent } from "@/lib/agent-session/decode";
 import type { DecodedDefinition, DecodedHead } from "@/lib/agent-session/types";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { NIPBadge } from "@/components/NIPBadge";
 import { StatusBadge } from "@/components/agent/status";
 import { StatStrip, summariseHeads } from "@/components/agent/Stats";
 import { UserName } from "@/components/nostr/UserName";
@@ -50,13 +50,12 @@ export function AgentSessionHeadBody({
           is something this client could even open.
         */}
         {head.channel && (
-          <Badge
-            variant="secondary"
-            className="ml-auto shrink-0 font-mono text-[10px]"
-            title={channelTitle(head.channel)}
-          >
-            {head.channel.transport}
-          </Badge>
+          // The protocol as the NIP it IS, clickable through to the spec like
+          // every other NIP reference in the app — rather than a badge that
+          // spells a NIP number and does nothing when pressed.
+          <span className="ml-auto shrink-0" title={channelTitle(head.channel)}>
+            <NIPBadge nipNumber={nipOf(head.channel.transport)} size="sm" />
+          </span>
         )}
       </div>
       {head.channel?.id && <ChannelLine channel={head.channel} />}
@@ -115,6 +114,17 @@ function ChannelLine({
       <span className="truncate font-mono">{id}</span>
     </div>
   );
+}
+
+/**
+ * The NIP a transport is.
+ *
+ * `nip-17` is NIP-17 — the name already carries the number, so this reads it
+ * rather than keeping a second table that can disagree with the first.
+ */
+function nipOf(transport: string): string {
+  const digits = /nip-?(\d+)/i.exec(transport)?.[1];
+  return digits ? digits.padStart(2, "0") : transport;
 }
 
 /** The tooltip on the transport tag: the protocol, and the room under it. */
