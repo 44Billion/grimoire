@@ -155,10 +155,7 @@ export function AgentDashboard({
       </Section>
 
       {summary.blocked.length > 0 && (
-        <Section
-          title="Waiting on you"
-          hint="oldest first — the one that has been waiting longest is the one most likely forgotten"
-        >
+        <Section title="Waiting on you">
           <Rows heads={summary.blocked} onSelect={onSelect} showQuestion />
         </Section>
       )}
@@ -178,22 +175,15 @@ export function AgentDashboard({
 
 function Section({
   title,
-  hint,
   children,
 }: {
   title: string;
-  hint?: string;
   children: React.ReactNode;
 }) {
   return (
     <section className="flex flex-col gap-1.5">
-      <h3 className="flex items-baseline gap-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+      <h3 className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
         {title}
-        {hint && (
-          <span className="truncate text-[10px] normal-case tracking-normal opacity-70">
-            {hint}
-          </span>
-        )}
       </h3>
       {children}
     </section>
