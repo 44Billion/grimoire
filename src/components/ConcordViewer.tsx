@@ -1564,11 +1564,15 @@ function CommunityRow({
   const icon = useConcordImage(community.icon);
   const label = community.name || community.idHex.slice(0, 8);
   const hasUnread = (community.unread?.count ?? 0) > 0;
+  // The full id, not the prefix the row displays: it is what `concord <id>`
+  // takes back, and what names the community in a filter or a bug report.
+  const copyId = () => void navigator.clipboard.writeText(community.idHex);
   return (
     <NotifLevelMenu
       {...(onMarkRead && hasUnread
         ? { onMarkRead: () => onMarkRead(community.idHex) }
         : {})}
+      onCopyId={copyId}
     >
       <button
         type="button"

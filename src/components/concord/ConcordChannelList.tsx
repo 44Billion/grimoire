@@ -89,6 +89,7 @@ export function NotifLevelMenu({
   muted,
   onToggleMute,
   onMarkRead,
+  onCopyId,
   children,
 }: {
   /** Channel rows only — a container is not something you pin above itself. */
@@ -98,6 +99,8 @@ export function NotifLevelMenu({
   onToggleMute?: () => void;
   /** Only passed when there is something unread to clear. */
   onMarkRead?: () => void;
+  /** Put the row's own identifier on the clipboard. */
+  onCopyId?: () => void;
   children: ReactNode;
 }) {
   // Notification levels are hidden for now: the whole subsystem is off, so a
@@ -115,6 +118,7 @@ export function NotifLevelMenu({
       {...(muted !== undefined ? { muted } : {})}
       {...(onToggleMute ? { onToggleMute } : {})}
       {...(onMarkRead ? { onMarkRead } : {})}
+      {...(onCopyId ? { onCopyId } : {})}
     >
       {children}
     </RowMenu>
