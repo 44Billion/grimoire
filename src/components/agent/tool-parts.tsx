@@ -21,6 +21,8 @@
 
 import {
   BookText,
+  CircleDot,
+  GitPullRequest,
   FileText,
   FolderSearch,
   Globe,
@@ -263,70 +265,10 @@ const PRESENTERS: Record<string, ToolPresenter> = {
      * The events, as events.
      *
      * A REQ's answer is a feed, and a feed rendered as JSON is a feed nobody
-     * reads. They are embedded by id rather than reconstructed from the tool's
-     * copy — the copy is truncated and unsigned, and grimoire already knows how
-     * to fetch and render an event properly — with the relays the tool actually
-     * queried passed as hints, since a reader's own relays may not hold them.
+     * reads. Shared with the `git.*` tools, which return the same `events`
+     * field for the same reason.
      */
-    detail: (parsed) => {
-      const out = record(parsed);
-      if (!out) return undefined;
-      const events = Array.isArray(out.events) ? out.events : [];
-      const relays = (Array.isArray(out.relays) ? out.relays : []).filter(
-        (relay): relay is string => typeof relay === "string",
-      );
-      const filter = out.filter;
-
-      if (events.length === 0 && !filter) return undefined;
-
-      return (
-        <div className="flex flex-col gap-2">
-          {(filter !== undefined || relays.length > 0) && (
-            <div className="flex flex-wrap items-center gap-1 text-xs">
-              {filter !== undefined && (
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px] break-all">
-                  {JSON.stringify(filter)}
-                </code>
-              )}
-              {relays.map((relay) => (
-                <RelayLink key={relay} url={relay} />
-              ))}
-            </div>
-          )}
-          {events.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              Nothing on those relays matched.
-            </p>
-          ) : (
-            events.slice(0, MAX_EMBEDDED).map((entry, at) => {
-              const event = record(entry);
-              const id = str(event?.id);
-              if (!id) return null;
-              return (
-                <EmbeddedEvent
-                  key={id}
-                  className="overflow-hidden rounded border border-muted"
-                  eventPointer={{
-                    id,
-                    kind: num(event?.kind),
-                    author: str(event?.pubkey),
-                    relays,
-                  }}
-                  // A pane can render fewer than a model can read; the row says
-                  // so below rather than silently showing a prefix.
-                  loadingFallback={<EventStub event={event} index={at} />}
-                />
-              );
-            })
-          )}
-          {events.length > MAX_EMBEDDED && (
-            <p className="text-xs text-muted-foreground">
-              and {events.length - MAX_EMBEDDED} more
-            </p>
-          )}
-        </div>
-      );
-    },
+    detail: (parsed) => <EventList parsed={parsed} />,
   },
 
   /** `{pubkey}` → a kind 0. */
@@ -469,10 +411,71 @@ const PRESENTERS: Record<string, ToolPresenter> = {
     summary: (args) => str(args.command),
   },
 
+  /**
+   * A NIP-34 repository, as work.
+   *
+   * These return the same `events` field a REQ does, deliberately, so they are
+   * drawn by the same renderer. What they add is the part a raw query cannot
+   * give: a state per thread, and the repository's own relays.
+   */
+  git_issues: {
+    icon: CircleDot,
+    summary: (args) => repoSummary(args),
+    outcome: (parsed) => threadCount(parsed),
+    detail: (parsed) => <EventList parsed={parsed} />,
+  },
+  git_patches: {
+    icon: GitPullRequest,
+    summary: (args) => repoSummary(args),
+    outcome: (parsed) => threadCount(parsed),
+    detail: (parsed) => <EventList parsed={parsed} />,
+  },
+  git_state: {
+    icon: GitPullRequest,
+    summary: (args) => {
+      const state = str(args.state);
+      const id = str(args.id);
+      return state && id ? `${state} ${id.slice(0, 12)}…` : state;
+    },
+    outcome: (parsed) => {
+      const out = record(parsed);
+      // A status event from a non-maintainer publishes and does not count, and
+      // the row says so rather than reading as a success.
+      if (str(out?.warning)) return "published, but will not count";
+      return str(out?.state);
+    },
+  },
+
   /** Speaking in a room. In a transcript this is the answer, not a tool. */
   chat_respond: { icon: MessageSquare, summary: (args) => str(args.text) },
   chat_react: { icon: MessageSquare, summary: (args) => str(args.emoji) },
 };
+
+/** The repository a `git.*` call names, short enough for one line. */
+function repoSummary(args: Record<string, unknown>): string | undefined {
+  const repo = str(args.repo);
+  if (!repo) return undefined;
+  // The identifier is the readable part; the pubkey in the middle is not.
+  const identifier = repo.split(":")[2] ?? repo;
+  const state = str(args.state);
+  const kind = str(args.kind);
+  return [identifier, state, kind === "any" ? undefined : kind]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** `12 of 45 open`, when the tool said how many it left behind. */
+function threadCount(parsed: unknown): string | undefined {
+  const out = record(parsed);
+  const returned = num(out?.returned) ?? countOf(out?.events);
+  if (returned === undefined) return undefined;
+  const matched = num(out?.matched);
+  const state = str(out?.state);
+  const suffix = state && state !== "any" ? ` ${state}` : "";
+  return matched !== undefined && matched > returned
+    ? `${returned} of ${matched}${suffix}`
+    : `${returned}${suffix}`;
+}
 
 /** How many, when a count was not stated. */
 function countOf(value: unknown): number | undefined {
@@ -535,6 +538,78 @@ function EventStub({
       </div>
       {content && (
         <p className="line-clamp-3 text-muted-foreground">{content}</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A tool result's `events`, rendered as the events they are.
+ *
+ * Shared by `nostr.req` and the `git.*` tools, which is why they all name the
+ * field `events`: a reader that knows how to draw a REQ's answer should not
+ * have to learn a second shape to draw a repository's issues.
+ *
+ * Embedded by id rather than reconstructed from the tool's copy — the copy is
+ * truncated and unsigned, and grimoire already knows how to fetch and render an
+ * event properly — with the relays the tool actually queried passed as hints,
+ * since a reader's own relays very often do not hold them.
+ */
+function EventList({ parsed }: { parsed: unknown }) {
+  const out = record(parsed);
+  if (!out) return undefined;
+  const events = Array.isArray(out.events) ? out.events : [];
+  const relays = (Array.isArray(out.relays) ? out.relays : []).filter(
+    (relay): relay is string => typeof relay === "string",
+  );
+  const filter = out.filter;
+
+  if (events.length === 0 && !filter) return undefined;
+
+  return (
+    <div className="flex flex-col gap-2">
+      {(filter !== undefined || relays.length > 0) && (
+        <div className="flex flex-wrap items-center gap-1 text-xs">
+          {filter !== undefined && (
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px] break-all">
+              {JSON.stringify(filter)}
+            </code>
+          )}
+          {relays.map((relay) => (
+            <RelayLink key={relay} url={relay} />
+          ))}
+        </div>
+      )}
+      {events.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Nothing on those relays matched.
+        </p>
+      ) : (
+        events.slice(0, MAX_EMBEDDED).map((entry, at) => {
+          const event = record(entry);
+          const id = str(event?.id);
+          if (!id) return null;
+          return (
+            <EmbeddedEvent
+              key={id}
+              className="overflow-hidden rounded border border-muted"
+              eventPointer={{
+                id,
+                kind: num(event?.kind),
+                author: str(event?.pubkey),
+                relays,
+              }}
+              // A pane can render fewer than a model can read; the row says
+              // so below rather than silently showing a prefix.
+              loadingFallback={<EventStub event={event} index={at} />}
+            />
+          );
+        })
+      )}
+      {events.length > MAX_EMBEDDED && (
+        <p className="text-xs text-muted-foreground">
+          and {events.length - MAX_EMBEDDED} more
+        </p>
       )}
     </div>
   );

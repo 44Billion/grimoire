@@ -47,7 +47,7 @@ export function AgentSessionHeadBody({
           <>
             <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span className="truncate font-medium">
-              {head.title || "untitled session"}
+              {head.title || "a run with no name yet"}
             </span>
             <StatusBadge status={head.status} />
           </>
@@ -188,7 +188,8 @@ export function AgentSessionHeadRenderer({ event }: { event: NostrEvent }) {
         <AgentSessionHeadBody head={head} />
       ) : (
         <p className="text-sm text-muted-foreground">
-          A session head this client could not read.
+          An agent published a run here, in a shape this version of grimoire
+          does not understand yet.
         </p>
       )}
     </BaseEventContainer>
@@ -261,7 +262,8 @@ export function AgentDefinitionRenderer({ event }: { event: NostrEvent }) {
         <AgentDefinitionBody definition={definition} />
       ) : (
         <p className="text-sm text-muted-foreground">
-          An agent definition this client could not read.
+          An agent described itself here, in a shape this version of grimoire
+          does not understand yet.
         </p>
       )}
     </BaseEventContainer>
