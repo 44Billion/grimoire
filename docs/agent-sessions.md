@@ -1,8 +1,13 @@
 # Agent sessions
 
 An autonomous agent's work, as Nostr events. Five kinds, specified in
-`NIP-xx-agent-sessions.md` at the repository root; this file is the map of where
-the code for them lives and which decisions are load-bearing.
+[`spec/nip-agent-sessions.md`](https://github.com/purrgrammer/hex/blob/main/spec/nip-agent-sessions.md)
+in the **hex** repository — the spec lives beside the daemon that has to satisfy
+it, and grimoire is a client of it. This file is the map of where the client
+code lives and which decisions are load-bearing.
+
+Hex: `github.com/purrgrammer/hex`, or over Nostr at
+`nostr://npub107jk7htfv243u0x5ynn43scq9wrxtaasmrwwa8lfu2ydwag6cx2quqncxg/nos.lol/hex`.
 
 | Kind    | What        | Written by |
 | ------- | ----------- | ---------- |
