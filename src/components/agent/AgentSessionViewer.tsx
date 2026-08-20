@@ -498,14 +498,19 @@ function SessionList({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {sessions.length === 0 ? (
+        {/*
+          Not gated on having sessions. Everything below used to sit behind
+          "no sessions yet", which hid the repositories a reader would start
+          their FIRST run from — the one thing that produces a session.
+        */}
+        {sessions.length === 0 && repositories.length === 0 ? (
           <p className="p-3 text-xs text-muted-foreground">
             No agent sessions yet. An agent publishes them to your inbox as gift
             wraps.
           </p>
         ) : (
           <>
-            <SectionLabel>Agents</SectionLabel>
+            {agents.length > 0 && <SectionLabel>Agents</SectionLabel>}
             {agents.map(([agentKey, counts]) => (
               <button
                 key={agentKey}
@@ -575,20 +580,22 @@ function SessionList({
               </>
             )}
 
-            <SectionLabel>
-              Sessions
-              {only && (
-                <button
-                  type="button"
-                  onClick={() => onShow({ kind: "dashboard" })}
-                  className="ml-1 underline decoration-dotted hover:text-foreground"
-                >
-                  clear filter
-                </button>
-              )}
-            </SectionLabel>
+            {sessions.length > 0 && (
+              <SectionLabel>
+                Sessions
+                {only && (
+                  <button
+                    type="button"
+                    onClick={() => onShow({ kind: "dashboard" })}
+                    className="ml-1 underline decoration-dotted hover:text-foreground"
+                  >
+                    clear filter
+                  </button>
+                )}
+              </SectionLabel>
+            )}
 
-            {groups.length === 0 ? (
+            {sessions.length === 0 ? null : groups.length === 0 ? (
               <p className="px-2 py-1 text-xs text-muted-foreground">
                 Nothing matches.
               </p>
