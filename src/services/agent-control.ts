@@ -26,7 +26,7 @@ import { deliverRumor } from "@/lib/dm/send";
 import { resolveDmRelays } from "@/lib/dm/relays";
 
 export type SessionCommand =
-  "respond" | "steer" | "cancel" | "compact" | "clear";
+  "start" | "respond" | "steer" | "cancel" | "compact" | "clear" | "reset";
 
 export interface SendControlParams {
   viewer: string;
@@ -42,6 +42,20 @@ export interface SendControlParams {
   text?: string;
   /** The turn being stopped, when `cancel` means a specific one. */
   turn?: string;
+  /**
+   * What a `steer` does to the turn already running.
+   *
+   * Left alone the agent queues, which is what an operator adding to work in
+   * progress almost always means. `steer` is "stop that and do this instead",
+   * and throws away whatever the running turn had got to.
+   */
+  policy?: "queue" | "steer";
+  /**
+   * What a `start` is about: `["a", "30617:<pubkey>:<d>"]` for a repository,
+   * `["e", "<id>"]` for an event. Ignored by every other verb, which names a
+   * session that already carries them.
+   */
+  subjects?: string[][];
 }
 
 /**
@@ -61,6 +75,8 @@ export async function sendSessionControl({
   option,
   text,
   turn,
+  policy,
+  subjects,
 }: SendControlParams): Promise<void> {
   const tags: string[][] = [
     ["a", sessionAddress(agent, session)],
@@ -70,6 +86,9 @@ export async function sendSessionControl({
   if (request) tags.push(["request", request]);
   if (turn) tags.push(["turn", turn]);
   if (option) tags.push(["option", option]);
+  if (policy) tags.push(["policy", policy]);
+  for (const subject of subjects ?? [])
+    if (subject[0] && subject[1]) tags.push(subject);
   tags.push(["alt", `Session control: ${command}`]);
 
   const stamped = {

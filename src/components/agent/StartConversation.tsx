@@ -40,8 +40,14 @@ export function StartConversation({
   agent: string;
   repository?: MyRepository;
   onClearRepository?: () => void;
-  /** Called with the message id once a run has actually been accepted. */
-  onStarted?: (id: string) => void;
+  /**
+   * Called with the session's id the moment the request goes out.
+   *
+   * Known before the agent has answered, because this end picked it: a `start`
+   * names the session it is asking for, so the run can be opened and watched
+   * from the first delta rather than found later in a list.
+   */
+  onStarted?: (session: string) => void;
 }) {
   const { pubkey } = useAccount();
   const [prompt, setPrompt] = useState("");
@@ -54,7 +60,7 @@ export function StartConversation({
     setSending(true);
     setFailed(null);
     try {
-      const { id } = await startSession({
+      const { session } = await startSession({
         viewer: pubkey,
         signer,
         agent,
@@ -65,7 +71,7 @@ export function StartConversation({
         subjects: repository ? [["a", repository.address]] : [],
       });
       setPrompt("");
-      onStarted?.(id);
+      onStarted?.(session);
     } catch (error) {
       // Said, not swallowed: a run nobody received looks exactly like a run
       // that is thinking, until someone waits ten minutes.

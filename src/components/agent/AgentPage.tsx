@@ -60,8 +60,15 @@ export function AgentPage({
         <p className="text-sm text-muted-foreground">{definition.about}</p>
       )}
 
-      {/* Start something, because that is the likeliest reason to be here. */}
-      <StartConversation agent={agent} />
+      {/*
+        Start something, because that is the likeliest reason to be here — and
+        then go straight to it. A `start` names the session it asks for, so
+        there is nothing to wait for and nothing to find.
+      */}
+      <StartConversation
+        agent={agent}
+        onStarted={(session) => onSelect({ agent, session })}
+      />
 
       {definition && <SessionSetup definition={definition} />}
 

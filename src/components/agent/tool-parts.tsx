@@ -38,6 +38,11 @@ import {
 } from "lucide-react";
 
 import { Tool, ToolContent, ToolHeader } from "@/components/ai-elements/tool";
+import { EmbeddedEvent } from "@/components/nostr/EmbeddedEvent";
+import { KindBadge } from "@/components/KindBadge";
+import { UserName } from "@/components/nostr/UserName";
+import { RelayLink } from "@/components/nostr/RelayLink";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 /** A tool call as it appears in a turn. */
@@ -69,6 +74,16 @@ interface ToolPresenter {
   /** A one-line answer, shown on the row itself rather than behind a click. */
   outcome?: (parsed: unknown) => string | undefined;
 }
+
+/**
+ * Most events one tool row draws.
+ *
+ * A model can read more than a pane can usefully show, and forty embeds inside
+ * a collapsed row is a scroll nobody asked for. What is dropped is SAID rather
+ * than silently trimmed — a prefix presented as the whole answer is how a
+ * reader concludes a query returned less than it did.
+ */
+const MAX_EMBEDDED = 20;
 
 const str = (value: unknown): string | undefined =>
   typeof value === "string" && value ? value : undefined;
@@ -232,6 +247,86 @@ const PRESENTERS: Record<string, ToolPresenter> = {
     icon: Radio,
     summary: (args) =>
       describeFilters(args.filters ?? args.filter ?? [stripRelays(args)]),
+    outcome: (parsed) => {
+      const out = record(parsed);
+      const returned = num(out?.returned) ?? countOf(out?.events);
+      if (returned === undefined) return undefined;
+      const matched = num(out?.matched);
+      // "20 of 21" rather than "20": a limit that cut the answer short is the
+      // single most useful thing to know about a query, and it is invisible
+      // from the events themselves.
+      return matched !== undefined && matched > returned
+        ? `${returned} of ${matched} events`
+        : `${returned} event${returned === 1 ? "" : "s"}`;
+    },
+    /**
+     * The events, as events.
+     *
+     * A REQ's answer is a feed, and a feed rendered as JSON is a feed nobody
+     * reads. They are embedded by id rather than reconstructed from the tool's
+     * copy — the copy is truncated and unsigned, and grimoire already knows how
+     * to fetch and render an event properly — with the relays the tool actually
+     * queried passed as hints, since a reader's own relays may not hold them.
+     */
+    detail: (parsed) => {
+      const out = record(parsed);
+      if (!out) return undefined;
+      const events = Array.isArray(out.events) ? out.events : [];
+      const relays = (Array.isArray(out.relays) ? out.relays : []).filter(
+        (relay): relay is string => typeof relay === "string",
+      );
+      const filter = out.filter;
+
+      if (events.length === 0 && !filter) return undefined;
+
+      return (
+        <div className="flex flex-col gap-2">
+          {(filter !== undefined || relays.length > 0) && (
+            <div className="flex flex-wrap items-center gap-1 text-xs">
+              {filter !== undefined && (
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px] break-all">
+                  {JSON.stringify(filter)}
+                </code>
+              )}
+              {relays.map((relay) => (
+                <RelayLink key={relay} url={relay} />
+              ))}
+            </div>
+          )}
+          {events.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Nothing on those relays matched.
+            </p>
+          ) : (
+            events.slice(0, MAX_EMBEDDED).map((entry, at) => {
+              const event = record(entry);
+              const id = str(event?.id);
+              if (!id) return null;
+              return (
+                <EmbeddedEvent
+                  key={id}
+                  className="overflow-hidden rounded border border-muted"
+                  eventPointer={{
+                    id,
+                    kind: num(event?.kind),
+                    author: str(event?.pubkey),
+                    relays,
+                  }}
+                  // A pane can render fewer than a model can read; the row says
+                  // so below rather than silently showing a prefix.
+                  loadingFallback={<EventStub event={event} index={at} />}
+                />
+              );
+            })
+          )}
+          {events.length > MAX_EMBEDDED && (
+            <p className="text-xs text-muted-foreground">
+              and {events.length - MAX_EMBEDDED} more
+            </p>
+          )}
+        </div>
+      );
+    },
   },
 
   /** `{pubkey}` → a kind 0. */
@@ -256,6 +351,77 @@ const PRESENTERS: Record<string, ToolPresenter> = {
   nostr_resolve: {
     icon: Hash,
     summary: (args) => str(args.entity) ?? str(args.input),
+    outcome: (parsed) => {
+      const out = record(parsed);
+      const tag = Array.isArray(out?.tag) ? out.tag : undefined;
+      // The tag is the answer a model asked for this to get, so it is the
+      // answer a reader gets too — one line, no click.
+      return tag && typeof tag[0] === "string"
+        ? `${tag[0]} ${shortKey(tag[1]) ?? ""}`.trim()
+        : undefined;
+    },
+    detail: (parsed) => {
+      const out = record(parsed);
+      if (!out) return undefined;
+
+      if (out.type === "profile") {
+        const pubkey = str(out.pubkey);
+        if (!pubkey) return undefined;
+        return <PersonCard pubkey={pubkey} metadata={out.metadata} />;
+      }
+
+      const event = record(out.event);
+      const id = str(event?.id);
+      if (id)
+        return (
+          <EmbeddedEvent
+            className="overflow-hidden rounded border border-muted"
+            eventPointer={{
+              id,
+              kind: num(event?.kind),
+              author: str(event?.pubkey),
+            }}
+          />
+        );
+
+      // An address that resolved to nothing still has an address, which is the
+      // half a reader can act on.
+      const address = str(out.address);
+      return address ? (
+        <code className="font-mono text-xs break-all">{address}</code>
+      ) : undefined;
+    },
+  },
+
+  /**
+   * Who the agent is talking to.
+   *
+   * Rendered as the person rather than as their npub: a transcript is read by
+   * someone who knows these people by name, and 64 hex characters is the one
+   * representation that tells them nothing.
+   */
+  chat_who: {
+    icon: User,
+    detail: (parsed) => {
+      const out = record(parsed);
+      const pubkey = str(out?.pubkey);
+      if (!pubkey) return undefined;
+      const room = record(out?.room);
+      return (
+        <div className="flex flex-col gap-1">
+          <PersonCard pubkey={pubkey} metadata={out?.metadata} />
+          {room && (
+            <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+              {str(room.transport) && (
+                <Label size="sm">{str(room.transport)}</Label>
+              )}
+              {str(room.relay) && <RelayLink url={str(room.relay)!} />}
+              {str(room.label) && <span>{str(room.label)}</span>}
+            </div>
+          )}
+        </div>
+      );
+    },
   },
 
   encode_nevent: { icon: Hash, summary: (args) => shortKey(args.id) },
@@ -307,6 +473,72 @@ const PRESENTERS: Record<string, ToolPresenter> = {
   chat_respond: { icon: MessageSquare, summary: (args) => str(args.text) },
   chat_react: { icon: MessageSquare, summary: (args) => str(args.emoji) },
 };
+
+/** How many, when a count was not stated. */
+function countOf(value: unknown): number | undefined {
+  return Array.isArray(value) ? value.length : undefined;
+}
+
+/**
+ * A person, from whatever the tool happened to know about them.
+ *
+ * `UserName` is the app's answer to "render a pubkey" everywhere else, and it
+ * reads its own kind 0 — so the profile the tool fetched is used only for the
+ * one line it may carry that the store does not: what they say about
+ * themselves. A tool result is a snapshot of somebody else's relay read, and
+ * where the two disagree the store is the fresher of the two.
+ */
+function PersonCard({
+  pubkey,
+  metadata,
+}: {
+  pubkey: string;
+  metadata?: unknown;
+}) {
+  const profile = record(metadata);
+  const about = str(profile?.about);
+  return (
+    <div className="flex flex-col gap-1 rounded border border-dotted border-border p-2">
+      <UserName pubkey={pubkey} />
+      {about && (
+        <p className="line-clamp-3 text-xs text-muted-foreground">{about}</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What the tool saw, while the real event is being fetched.
+ *
+ * Not a spinner: the tool's own copy has the kind, the author and the first
+ * paragraph, and showing them beats showing nothing for the second or two an
+ * embed takes — or forever, if no relay a reader can reach still holds it.
+ */
+function EventStub({
+  event,
+  index,
+}: {
+  event: Record<string, unknown> | undefined;
+  index: number;
+}) {
+  const kind = num(event?.kind);
+  const pubkey = str(event?.pubkey);
+  const content = str(event?.content);
+  return (
+    <div className="flex flex-col gap-1 rounded border border-dotted border-border p-2 text-xs">
+      <div className="flex items-center gap-1.5">
+        <span className="font-mono text-[10px] text-muted-foreground">
+          {index + 1}
+        </span>
+        {kind !== undefined && <KindBadge kind={kind} variant="compact" />}
+        {pubkey && <UserName pubkey={pubkey} className="text-xs" />}
+      </div>
+      {content && (
+        <p className="line-clamp-3 text-muted-foreground">{content}</p>
+      )}
+    </div>
+  );
+}
 
 /** A pubkey short enough to sit on one line and still be recognisable. */
 function shortKey(value: unknown): string | undefined {

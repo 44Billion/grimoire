@@ -109,7 +109,11 @@ export function RepoConversation({
       )}
 
       {agent ? (
-        <StartConversation agent={agent} repository={repository} />
+        <StartConversation
+          agent={agent}
+          repository={repository}
+          onStarted={(session) => onSelect({ agent, session })}
+        />
       ) : (
         /*
          * No agent has published a transcript here yet, so there is nobody to
