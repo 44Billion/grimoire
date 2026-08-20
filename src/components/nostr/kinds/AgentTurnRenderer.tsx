@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, Bot } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 
 import type { NostrEvent } from "@/types/nostr";
 import { parseAgentEvent } from "@/lib/agent-session/decode";
@@ -10,9 +10,9 @@ import { Check, Users } from "lucide-react";
 import { MessageResponse } from "@/components/ai-elements/message";
 import {
   Reasoning,
-  ReasoningContent,
   ReasoningTrigger,
 } from "@/components/ai-elements/reasoning";
+import { CollapsibleContent } from "@/components/ui/collapsible";
 import { InputRequestRow } from "@/components/agent/InputRequest";
 import { RichText } from "@/components/nostr/RichText";
 import { Label } from "@/components/ui/label";
@@ -25,6 +25,12 @@ import {
 import { UserName } from "@/components/nostr/UserName";
 import Timestamp from "@/components/Timestamp";
 import { ProviderLogo, splitModel } from "@/components/ai/ProviderLogo";
+import {
+  formatCompact,
+  formatExact,
+  formatMoney,
+  useLocale,
+} from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 import { BaseEventContainer } from "./BaseEventRenderer";
 
@@ -58,11 +64,17 @@ function ReasoningPart({ text }: { text: string }) {
   return (
     <Reasoning className="w-full" defaultOpen={false}>
       <ReasoningTrigger />
-      {/* Quoted and smaller, matching the `ai` window: a trace is something the
-          agent said to itself and must not compete with the answer. */}
-      <ReasoningContent className="mt-2 border-l-2 border-border pl-3 text-xs [&_li]:text-xs [&_p]:text-xs">
+      {/*
+        The trace VERBATIM, not through a markdown renderer.
+        A thought is not a document: it is written for nobody, so a stray `#`
+        at the start of a line is a note to self and not a heading, and running
+        it through Streamdown blew those up to heading size and ate the line
+        breaks that made it readable. `whitespace-pre-wrap` at `text-xs` is what
+        it looked like before, and before was right.
+      */}
+      <CollapsibleContent className="mt-1 border-l-2 border-border pl-3 text-xs whitespace-pre-wrap text-muted-foreground">
         {text}
-      </ReasoningContent>
+      </CollapsibleContent>
     </Reasoning>
   );
 }
@@ -228,6 +240,7 @@ export function TranscriptBlockBody({
   block: TranscriptBlock;
   pending?: string[];
 }) {
+  const { locale } = useLocale();
   const isUser = block.side === "user";
   const totals = blockTotals(block);
   // `ppq/moonshotai/kimi-k3` is a route, a vendor and a name. The logo is the
@@ -245,11 +258,13 @@ export function TranscriptBlockBody({
       <div className="flex w-full max-w-full flex-wrap items-center gap-x-2 gap-y-0.5">
         {block.speaker && (
           <span className="flex items-center gap-1 text-sm">
+            {/*
+              No bot marker. It was there to say the agent side is a machine,
+              which in a window called AGENT, reading a transcript published BY
+              an agent, under a heading naming it, is the fourth time. `UserName`
+              already wears one when the profile declares `bot`.
+            */}
             <UserName pubkey={block.speaker} />
-            {/* After the name, the way a badge follows a name. The agent side of
-                a transcript is always a machine, and it is said with an icon
-                rather than left to a kind 0 that may not declare it. */}
-            {!isUser && <Bot className="h-3.5 w-3.5 text-muted-foreground" />}
           </span>
         )}
         <span className="text-[11px] text-muted-foreground">
@@ -271,23 +286,29 @@ export function TranscriptBlockBody({
               <>
                 <span
                   className="flex items-center gap-0.5"
-                  title={`${totals.input.toLocaleString()} input tokens`}
+                  title={`${formatExact(totals.input, locale)} input tokens`}
                 >
                   <ArrowDownToLine className="h-3 w-3" />
-                  {totals.input.toLocaleString()}
+                  {formatCompact(totals.input, locale)}
                 </span>
                 <span
                   className="flex items-center gap-0.5"
-                  title={`${totals.output.toLocaleString()} output tokens`}
+                  title={`${formatExact(totals.output, locale)} output tokens`}
                 >
                   <ArrowUpFromLine className="h-3 w-3" />
-                  {totals.output.toLocaleString()}
+                  {formatCompact(totals.output, locale)}
                 </span>
               </>
             )}
             {totals.cost && (
-              <span title="What this block cost">
-                {totals.cost.amount} {totals.cost.currency}
+              <span
+                title={`What this block cost: ${totals.cost.amount} ${totals.cost.currency}`}
+              >
+                {formatMoney(
+                  Number(totals.cost.amount),
+                  totals.cost.currency,
+                  locale,
+                )}
               </span>
             )}
           </span>

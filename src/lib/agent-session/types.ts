@@ -356,6 +356,14 @@ export interface DecodedDelta extends DecodedBase {
 
 export interface DecodedHead extends DecodedBase {
   type: "head";
+  /**
+   * What this run is ABOUT, as the pointers its opening message carried.
+   *
+   * `["a", "30617:…"]` for a repository, `["e", "<id>"]` for an event. Carried
+   * onto the head so every run about a thing is findable by asking for the
+   * pointer, rather than by matching titles and hoping one of them is right.
+   */
+  subjects: string[][];
   title: string;
   status: SessionStatus;
   operator: { pubkey: string; relay?: string };

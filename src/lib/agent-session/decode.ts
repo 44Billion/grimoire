@@ -299,6 +299,14 @@ function parseHead(rumor: UnsignedRumor & { id: string }): DecodedHead | null {
       // A relay URL, or nothing. An agent naming an http endpoint here is
       // either confused or trying something, and neither gets dialled.
       .filter((url) => url.startsWith("wss://") || url.startsWith("ws://")),
+    subjects: rumor.tags.filter(
+      (t) =>
+        (t[0] === "a" || t[0] === "e") &&
+        !!t[1] &&
+        // The trigger is an `e` too, and it points at the MESSAGE rather than
+        // at a subject. It has its own marker; anything wearing it is not this.
+        t[3] !== "trigger",
+    ),
     channel: (() => {
       const transport = value(rumor, "transport");
       // The protocol is what makes the room meaningful, so a `channel` with no

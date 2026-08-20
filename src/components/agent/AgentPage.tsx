@@ -16,6 +16,12 @@ import { SessionSetup } from "@/components/agent/SessionSetup";
 import { StartConversation } from "@/components/agent/StartConversation";
 import { UserName } from "@/components/nostr/UserName";
 import Timestamp from "@/components/Timestamp";
+import {
+  formatCompact,
+  formatExact,
+  formatMoney,
+  useLocale,
+} from "@/hooks/useLocale";
 import { cacheRate } from "@/lib/agent-session/usage";
 import {
   TERMINAL_STATUSES,
@@ -36,6 +42,7 @@ export function AgentPage({
   definition?: DecodedDefinition;
   onSelect: (next: { agent: string; session: string }) => void;
 }) {
+  const { locale } = useLocale();
   const mine = useMemo(
     () =>
       sessions
@@ -76,13 +83,20 @@ export function AgentPage({
           <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
           <UserName pubkey={agent} />
         </span>
-        <span className="font-mono text-[11px] text-muted-foreground">
+        <span
+          className="font-mono text-[11px] text-muted-foreground"
+          title={
+            totals.input > 0
+              ? `${formatExact(totals.input, locale)} input tokens, ${formatExact(totals.output, locale)} output`
+              : undefined
+          }
+        >
           {mine.length} session{mine.length === 1 ? "" : "s"}
           {totals.live > 0 && ` · ${totals.live} live`}
           {totals.input > 0 &&
-            ` · ${totals.input.toLocaleString()} in / ${totals.output.toLocaleString()} out`}
+            ` · ${formatCompact(totals.input, locale)} in / ${formatCompact(totals.output, locale)} out`}
           {rate !== undefined && ` · ${Math.round(rate * 100)}% cached`}
-          {totals.spend > 0 && ` · $${totals.spend.toFixed(4)}`}
+          {totals.spend > 0 && ` · ${formatMoney(totals.spend, "USD", locale)}`}
         </span>
       </header>
 

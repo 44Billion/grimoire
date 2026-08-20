@@ -9,7 +9,12 @@ import { StatusBadge } from "@/components/agent/status";
 import { UserName } from "@/components/nostr/UserName";
 import { RelayLink } from "@/components/nostr/RelayLink";
 import { cacheRate } from "@/lib/agent-session/usage";
-import { useLocale } from "@/hooks/useLocale";
+import {
+  formatCompact,
+  formatExact,
+  formatMoney,
+  useLocale,
+} from "@/hooks/useLocale";
 import { BaseEventContainer } from "./BaseEventRenderer";
 
 /**
@@ -35,12 +40,6 @@ function Stat({
   );
 }
 
-/** Thousands separators from the reader's locale, never a hardcoded one. */
-function useCompactNumber() {
-  const { locale } = useLocale();
-  return (value: number) => new Intl.NumberFormat(locale).format(value);
-}
-
 export function AgentSessionHeadBody({
   head,
   /**
@@ -55,7 +54,11 @@ export function AgentSessionHeadBody({
   head: DecodedHead;
   titled?: boolean;
 }) {
-  const format = useCompactNumber();
+  const { locale } = useLocale();
+  // Short on the row, exact in the tooltip: a session head sits beside a name,
+  // a model and a cost, and `1,048,576` crowds all three off the line.
+  const format = (value: number) => formatCompact(value, locale);
+  const exact = (value: number) => formatExact(value, locale);
   const usage = head.usage;
 
   // The number that explains a cheap long session. Shared, because the wrong
@@ -101,23 +104,27 @@ export function AgentSessionHeadBody({
               <Stat
                 label="cached"
                 value={format(usage.cacheRead)}
-                title="Input tokens served from the provider's cache"
+                title={`${exact(usage.cacheRead)} input tokens served from the provider's cache`}
               />
             )}
             {cachePercent !== undefined && (
               <Stat
                 label="cache rate"
                 value={`${cachePercent}%`}
-                title={`${format(usage.cacheRead)} of ${format(usage.input)} input tokens came from cache`}
+                title={`${exact(usage.cacheRead)} of ${exact(usage.input)} input tokens came from cache`}
               />
             )}
           </>
         )}
         {head.cost && (
           <Stat
-            label={head.cost.currency}
-            value={head.cost.amount}
-            title="What this session cost the operator"
+            label={head.cost.estimated ? "est." : head.cost.currency}
+            value={formatMoney(
+              Number(head.cost.amount),
+              head.cost.currency,
+              locale,
+            )}
+            title={`What this session cost the operator: ${head.cost.amount} ${head.cost.currency}${head.cost.estimated ? " — estimated from a price list, not billed" : ""}`}
           />
         )}
       </div>

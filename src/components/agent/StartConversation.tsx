@@ -7,8 +7,10 @@
  * look like a different application depending on which end you are at.
  *
  * With a repository selected, this is `Ask Hex` pointed at a repository instead
- * of at an event: the subject sits above the box, the message goes out scoped to
- * it, and what will actually be sent is shown before it is.
+ * of at an event: the subject sits above the box, and the message goes out with
+ * an `a` tag naming it. Nothing is written into what the operator typed — the
+ * agent resolves the pointer and grounds itself, the way it would from an
+ * event, so the transcript attributes to them only the words they wrote.
  */
 
 import { useState } from "react";
@@ -26,7 +28,7 @@ import {
 import { UserName } from "@/components/nostr/UserName";
 import { useAccount } from "@/hooks/useAccount";
 import accountManager from "@/services/accounts";
-import { scopedPrompt, startSession } from "@/services/agent-start";
+import { startSession } from "@/services/agent-start";
 import type { MyRepository } from "@/hooks/useMyRepositories";
 
 export function StartConversation({
@@ -57,7 +59,10 @@ export function StartConversation({
         signer,
         agent,
         prompt: text,
-        repository,
+        // What the run is about, as a pointer. The agent resolves it and
+        // grounds itself in what it names; nothing is written into the
+        // operator's own words.
+        subjects: repository ? [["a", repository.address]] : [],
       });
       setPrompt("");
       onStarted?.(id);
@@ -130,14 +135,6 @@ export function StartConversation({
           />
         </PromptInputFooter>
       </PromptInput>
-
-      {/* Exactly what goes out. A preamble this client wrote is text the reader
-          did not, and they are the one the whole message gets attributed to. */}
-      {repository && prompt.trim() && (
-        <pre className="max-h-24 overflow-y-auto rounded bg-muted/50 p-2 text-[11px] whitespace-pre-wrap text-muted-foreground">
-          {scopedPrompt(prompt.trim(), repository)}
-        </pre>
-      )}
 
       {failed && <p className="text-xs text-destructive">{failed}</p>}
     </div>

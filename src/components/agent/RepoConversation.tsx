@@ -6,9 +6,10 @@
  * event, but the question a reader has is identical — "talk to something about
  * THIS" — so the answer looks the same rather than inventing a second idiom.
  *
- * Runs already started on this repository are listed underneath, because the
- * second time you open this page the useful thing is usually the last answer
- * rather than a fresh question.
+ * Runs already started on this repository are listed underneath, found by the
+ * `a` tag they carry rather than by their titles — the second time you open
+ * this page the useful thing is usually the last answer rather than a fresh
+ * question.
  */
 
 import { useMemo } from "react";
@@ -38,20 +39,25 @@ export function RepoConversation({
   onSelect: (next: { agent: string; session: string }) => void;
 }) {
   /**
-   * Runs that look like they were about this repository.
+   * Runs about this repository, by the pointer they carry.
    *
-   * Matched on the title, because the title is the first message and the first
-   * message is what carried the repository's name. It is a heuristic and it is
-   * labelled as one below — nothing on the wire ties a session to a repository,
-   * and inventing a tag for it would be a protocol change to power a list.
+   * Matched on the `a` tag the opening message sent, not on the title. Title
+   * matching was a guess that had to be labelled as one, and it was wrong in
+   * both directions — a run whose first line happened to mention "grimoire"
+   * showed up here, and one about it that never said the word did not.
    */
-  const related = useMemo(() => {
-    const needle = repository.name.toLowerCase();
-    return sessions
-      .filter((head) => head.title.toLowerCase().includes(needle))
-      .sort((a, b) => b.started - a.started)
-      .slice(0, 8);
-  }, [sessions, repository.name]);
+  const related = useMemo(
+    () =>
+      sessions
+        .filter((head) =>
+          head.subjects.some(
+            (tag) => tag[0] === "a" && tag[1] === repository.address,
+          ),
+        )
+        .sort((a, b) => b.started - a.started)
+        .slice(0, 8),
+    [sessions, repository.address],
+  );
 
   return (
     <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-3">
@@ -120,7 +126,7 @@ export function RepoConversation({
       {related.length > 0 && (
         <section className="flex flex-col gap-1">
           <h3 className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-            Runs that mention it
+            Runs about it
           </h3>
           {related.map((head) => (
             <button
@@ -143,11 +149,6 @@ export function RepoConversation({
               </span>
             </button>
           ))}
-          {/* Said plainly, because a matched-by-name list will sometimes be
-              wrong and a reader should know which kind of list this is. */}
-          <p className="text-[11px] text-muted-foreground/70">
-            matched by name — nothing on the wire ties a session to a repository
-          </p>
         </section>
       )}
     </div>

@@ -28,9 +28,14 @@ import { Bot, CircleHelp, Play, Wallet } from "lucide-react";
 import { StatusBadge, StatusDot } from "@/components/agent/status";
 import { UserName } from "@/components/nostr/UserName";
 import Timestamp from "@/components/Timestamp";
-import { useLocale } from "@/hooks/useLocale";
+import {
+  formatCompact,
+  formatExact,
+  formatMoney,
+  useLocale,
+} from "@/hooks/useLocale";
 import { cacheRate } from "@/lib/agent-session/usage";
-import { TERMINAL_STATUSES, type DecodedHead } from "@/lib/agent-session/types";
+import type { DecodedHead } from "@/lib/agent-session/types";
 import { cn } from "@/lib/utils";
 
 /** Statuses that mean a person, not a machine, is the hold-up. */
@@ -38,26 +43,20 @@ const BLOCKED_STATUSES = ["awaiting-input", "payment-required"] as const;
 
 const isBlocked = (head: DecodedHead) =>
   (BLOCKED_STATUSES as readonly string[]).includes(head.status);
-const isOver = (head: DecodedHead) =>
-  (TERMINAL_STATUSES as readonly string[]).includes(head.status);
 
 /** How many rows a section shows before it stops and says how many it hid. */
 const SECTION_LIMIT = 6;
 
-/** Thousands separators from the reader's locale, never a hardcoded one. */
-function useCompactNumber() {
-  const { locale } = useLocale();
-  return (value: number) => new Intl.NumberFormat(locale).format(value);
-}
-
 export function AgentDashboard({
   sessions,
   onSelect,
+  onOpenAgent,
 }: {
   sessions: DecodedHead[];
   onSelect: (next: { agent: string; session: string }) => void;
+  onOpenAgent: (agent: string) => void;
 }) {
-  const format = useCompactNumber();
+  const { locale } = useLocale();
 
   const summary = useMemo(() => {
     let input = 0;
@@ -93,7 +92,9 @@ export function AgentDashboard({
     for (const head of sessions) {
       const at = agents.get(head.session.agent) ?? { total: 0, live: 0 };
       at.total += 1;
-      if (!isOver(head)) at.live += 1;
+      // Running, not merely unfinished. `idle` is a session waiting for its
+      // next message, which is nothing happening.
+      if (head.status === "active") at.live += 1;
       agents.set(head.session.agent, at);
     }
 
@@ -140,7 +141,9 @@ export function AgentDashboard({
         <Tile
           icon={Wallet}
           label={summary.estimated ? "spent (est.)" : "spent"}
-          value={summary.spend > 0 ? `$${summary.spend.toFixed(4)}` : "—"}
+          value={
+            summary.spend > 0 ? formatMoney(summary.spend, "USD", locale) : "—"
+          }
           title={
             summary.estimated
               ? "At least one session's cost was computed from a price list rather than billed, so this total is an estimate"
@@ -150,32 +153,44 @@ export function AgentDashboard({
         <Tile
           icon={Bot}
           label="tokens"
-          value={`${format(summary.usage.input)} / ${format(summary.usage.output)}`}
+          value={`${formatCompact(summary.usage.input, locale)} / ${formatCompact(summary.usage.output, locale)}`}
           title={
             rate === undefined
-              ? "input / output across every session"
-              : `input / output — ${Math.round(rate * 100)}% of input came from cache`
+              ? `${formatExact(summary.usage.input, locale)} input / ${formatExact(summary.usage.output, locale)} output across every session`
+              : `${formatExact(summary.usage.input, locale)} input / ${formatExact(summary.usage.output, locale)} output — ${Math.round(rate * 100)}% of input came from cache`
           }
         />
       </section>
 
       <Section title="Agents">
-        <div className="flex flex-wrap gap-2">
+        {/*
+          Full-width rows, not pills.
+          Bordered chips in a wrapping row read as tags — decoration you look
+          past — when each one is the main thing on this screen you can open.
+          A row you can click along its whole length says so.
+        */}
+        <div className="flex flex-col">
           {summary.agents.map(([agent, counts]) => (
-            <div
+            <button
               key={agent}
-              className="flex items-center gap-2 rounded border border-dotted border-border px-2 py-1 text-xs"
+              type="button"
+              onClick={() => onOpenAgent(agent)}
+              className="flex w-full items-center gap-2 rounded px-1 py-1 text-left text-xs hover:bg-muted/50"
             >
               <Bot className="h-3 w-3 shrink-0 text-muted-foreground" />
-              <UserName pubkey={agent} className="max-w-40 truncate" />
-              <span className="text-muted-foreground">
-                {counts.live > 0 ? (
-                  <span className="text-success">{counts.live} live</span>
-                ) : null}
-                {counts.live > 0 ? " · " : ""}
-                {counts.total} total
+              <UserName pubkey={agent} className="truncate" />
+              <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+                {/*
+                  "live" only when something is actually running. An idle
+                  session is one nobody is waiting on — counting it as live
+                  made a window of finished work look busy.
+                */}
+                {counts.live > 0 && (
+                  <span className="text-success">{counts.live} live · </span>
+                )}
+                {counts.total} session{counts.total === 1 ? "" : "s"}
               </span>
-            </div>
+            </button>
           ))}
         </div>
       </Section>

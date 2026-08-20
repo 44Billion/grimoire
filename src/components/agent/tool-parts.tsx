@@ -19,10 +19,8 @@
  * showing the text.
  */
 
-import { useState } from "react";
 import {
   BookText,
-  ChevronRight,
   FileText,
   FolderSearch,
   Globe,
@@ -39,6 +37,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { Tool, ToolContent, ToolHeader } from "@/components/ai-elements/tool";
 import { cn } from "@/lib/utils";
 
 /** A tool call as it appears in a turn. */
@@ -385,6 +384,18 @@ function presenterFor(name: string): ToolPresenter {
 }
 
 /** A row that opens. The chevron is the whole affordance; keep it quiet. */
+/**
+ * A tool call, wearing the `ai` window's chrome.
+ *
+ * ai-elements' `Tool` is what the `ai` window draws a call with — same border,
+ * same collapse, same status badge — so a call read back in a transcript stops
+ * looking like a different application from the same call watched live.
+ *
+ * What stays is this side's own contribution: a PRESENTER per tool, which turns
+ * `nostr.req`'s output into event embeds and a NIP lookup into a badge rather
+ * than showing everyone a wall of JSON. The chrome is shared; the body is not,
+ * because only one of the two windows has published events to render.
+ */
 function Disclosure({
   icon: Icon,
   name,
@@ -400,61 +411,52 @@ function Disclosure({
   failed?: boolean;
   children?: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
   const openable = Boolean(children);
 
-  return (
-    <div className="rounded border border-dotted border-border">
-      <button
-        type="button"
-        disabled={!openable}
-        onClick={() => setOpen((was) => !was)}
-        className={cn(
-          "flex w-full items-center gap-1.5 px-2 py-1 text-left text-xs",
-          openable && "hover:bg-muted/50",
-        )}
-      >
-        <ChevronRight
-          className={cn(
-            "h-3 w-3 shrink-0 transition-transform",
-            !openable && "opacity-0",
-            open && "rotate-90",
-          )}
-        />
+  /**
+   * The runtime's outcome, as ai-elements' state.
+   *
+   * A call with no result yet is `input-available`: the arguments are known and
+   * the answer is not, which is what "running" means here.
+   */
+  const state = failed
+    ? "output-error"
+    : outcome === "running"
+      ? "input-available"
+      : "output-available";
+
+  const header = (
+    <ToolHeader
+      state={state}
+      toolName={name}
+      type="dynamic-tool"
+      icon={
         <Icon
           className={cn(
-            "h-3 w-3 shrink-0",
+            "size-4 shrink-0",
             failed ? "text-destructive" : "text-muted-foreground",
           )}
         />
-        <span className="shrink-0 font-mono text-foreground">{name}</span>
-        {summary && (
-          <span className="truncate font-mono text-muted-foreground">
+      }
+      summary={
+        summary ? (
+          <span className="truncate font-mono text-xs text-muted-foreground">
             {summary}
           </span>
-        )}
-        {outcome && (
-          <span
-            className={cn(
-              "ml-auto shrink-0 font-mono",
-              failed ? "text-destructive" : "text-muted-foreground",
-            )}
-          >
-            {outcome}
-          </span>
-        )}
-        {failed && !outcome && (
-          <span className="ml-auto shrink-0 font-mono text-destructive">
-            failed
-          </span>
-        )}
-      </button>
-      {open && children && (
-        <div className="border-t border-dotted border-border px-2 py-1">
-          {children}
-        </div>
-      )}
-    </div>
+        ) : undefined
+      }
+    />
+  );
+
+  // Nothing to open is not a disclosure. Rendered without the collapse rather
+  // than with a control that does nothing when pressed.
+  if (!openable) return <Tool>{header}</Tool>;
+
+  return (
+    <Tool>
+      {header}
+      <ToolContent className="space-y-2 p-3">{children}</ToolContent>
+    </Tool>
   );
 }
 

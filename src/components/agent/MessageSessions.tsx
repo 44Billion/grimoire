@@ -27,7 +27,7 @@ import { useAddWindow } from "@/core/state";
 import { useAgentActivity } from "@/hooks/useAgentActivity";
 import { UserName } from "@/components/nostr/UserName";
 import { StatusDot, statusStyle } from "@/components/agent/status";
-import { useLocale } from "@/hooks/useLocale";
+import { useLocale, formatExact, formatMoney } from "@/hooks/useLocale";
 import { cacheRate } from "@/lib/agent-session/usage";
 import { cn } from "@/lib/utils";
 
@@ -103,14 +103,14 @@ function SessionStats({ head }: { head: DecodedHead }) {
         <>
           <span
             className="flex items-center gap-0.5"
-            title={`${usage.input.toLocaleString(locale)} input tokens`}
+            title={`${formatExact(usage.input, locale)} input tokens`}
           >
             <ArrowDownToLine className="h-2.5 w-2.5" />
             {short.format(usage.input)}
           </span>
           <span
             className="flex items-center gap-0.5"
-            title={`${usage.output.toLocaleString(locale)} output tokens`}
+            title={`${formatExact(usage.output, locale)} output tokens`}
           >
             <ArrowUpFromLine className="h-2.5 w-2.5" />
             {short.format(usage.output)}
@@ -138,8 +138,7 @@ function SessionStats({ head }: { head: DecodedHead }) {
         >
           {/* A tilde, because arithmetic is not a bill. */}
           {head.cost?.estimated ? "~" : ""}
-          {money < 0.01 ? money.toFixed(4) : money.toFixed(2)}{" "}
-          {head.cost?.currency === "USD" ? "$" : head.cost?.currency}
+          {formatMoney(money, head.cost?.currency ?? "USD", locale)}
         </span>
       )}
     </span>

@@ -4,71 +4,48 @@
  * An agent opens a session when it is sent a message that threads onto nothing,
  * and continues one when the message is a reply. That rule already exists and is
  * already load-bearing — it is how a new subject stops inheriting an hour of
- * unrelated context — so "start a session" is a NIP-17 DM with no `e` tag, and a
- * `1779` control verb for it would be a second way to say the same thing.
+ * unrelated context — so "start a session" is a NIP-17 DM with no `e` tag.
  *
- * The only thing added here is the preamble. An agent handed "fix the parser"
- * with no other context works on whatever it happens to have, and a run that
- * reads the wrong repository answers confidently about the wrong code.
+ * What a run is ABOUT travels as tags, not as prose. A repository is an `a`
+ * pointing at its kind-30617 address; an event is an `e`. The agent resolves
+ * them and grounds itself in what they name, exactly as `Ask Hex` grounds a
+ * conversation in the event it was opened from — and because they are tags, a
+ * reader can find every run about a thing by asking for them, rather than
+ * matching titles and hoping.
  *
- * What the preamble carries is the CLONE URL, from the repository's own kind
- * 30617. That is the one identifier that works whether or not the agent already
- * has a copy: an agent holding the checkout recognises it, and an agent without
- * one can fetch it. A sandbox path would be this client guessing at the inside
- * of someone else's machine — and a guessed path produces a prompt the agent
- * silently ignores and a session that looks like it worked.
+ * The alternative was a sentence: "Work on the repository X…" prepended to the
+ * message. It was wrong twice — an agent titles a run from its first message, so
+ * every scoped run came out named after the boilerplate, and a client writing
+ * instructions into someone's message puts words in their mouth that the whole
+ * transcript then attributes to them.
  */
 
 import type { ISigner } from "applesauce-signers";
 
 import { sendDirectMessage } from "@/lib/dm/send";
-import type { MyRepository } from "@/hooks/useMyRepositories";
 
 export interface StartSessionParams {
   viewer: string;
   signer: ISigner;
   /** The agent's pubkey. */
   agent: string;
-  /** What to ask it. */
+  /** What to ask it, in the operator's own words and nobody else's. */
   prompt: string;
-  /** Scope the run to one checkout, by the path the agent published. */
-  repository?: MyRepository;
+  /**
+   * What the run is about, as tags: `["a", "30617:<pubkey>:<d>"]` for a
+   * repository, `["e", "<id>"]` for an event.
+   */
+  subjects?: string[][];
 }
 
-/**
- * The preamble a repo-scoped run opens with.
- *
- * Written as an instruction rather than as metadata because the receiving end
- * is a language model reading a chat message, not a parser: there is no field
- * on a NIP-17 rumor that an agent runtime would read as "work here", and
- * inventing one would need the agent to know about it. A sentence works today.
- */
-export function scopedPrompt(
-  prompt: string,
-  repository?: MyRepository,
-): string {
-  if (!repository) return prompt;
-  const where = repository.clone
-    ? `Work on the repository ${repository.name} (${repository.clone}). If you already have a checkout of it, use that one.`
-    : `Work on the repository ${repository.name}.`;
-  return `${where}\n\n${prompt}`;
-}
-
-/**
- * Send the opening message of a new run.
- *
- * No `replyTo`, and that omission is the whole mechanism: a threaded message
- * continues whatever session the agent already has with this person, which is
- * the opposite of what starting one means.
- */
 export async function startSession({
   viewer,
   signer,
   agent,
   prompt,
-  repository,
+  subjects = [],
 }: StartSessionParams): Promise<{ id: string }> {
-  const body = scopedPrompt(prompt.trim(), repository);
+  const body = prompt.trim();
   if (!body) throw new Error("a run needs something to work on");
 
   const result = await sendDirectMessage({
@@ -76,14 +53,15 @@ export async function startSession({
     signer,
     peers: [agent],
     content: body,
+    tags: subjects,
   });
 
   /**
    * A run nobody received has not started.
    *
-   * `sendDirectMessage` reports per-recipient delivery, and a failure here is
-   * the difference between "the agent is thinking" and "nothing happened" —
-   * which look identical in a transcript list until someone waits ten minutes.
+   * A failure here is the difference between "the agent is thinking" and
+   * "nothing happened" — which look identical in a transcript list until
+   * someone has waited ten minutes.
    */
   const delivered = (result.peers.get(agent) ?? []).some(
     (attempt) => attempt.ok,

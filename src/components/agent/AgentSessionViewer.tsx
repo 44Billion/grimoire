@@ -88,10 +88,29 @@ export function AgentSessionViewer({
       ? { kind: "session", agent, session }
       : { kind: "dashboard" },
   );
-  const selected =
-    showing.kind === "session"
-      ? { agent: showing.agent, session: showing.session }
-      : null;
+  /**
+   * Memoised, because an effect depends on it.
+   *
+   * Derived fresh, this is a NEW OBJECT on every render, and the read effect
+   * lists it as a dependency — so every render tore down the doorbell
+   * subscription and set up another. A ring landing in that gap is a turn, a
+   * tool call or a delta the open session never shows, which is exactly the
+   * "it stops updating while I watch it" this window was doing.
+   */
+  const selected = useMemo(
+    () =>
+      showing.kind === "session"
+        ? { agent: showing.agent, session: showing.session }
+        : null,
+    // The two fields, not the object: a new `showing` with the same session
+    // must not count as a change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      showing.kind,
+      showing.kind === "session" ? showing.agent : null,
+      showing.kind === "session" ? showing.session : null,
+    ],
+  );
   const setSelected = (next: { agent: string; session: string }) =>
     setShowing({ kind: "session", ...next });
   const [view, setView] = useState<AgentSessionView | null>(null);
@@ -220,7 +239,11 @@ export function AgentSessionViewer({
 
         {showing.kind === "dashboard" ? (
           /* Nothing picked is not nothing to say — see AgentDashboard. */
-          <AgentDashboard sessions={sessions} onSelect={setSelected} />
+          <AgentDashboard
+            sessions={sessions}
+            onSelect={setSelected}
+            onOpenAgent={(agent) => setShowing({ kind: "agent", agent })}
+          />
         ) : showing.kind === "agent" ? (
           <AgentPage
             agent={showing.agent}
@@ -328,7 +351,14 @@ export function AgentSessionViewer({
           </Conversation>
         )}
 
-        {view?.head && (
+        {/*
+          Only over an open session.
+          `view` outlives the selection — it holds whatever was read last — so
+          the composer followed the reader onto the dashboard, an agent's page
+          and a repository, offering to "say something to this session" on three
+          screens where there is no session to say it to.
+        */}
+        {showing.kind === "session" && view?.head && (
           <SessionComposer
             agent={view.head.session.agent}
             session={view.head.session.session}
