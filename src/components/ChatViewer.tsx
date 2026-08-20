@@ -72,6 +72,8 @@ import { RelaysDropdown } from "./chat/RelaysDropdown";
 import { MessageReactions } from "./chat/MessageReactions";
 import { StatusBadge } from "./live/StatusBadge";
 import { ChatMessageContextMenu } from "./chat/ChatMessageContextMenu";
+import { PinsHeaderButton, ConcordPinsList } from "./ConcordPinsBar";
+import { useNip29Pins } from "@/hooks/useNip29Pins";
 import { useAddWindow } from "@/core/state";
 import { MessageSessions } from "@/components/agent/MessageSessions";
 import { Button } from "./ui/button";
@@ -639,6 +641,9 @@ const MessageItem = memo(function MessageItem({
   isRootMessage,
   activePubkey,
   isFlashing,
+  isPinned,
+  canManagePins,
+  onTogglePin,
 }: {
   message: Message;
   adapter: ChatProtocolAdapter;
@@ -651,6 +656,11 @@ const MessageItem = memo(function MessageItem({
   activePubkey?: string;
   /** Briefly marked, because a jump just landed here. */
   isFlashing?: boolean;
+  /** Whether this message is in the group's pin list (NIP-29 only). */
+  isPinned?: boolean;
+  /** Whether the viewer may pin/unpin — an admin or moderator of this group. */
+  canManagePins?: boolean;
+  onTogglePin?: (messageId: string) => void;
 }) {
   const addWindow = useAddWindow();
   // Get relays for this conversation (memoized to prevent unnecessary re-subscriptions)
@@ -959,6 +969,9 @@ const MessageItem = memo(function MessageItem({
         adapter={adapter}
         message={message}
         activePubkey={activePubkey}
+        isPinned={isPinned}
+        canPin={canManagePins}
+        onTogglePin={onTogglePin ? () => onTogglePin(message.id) : undefined}
       >
         {messageContent}
       </ChatMessageContextMenu>
@@ -1797,6 +1810,56 @@ export function ChatViewer({
   }, [conversation?.protocol, addWindow]);
 
   /**
+   * A NIP-29 group's pin list (`kind:39005`), rendered with the same UI
+   * Concord uses for its own pins (§7) — see `useNip29Pins` for why a plain
+   * reference costs nothing to share that UI with a sealed one.
+   *
+   * Undefined group id/relay for every other protocol, which the hook reads
+   * as "nothing to watch".
+   */
+  const nip29GroupId =
+    protocol === "nip-29" ? conversation?.metadata?.groupId : undefined;
+  const nip29RelayUrl =
+    protocol === "nip-29" ? conversation?.metadata?.relayUrl : undefined;
+  const nip29Pins = useNip29Pins(nip29GroupId, nip29RelayUrl);
+  const [showGroupPins, setShowGroupPins] = useState(false);
+  const nip29PinnedIds = useMemo(
+    () => new Set(nip29Pins.pins.map((pin) => pin.rumorId)),
+    [nip29Pins.pins],
+  );
+
+  // Pinning is a moderation action (kind 9010): gated the same way the relay
+  // itself will enforce it, on the reader's OWN role in this group.
+  const canManageGroupPins =
+    protocol === "nip-29" &&
+    !!pubkey &&
+    !!conversation?.participants.some(
+      (participant) =>
+        participant.pubkey === pubkey &&
+        (participant.role === "admin" || participant.role === "moderator"),
+    );
+
+  const handleTogglePin = useCallback(
+    async (messageId: string) => {
+      if (!conversation || !adapter.pinMessage || !adapter.unpinMessage) {
+        return;
+      }
+      try {
+        if (nip29PinnedIds.has(messageId)) {
+          await adapter.unpinMessage(conversation, messageId);
+        } else {
+          await adapter.pinMessage(conversation, messageId);
+        }
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Could not update pins",
+        );
+      }
+    },
+    [adapter, conversation, nip29PinnedIds],
+  );
+
+  /**
    * The other person in a 1:1 DM, when there is exactly one.
    *
    * NIP-17 only, and only for two participants: a group DM's heading names
@@ -2054,6 +2117,14 @@ export function ChatViewer({
                 that rate. `jump({kind:"date"})` and the whole paging walk stay,
                 so a date entry point costs one element wherever it belongs. */}
             {headerExtra}
+            {protocol === "nip-29" && (
+              <PinsHeaderButton
+                count={nip29Pins.pins.length}
+                unavailable={false}
+                open={showGroupPins}
+                onToggle={() => setShowGroupPins((v) => !v)}
+              />
+            )}
             <MembersDropdown participants={derivedParticipants} />
             <RelaysDropdown conversation={conversation} />
             <button
@@ -2066,7 +2137,17 @@ export function ChatViewer({
         </div>
       </div>
 
-      {belowHeader}
+      {protocol === "nip-29" && showGroupPins ? (
+        <ConcordPinsList
+          pins={nip29Pins.pins}
+          onOpen={(id) => {
+            handleScrollToMessage(id);
+            setShowGroupPins(false);
+          }}
+        />
+      ) : (
+        belowHeader
+      )}
 
       {/* Message timeline with virtualization */}
       <div
@@ -2219,6 +2300,13 @@ export function ChatViewer({
                   isRootMessage={isRootMessage}
                   activePubkey={pubkey}
                   isFlashing={flashId === item.data.id}
+                  isPinned={
+                    protocol === "nip-29"
+                      ? nip29PinnedIds.has(item.data.id)
+                      : undefined
+                  }
+                  canManagePins={canManageGroupPins}
+                  onTogglePin={canManageGroupPins ? handleTogglePin : undefined}
                 />
               );
             }}

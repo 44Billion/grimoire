@@ -1230,6 +1230,13 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     nip: "29",
     icon: Users,
   },
+  9010: {
+    kind: 9010,
+    name: "Group Pin List",
+    description: "Group Control - Update Pin List",
+    nip: "29",
+    icon: Pin,
+  },
   9021: {
     kind: 9021,
     name: "Group Join Request",
@@ -1784,6 +1791,13 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     description: "Who is live in a group's audio/video space",
     nip: "29",
     icon: Phone,
+  },
+  39005: {
+    kind: 39005,
+    name: "Group Pinned Events",
+    description: "Events pinned in a group, in display order",
+    nip: "29",
+    icon: Pin,
   },
   39701: {
     kind: 39701,

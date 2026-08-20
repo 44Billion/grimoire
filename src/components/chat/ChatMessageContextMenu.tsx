@@ -15,6 +15,8 @@ import {
   CopyCheck,
   FileJson,
   ExternalLink,
+  Pin,
+  PinOff,
   Reply,
   MessageSquare,
   Smile,
@@ -45,6 +47,11 @@ interface ChatMessageContextMenuProps {
   message?: Message;
   /** The viewer, for deciding whether this message is theirs to delete. */
   activePubkey?: string;
+  /** Whether this message is on the group's pin list (NIP-29 only). */
+  isPinned?: boolean;
+  /** Whether the viewer may pin/unpin — an admin or moderator of this group. */
+  canPin?: boolean;
+  onTogglePin?: () => void;
 }
 
 /**
@@ -64,6 +71,9 @@ export function ChatMessageContextMenu({
   adapter,
   message,
   activePubkey,
+  isPinned,
+  canPin,
+  onTogglePin,
 }: ChatMessageContextMenuProps) {
   const addWindow = useAddWindow();
   const { copy, copied } = useCopy();
@@ -288,6 +298,19 @@ export function ChatMessageContextMenu({
               >
                 <Trash2 className="size-4 mr-2" />
                 Delete Message
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+            </>
+          )}
+          {canPin && onTogglePin && (
+            <>
+              <ContextMenuItem onClick={onTogglePin}>
+                {isPinned ? (
+                  <PinOff className="size-4 mr-2" />
+                ) : (
+                  <Pin className="size-4 mr-2" />
+                )}
+                {isPinned ? "Unpin Message" : "Pin Message"}
               </ContextMenuItem>
               <ContextMenuSeparator />
             </>

@@ -45,6 +45,15 @@ import {
 import { resolveGroupMetadata } from "@/lib/chat/group-metadata-helpers";
 import { markGroupRead, readGroupLastRead } from "@/services/nip29-reads";
 import { parseGroupSelection } from "@/lib/nip29/group-selection";
+import {
+  buildUpdatePinListTags,
+  KIND_GROUP_PIN_LIST,
+  KIND_UPDATE_PIN_LIST,
+  parsePinListEntries,
+  withPinAdded,
+  withPinRemoved,
+  type PinEntry,
+} from "@/lib/nip29/pins";
 
 /**
  * NIP-29 Adapter - Relay-Based Groups
@@ -1030,6 +1039,78 @@ export class Nip29Adapter extends ChatProtocolAdapter {
       created_at: Math.floor(Date.now() / 1000),
     });
     await publishEvent(event);
+  }
+
+  /**
+   * Pin an event into the group's pin list (`kind:9010`), replacing the
+   * whole list — the only operation the NIP defines. A no-op if the event
+   * is already pinned.
+   *
+   * The relay is the actual enforcer: it accepts the publish only from an
+   * authorized admin/moderator and rejects everyone else, the same trust
+   * model every other moderation kind in this adapter relies on.
+   */
+  async pinMessage(
+    conversation: Conversation,
+    messageId: string,
+  ): Promise<void> {
+    await this.updatePinList(conversation, (entries) =>
+      withPinAdded(entries, { type: "e", id: messageId }),
+    );
+  }
+
+  /** The inverse of {@link pinMessage}. */
+  async unpinMessage(
+    conversation: Conversation,
+    messageId: string,
+  ): Promise<void> {
+    await this.updatePinList(conversation, (entries) =>
+      withPinRemoved(entries, { type: "e", id: messageId }),
+    );
+  }
+
+  /**
+   * Read the group's current pin list, apply `transform`, and publish the
+   * result as a new `kind:9010`.
+   *
+   * Read fresh from the relay rather than trusting whatever the store
+   * already folded from `kind:39005` — the whole list is replaced on every
+   * update, so a stale read would silently drop whatever another admin
+   * pinned since this client last saw the mirror.
+   */
+  private async updatePinList(
+    conversation: Conversation,
+    transform: (entries: PinEntry[]) => PinEntry[],
+  ): Promise<void> {
+    const activeSigner = accountManager.active$.value?.signer;
+    if (!activeSigner) {
+      throw new Error("No active signer");
+    }
+
+    const groupId = conversation.metadata?.groupId;
+    const relayUrl = conversation.metadata?.relayUrl;
+
+    if (!groupId || !relayUrl) {
+      throw new Error("Group ID and relay URL required");
+    }
+
+    const currentEvent = await requestEvent([relayUrl], {
+      kinds: [KIND_GROUP_PIN_LIST],
+      "#d": [groupId],
+      limit: 1,
+    });
+    const currentEntries = currentEvent
+      ? parsePinListEntries(currentEvent.tags)
+      : [];
+    const nextEntries = transform(currentEntries);
+
+    const event = await activeSigner.signEvent({
+      kind: KIND_UPDATE_PIN_LIST,
+      content: "",
+      tags: buildUpdatePinListTags(groupId, nextEntries),
+      created_at: Math.floor(Date.now() / 1000),
+    });
+    await publishEventToRelays(event, [relayUrl]);
   }
 
   /**

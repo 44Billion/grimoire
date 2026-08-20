@@ -222,6 +222,19 @@ export abstract class ChatProtocolAdapter {
   deleteMessage?(conversation: Conversation, messageId: string): Promise<void>;
 
   /**
+   * Pin a message into the conversation's pin list, replacing it whole.
+   *
+   * Optional — only NIP-29 groups define a pin list (`kind:9010` /
+   * `kind:39005`). Feature-detected the same way as `deleteMessage`, and the
+   * UI gates it to the group's admins/moderators; the relay is the actual
+   * enforcer.
+   */
+  pinMessage?(conversation: Conversation, messageId: string): Promise<void>;
+
+  /** The inverse of {@link pinMessage}. */
+  unpinMessage?(conversation: Conversation, messageId: string): Promise<void>;
+
+  /**
    * Announce a settled Lightning payment as a zap ON THIS PROTOCOL, rather than
    * as a public NIP-57 receipt.
    *
