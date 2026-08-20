@@ -17,18 +17,19 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, Bot, Database } from "lucide-react";
+import { Coins, Database, DollarSign, Gauge } from "lucide-react";
 
 import { useAccount } from "@/hooks/useAccount";
 import { onDmScopes } from "@/services/dm-bus";
 import { listSessionsForEvent } from "@/services/agent-store";
+import type { SessionForEvent } from "@/services/agent-store";
 import type { DecodedHead } from "@/lib/agent-session/types";
 import { useAddWindow } from "@/core/state";
 import { useAgentActivity } from "@/hooks/useAgentActivity";
 import { UserName } from "@/components/nostr/UserName";
 import { StatusDot, statusStyle } from "@/components/agent/status";
 import { useLocale, formatExact, formatMoney } from "@/hooks/useLocale";
-import { cacheRate } from "@/lib/agent-session/usage";
+import { billedTokens, cacheRate } from "@/lib/agent-session/usage";
 import { cn } from "@/lib/utils";
 
 /**
@@ -41,9 +42,11 @@ import { cn } from "@/lib/utils";
  */
 function SessionRow({
   head,
+  contextWindow,
   onOpen,
 }: {
   head: DecodedHead;
+  contextWindow?: number;
   onOpen: () => void;
 }) {
   const activity = useAgentActivity(
@@ -61,12 +64,13 @@ function SessionRow({
       title={head.title}
     >
       <StatusDot status={head.status} live={Boolean(activity)} />
+      {/* `UserName` already flags a bot from its kind-0. A second robot beside
+          it said the same thing twice, in a row with no space to spare. */}
       <UserName pubkey={head.session.agent} className="shrink-0 text-xs" />
-      <Bot className="h-3 w-3 shrink-0 text-muted-foreground" />
       <span className={cn("truncate", style.text)}>
         {activity?.verb ?? style.label ?? head.status}
       </span>
-      <SessionStats head={head} />
+      <SessionStats head={head} contextWindow={contextWindow} />
     </button>
   );
 }
@@ -74,12 +78,24 @@ function SessionRow({
 /**
  * What the run has spent, on the same line as what it is doing.
  *
+ * Spend, tokens, cache, context — the same four figures in the same order as
+ * the tiles in the session view, because they are the same four figures. They
+ * used to be in-tokens, out-tokens, cache, spend, so a reader moving between
+ * the two places had to re-find each number.
+ *
  * Every figure is optional and none of it is invented: a head that carries no
- * usage renders nothing here rather than a row of zeroes, and a session with no
- * cache reads does not claim a rate of nought. Quiet by design — this sits under
- * a chat message and must not compete with it.
+ * usage renders nothing here rather than a row of zeroes, a session with no
+ * cache reads does not claim a rate of nought, and context is absent unless the
+ * run's own definition said how big its window was. Quiet by design — this sits
+ * under a chat message and must not compete with it.
  */
-function SessionStats({ head }: { head: DecodedHead }) {
+function SessionStats({
+  head,
+  contextWindow,
+}: {
+  head: DecodedHead;
+  contextWindow?: number;
+}) {
   const { locale } = useLocale();
 
   const short = useMemo(
@@ -92,35 +108,45 @@ function SessionStats({ head }: { head: DecodedHead }) {
   );
 
   const usage = head.usage;
+  const tokens = billedTokens(usage);
   const cached = cacheRate(usage);
   const money = head.cost ? Number(head.cost.amount) : undefined;
+  const filled =
+    contextWindow && usage?.input ? usage.input / contextWindow : undefined;
 
   if (!usage && money === undefined) return null;
 
   return (
     <span className="ml-auto flex shrink-0 items-center gap-2 pl-2 font-mono text-[10px] text-muted-foreground/70">
-      {usage && (usage.input > 0 || usage.output > 0) && (
-        <>
-          <span
-            className="flex items-center gap-0.5"
-            title={`${formatExact(usage.input, locale)} input tokens`}
-          >
-            <ArrowDownToLine className="h-2.5 w-2.5" />
-            {short.format(usage.input)}
-          </span>
-          <span
-            className="flex items-center gap-0.5"
-            title={`${formatExact(usage.output, locale)} output tokens`}
-          >
-            <ArrowUpFromLine className="h-2.5 w-2.5" />
-            {short.format(usage.output)}
-          </span>
-        </>
+      {money !== undefined && money > 0 && (
+        <span
+          className="flex items-center gap-0.5"
+          title={
+            head.cost?.estimated
+              ? `About ${head.cost.amount} ${head.cost.currency} — worked out from token counts and list prices, not billed`
+              : `${head.cost?.amount} ${head.cost?.currency}`
+          }
+        >
+          <DollarSign className="h-2.5 w-2.5" />
+          {/* A tilde, because arithmetic is not a bill. */}
+          {head.cost?.estimated ? "~" : ""}
+          {formatMoney(money, head.cost?.currency ?? "USD", locale)}
+        </span>
+      )}
+      {tokens > 0 && (
+        <span
+          className="flex items-center gap-0.5"
+          title={`${formatExact(usage!.input, locale)} in · ${formatExact(usage!.output, locale)} out`}
+        >
+          <Coins className="h-2.5 w-2.5" />
+          {short.format(tokens)}
+        </span>
       )}
       {cached !== undefined && cached > 0 && (
         <span
           className="flex items-center gap-0.5"
-          title={`${usage!.cacheRead.toLocaleString(locale)} of ${usage!.input.toLocaleString(
+          title={`${formatExact(usage!.cacheRead, locale)} of ${formatExact(
+            usage!.input,
             locale,
           )} input tokens served from cache`}
         >
@@ -128,17 +154,16 @@ function SessionStats({ head }: { head: DecodedHead }) {
           {Math.round(cached * 100)}%
         </span>
       )}
-      {money !== undefined && money > 0 && (
+      {filled !== undefined && (
         <span
-          title={
-            head.cost?.estimated
-              ? `About ${head.cost.amount} ${head.cost.currency} — worked out from token counts and list prices, not billed`
-              : `${head.cost?.amount} ${head.cost?.currency}`
-          }
+          className="flex items-center gap-0.5"
+          title={`${formatExact(usage!.input, locale)} of a ${formatExact(
+            contextWindow!,
+            locale,
+          )} token window`}
         >
-          {/* A tilde, because arithmetic is not a bill. */}
-          {head.cost?.estimated ? "~" : ""}
-          {formatMoney(money, head.cost?.currency ?? "USD", locale)}
+          <Gauge className="h-2.5 w-2.5" />
+          {Math.round(filled * 100)}%
         </span>
       )}
     </span>
@@ -148,7 +173,7 @@ function SessionStats({ head }: { head: DecodedHead }) {
 export function MessageSessions({ messageId }: { messageId: string }) {
   const { pubkey } = useAccount();
   const addWindow = useAddWindow();
-  const [sessions, setSessions] = useState<DecodedHead[]>([]);
+  const [sessions, setSessions] = useState<SessionForEvent[]>([]);
 
   useEffect(() => {
     if (!pubkey || !messageId) return;
@@ -171,10 +196,11 @@ export function MessageSessions({ messageId }: { messageId: string }) {
 
   return (
     <div className="mt-1 flex flex-col gap-0.5">
-      {sessions.map((head) => (
+      {sessions.map(({ head, contextWindow }) => (
         <SessionRow
           key={`${head.session.agent}:${head.session.session}`}
           head={head}
+          contextWindow={contextWindow}
           onOpen={() =>
             addWindow("agent", {
               agent: head.session.agent,
