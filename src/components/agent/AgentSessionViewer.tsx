@@ -536,7 +536,13 @@ function SessionList({
               </button>
             ))}
 
-            {repositories.length > 0 && agents.length > 0 && (
+            {/*
+              Shown whenever there ARE repositories, agents or not. Gating this
+              on a published transcript was a bootstrap trap: a fresh reader has
+              no sessions, so no known agents, so no way to start the first run
+              that would produce one. The page below says who to ask.
+            */}
+            {repositories.length > 0 && (
               <>
                 <SectionLabel>Repositories</SectionLabel>
                 {repositories.map((repository) => (
@@ -550,7 +556,7 @@ function SessionList({
                       onShow({
                         kind: "repo",
                         repository,
-                        agent: only ?? agents[0]![0],
+                        agent: only ?? agents[0]?.[0] ?? "",
                       })
                     }
                     className={cn(

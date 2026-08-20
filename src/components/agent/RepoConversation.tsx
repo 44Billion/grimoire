@@ -102,7 +102,20 @@ export function RepoConversation({
         </div>
       )}
 
-      <StartConversation agent={agent} repository={repository} />
+      {agent ? (
+        <StartConversation agent={agent} repository={repository} />
+      ) : (
+        /*
+         * No agent has published a transcript here yet, so there is nobody to
+         * offer. Said rather than shown as an empty box: a composer that
+         * cannot send anything is worse than a sentence explaining why.
+         */
+        <p className="rounded border border-dotted border-border p-2 text-xs text-muted-foreground">
+          No agent has published anything to you yet, so there is nobody to ask.
+          Send one a direct message first — a message that threads onto nothing
+          is what opens a session.
+        </p>
+      )}
 
       {related.length > 0 && (
         <section className="flex flex-col gap-1">
