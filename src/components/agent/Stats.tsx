@@ -117,7 +117,10 @@ function Tile({
 }) {
   return (
     <div
-      className="flex flex-col gap-0.5 rounded border border-border p-2"
+      // `gap-1.5`: at `gap-0.5` the uppercase label sat on the figure's
+      // shoulders and the pair read as one smudge rather than as a caption
+      // above a number.
+      className="flex flex-col gap-1.5 rounded border border-border p-2"
       title={hint}
     >
       <span className="flex items-center gap-1 text-[10px] tracking-wide text-muted-foreground uppercase">

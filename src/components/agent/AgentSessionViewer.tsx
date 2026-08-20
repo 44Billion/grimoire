@@ -5,6 +5,7 @@ import {
   ChevronRight,
   GitBranch,
   PanelLeftClose,
+  Inbox,
   PanelLeftOpen,
   Play,
   Search,
@@ -25,6 +26,7 @@ import { useAgentDeltas } from "@/hooks/useAgentDeltas";
 import { groupTurns } from "@/components/agent/transcript";
 import { AgentSessionHeadBody } from "@/components/nostr/kinds/AgentSessionRenderers";
 import { StatusBadge } from "@/components/agent/status";
+import { NIPBadge } from "@/components/NIPBadge";
 import { SessionComposer } from "@/components/agent/SessionComposer";
 import { SessionSetup } from "@/components/agent/SessionSetup";
 import {
@@ -229,11 +231,26 @@ export function AgentSessionViewer({
                   ? showing.repository.name
                   : view?.head?.title || "untitled session"}
           </span>
-          {view?.head && <StatusBadge status={view.head.status} />}
-          {view?.head && (
-            <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
-              {view.head.lastSeq} turn{view.head.lastSeq === 1 ? "" : "s"}
-            </span>
+          {/*
+            Status and a turn count describe a RUN. On an agent's page or a
+            repository they described whatever session happened to have been
+            read last, which is a different thing wearing this heading's name.
+          */}
+          {showing.kind === "session" && view?.head && (
+            <>
+              <StatusBadge status={view.head.status} />
+              {view.head.channel && (
+                // The protocol as the NIP it is, so it is clickable through to
+                // the spec like every other NIP reference in the app.
+                <NIPBadge
+                  nipNumber={nipOf(view.head.channel.transport)}
+                  size="sm"
+                />
+              )}
+              <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+                {view.head.lastSeq} turn{view.head.lastSeq === 1 ? "" : "s"}
+              </span>
+            </>
           )}
         </div>
 
@@ -433,6 +450,11 @@ function SessionList({
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState("");
   const { repositories } = useMyRepositories();
+
+  /** Runs stopped on a person — the number the Inbox row exists to show. */
+  const blocked = sessions.filter((head) =>
+    ["awaiting-input", "payment-required"].includes(head.status),
+  ).length;
   /**
    * Which agent the list is narrowed to.
    *
@@ -533,13 +555,34 @@ function SessionList({
           "no sessions yet", which hid the repositories a reader would start
           their FIRST run from — the one thing that produces a session.
         */}
-        {sessions.length === 0 && repositories.length === 0 ? (
-          <p className="p-3 text-xs text-muted-foreground">
-            No agent sessions yet. An agent publishes them to your inbox as gift
-            wraps.
-          </p>
-        ) : (
+        {
           <>
+            {/*
+              First, and clickable, because it is the only row here that is a
+              QUESTION rather than a thing: everything else is something you
+              have, and this is what is waiting on you. Zero is worth showing —
+              "nothing is waiting" is the answer people open this to get.
+            */}
+            <button
+              type="button"
+              onClick={() => onShow({ kind: "dashboard" })}
+              className={cn(
+                "flex w-full items-center gap-1.5 px-2 py-1 text-left text-xs hover:bg-muted/50",
+                showing.kind === "dashboard" && "bg-muted",
+              )}
+            >
+              <Inbox className="h-3 w-3 shrink-0 text-muted-foreground" />
+              <span className="font-medium">Inbox</span>
+              <span
+                className={cn(
+                  "ml-auto shrink-0 text-[11px]",
+                  blocked > 0 ? "text-warning" : "text-muted-foreground",
+                )}
+              >
+                {blocked}
+              </span>
+            </button>
+
             {agents.length > 0 && <SectionLabel>Agents</SectionLabel>}
             {agents.map(([agentKey, counts]) => (
               <button
@@ -696,8 +739,14 @@ function SessionList({
                 );
               })
             )}
+            {sessions.length === 0 && repositories.length === 0 && (
+              <p className="p-3 text-xs text-muted-foreground">
+                No agent sessions yet. An agent publishes them to your inbox as
+                gift wraps.
+              </p>
+            )}
           </>
-        )}
+        }
       </div>
     </aside>
   );
@@ -717,6 +766,17 @@ function sessionLabel(head: DecodedHead): string {
   if (!title) return "untitled session";
   const machine = /^(wrun_|ses_|sess_|run_)?[0-9A-Za-z]{16,}$/.test(title);
   return machine ? `${title.slice(0, 12)}…` : title;
+}
+
+/**
+ * The NIP a transport is.
+ *
+ * `nip-17` is NIP-17 — the name already contains the number, so this reads it
+ * rather than keeping a second table that can disagree with the first.
+ */
+function nipOf(transport: string): string {
+  const digits = /nip-?(\d+)/i.exec(transport)?.[1];
+  return digits ? digits.padStart(2, "0") : transport;
 }
 
 /** A heading between the sidebar's two halves. */

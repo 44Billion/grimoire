@@ -14,20 +14,10 @@ import { Bot } from "lucide-react";
 import { StatusDot } from "@/components/agent/status";
 import { SessionSetup } from "@/components/agent/SessionSetup";
 import { StartConversation } from "@/components/agent/StartConversation";
+import { StatStrip, summariseHeads } from "@/components/agent/Stats";
 import { UserName } from "@/components/nostr/UserName";
 import Timestamp from "@/components/Timestamp";
-import {
-  formatCompact,
-  formatExact,
-  formatMoney,
-  useLocale,
-} from "@/hooks/useLocale";
-import { cacheRate } from "@/lib/agent-session/usage";
-import {
-  TERMINAL_STATUSES,
-  type DecodedDefinition,
-  type DecodedHead,
-} from "@/lib/agent-session/types";
+import type { DecodedDefinition, DecodedHead } from "@/lib/agent-session/types";
 
 export function AgentPage({
   agent,
@@ -42,7 +32,6 @@ export function AgentPage({
   definition?: DecodedDefinition;
   onSelect: (next: { agent: string; session: string }) => void;
 }) {
-  const { locale } = useLocale();
   const mine = useMemo(
     () =>
       sessions
@@ -51,31 +40,6 @@ export function AgentPage({
     [sessions, agent],
   );
 
-  const totals = useMemo(() => {
-    let input = 0;
-    let output = 0;
-    let cached = 0;
-    let spend = 0;
-    let live = 0;
-    for (const head of mine) {
-      input += head.usage?.input ?? 0;
-      output += head.usage?.output ?? 0;
-      cached += head.usage?.cacheRead ?? 0;
-      const amount = Number(head.cost?.amount);
-      if (Number.isFinite(amount)) spend += amount;
-      if (!(TERMINAL_STATUSES as readonly string[]).includes(head.status))
-        live += 1;
-    }
-    return { input, output, cached, spend, live };
-  }, [mine]);
-
-  const rate = cacheRate({
-    input: totals.input,
-    output: totals.output,
-    cacheRead: totals.cached,
-    cacheWrite: 0,
-  });
-
   return (
     <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-3">
       <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -83,22 +47,14 @@ export function AgentPage({
           <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
           <UserName pubkey={agent} />
         </span>
-        <span
-          className="font-mono text-[11px] text-muted-foreground"
-          title={
-            totals.input > 0
-              ? `${formatExact(totals.input, locale)} input tokens, ${formatExact(totals.output, locale)} output`
-              : undefined
-          }
-        >
-          {mine.length} session{mine.length === 1 ? "" : "s"}
-          {totals.live > 0 && ` · ${totals.live} live`}
-          {totals.input > 0 &&
-            ` · ${formatCompact(totals.input, locale)} in / ${formatCompact(totals.output, locale)} out`}
-          {rate !== undefined && ` · ${Math.round(rate * 100)}% cached`}
-          {totals.spend > 0 && ` · ${formatMoney(totals.spend, "USD", locale)}`}
-        </span>
       </header>
+
+      {/* The same four numbers as the dashboard and a session header, scoped to
+          this agent — one component, so the three cannot drift. */}
+      <StatStrip
+        countLabel="runs"
+        stats={{ ...summariseHeads(mine), count: mine.length }}
+      />
 
       {definition?.about && (
         <p className="text-sm text-muted-foreground">{definition.about}</p>
