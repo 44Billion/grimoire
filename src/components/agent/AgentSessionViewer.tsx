@@ -735,7 +735,13 @@ function SessionList({
                             title={sessionLabel(head)}
                           >
                             <span className="truncate">
-                              {sessionLabel(head)}
+                              {/* Resolved, like every other place a title is
+                                  shown: "nostr:npub1…" in a forty-character
+                                  row is the one part that says nothing. */}
+                              <SessionTitle
+                                title={sessionLabel(head)}
+                                fallback="untitled session"
+                              />
                             </span>
                             {/* Whose run it is, on the row rather than in a
                                 heading above it — dropped when the list is
