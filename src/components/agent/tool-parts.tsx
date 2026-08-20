@@ -608,6 +608,38 @@ function describeFilters(value: unknown): string | undefined {
   return described.join(" | ");
 }
 
+/**
+ * What a tool actually returned, out of the envelope it travelled in.
+ *
+ * Hex's tool bridge answers `{ok, output}` where `output` is a STRING — the
+ * result rendered for the model to read — so a tool that returns JSON arrives
+ * as JSON inside JSON. Parsing once got the envelope, whose `events` field does
+ * not exist, so every rich renderer quietly declined and the reader got the
+ * wall of text they were being spared. Unwrapped once here rather than in each
+ * presenter, because the envelope is the transport's business and not the
+ * tool's.
+ */
+function readOutput(raw: string): unknown {
+  if (!raw) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+
+  const envelope = record(parsed);
+  if (!envelope || typeof envelope.ok !== "boolean") return parsed;
+  const inner = envelope.output;
+  if (typeof inner !== "string") return parsed;
+  try {
+    return JSON.parse(inner);
+  } catch {
+    // A tool whose result is prose, wrapped. The envelope is all there is.
+    return parsed;
+  }
+}
+
 /** Everything this build knows how to present, for the tool directory. */
 export const KNOWN_TOOL_NAMES = Object.keys(PRESENTERS);
 
@@ -726,12 +758,7 @@ export function ToolExchangeRow({
   const summary = args ? presenter.summary?.(args) : undefined;
   const raw = item.result?.output ?? "";
 
-  let parsed: unknown;
-  try {
-    parsed = raw ? JSON.parse(raw) : undefined;
-  } catch {
-    parsed = undefined;
-  }
+  const parsed = readOutput(raw);
 
   const failed = item.result ? !item.result.ok : false;
   const outcome = item.result
@@ -833,12 +860,7 @@ export function ToolResultRow({ result }: { result: ToolResultView }) {
 
   // Hex sends a tool's output as text, whatever shape it had. Parsing it back is
   // best effort by design: a tool that answers in prose is not a broken tool.
-  let parsed: unknown;
-  try {
-    parsed = raw ? JSON.parse(raw) : undefined;
-  } catch {
-    parsed = undefined;
-  }
+  const parsed = readOutput(raw);
 
   const detail = presenter.detail?.(parsed, raw);
   const body =

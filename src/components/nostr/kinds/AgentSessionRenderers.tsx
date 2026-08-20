@@ -90,7 +90,15 @@ function ChannelLine({
   const id = channel.id;
   if (!id) return null;
 
-  if (channel.transport === "nip-17" && /^[0-9a-f]{64}$/i.test(id))
+  /**
+   * A pubkey is a person, whichever envelope carried the request.
+   *
+   * `nip-17` names the person on the other end of the conversation; `nip-59`
+   * names the operator who asked for the run over the control plane, where
+   * there is no conversation at all. Both are 64 hex characters, which is the
+   * one representation that tells a reader nothing.
+   */
+  if (/^[0-9a-f]{64}$/i.test(id))
     return (
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
         <MessageSquare className="h-3 w-3 shrink-0" />

@@ -79,6 +79,64 @@ function ReasoningPart({ text }: { text: string }) {
   );
 }
 
+/**
+ * A bech32 entity, with or without the `nostr:` scheme in front of it.
+ *
+ * Deliberately generous about the scheme: a model asked for "an nevent" writes
+ * one about as often with the prefix as without, and both name the same thing.
+ */
+const NOSTR_ENTITY =
+  /(?:nostr:)?(?:npub|nprofile|note|nevent|naddr)1[023456789acdefghjklmnpqrstuvwxyz]{20,}/i;
+
+/**
+ * What the model wrote, read by whichever renderer the paragraph needs.
+ *
+ * A model writes markdown, so the default is the same renderer the `ai` window
+ * uses — a transcript full of literal asterisks is the failure that avoids. But
+ * a model working on Nostr also writes Nostr: it answers "list the issues" with
+ * five `nevent1…`, which markdown renders as five hundred characters of base32
+ * and grimoire has rendered as the events themselves everywhere else since
+ * before any of this existed.
+ *
+ * So the split is per PARAGRAPH rather than per document. A paragraph naming an
+ * entity goes to `RichText`, which turns it into the person or the note; every
+ * other paragraph keeps its markdown. Paragraphs, because that is the unit a
+ * model puts one reference on a line of — and because splitting inside one
+ * would break a list in half.
+ */
+function AssistantText({ text }: { text: string }) {
+  const blocks = useMemo(() => {
+    const paragraphs = text.split(/\n{2,}/);
+    // One block per run of same-kind paragraphs, so consecutive markdown stays
+    // one document and keeps its lists and headings intact.
+    const grouped: { nostr: boolean; text: string }[] = [];
+    for (const paragraph of paragraphs) {
+      const nostr = NOSTR_ENTITY.test(paragraph);
+      const last = grouped[grouped.length - 1];
+      if (last && last.nostr === nostr) last.text += `\n\n${paragraph}`;
+      else grouped.push({ nostr, text: paragraph });
+    }
+    return grouped;
+  }, [text]);
+
+  return (
+    <div className="flex flex-col gap-2">
+      {blocks.map((block, at) =>
+        block.nostr ? (
+          <RichText key={at} content={block.text} className="text-sm" />
+        ) : (
+          /* `text-sm`, like the question above it and like every event body in
+             grimoire. Markdown's base size made the reply the largest text on
+             screen, which reads as a different application. */
+          <MessageResponse key={at} className="max-w-full break-words text-sm">
+            {block.text}
+          </MessageResponse>
+        ),
+      )}
+    </div>
+  );
+}
+
 function AgentPart({
   part,
   side,
@@ -117,12 +175,7 @@ function AgentPart({
       return side === "user" ? (
         <RichText content={part.text} className="text-sm" />
       ) : (
-        /* `text-sm`, like the question above it and like every event body in
-           grimoire. Markdown's base size made the reply the largest text on
-           screen, which reads as a different application. */
-        <MessageResponse className="max-w-full break-words text-sm">
-          {part.text}
-        </MessageResponse>
+        <AssistantText text={part.text} />
       );
 
     case "reasoning":
