@@ -17,6 +17,23 @@ import type { Usage } from "./types";
  * Nothing when there is no input or nothing was cached: a session that read no
  * cache has no rate, and "0%" invites a reader to wonder what went wrong.
  */
+/**
+ * Total tokens billed for a run.
+ *
+ * `input + output`, and `cacheRead` is deliberately NOT added: in what an agent
+ * publishes here the cached tokens are counted INSIDE `input` — the
+ * OpenAI/Google convention — so adding them again would inflate every total by
+ * however well the cache happened to be working.
+ *
+ * fragua's equivalent does add them, correctly, because its buckets are
+ * disjoint. Same word, different data; copying its arithmetic would have been
+ * the plausible wrong answer.
+ */
+export function billedTokens(usage: Usage | undefined): number {
+  if (!usage) return 0;
+  return usage.input + usage.output;
+}
+
 export function cacheRate(usage: Usage | undefined): number | undefined {
   if (!usage || usage.input <= 0 || usage.cacheRead <= 0) return undefined;
   return usage.cacheRead / usage.input;

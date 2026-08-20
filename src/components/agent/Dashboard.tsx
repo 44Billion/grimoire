@@ -23,18 +23,12 @@
  */
 
 import { useMemo } from "react";
-import { Bot, CircleHelp, Play, Wallet } from "lucide-react";
+import { Bot } from "lucide-react";
 
 import { StatusBadge, StatusDot } from "@/components/agent/status";
+import { StatStrip, summariseHeads } from "@/components/agent/Stats";
 import { UserName } from "@/components/nostr/UserName";
 import Timestamp from "@/components/Timestamp";
-import {
-  formatCompact,
-  formatExact,
-  formatMoney,
-  useLocale,
-} from "@/hooks/useLocale";
-import { cacheRate } from "@/lib/agent-session/usage";
 import type { DecodedHead } from "@/lib/agent-session/types";
 import { cn } from "@/lib/utils";
 
@@ -56,8 +50,6 @@ export function AgentDashboard({
   onSelect: (next: { agent: string; session: string }) => void;
   onOpenAgent: (agent: string) => void;
 }) {
-  const { locale } = useLocale();
-
   const summary = useMemo(() => {
     let input = 0;
     let output = 0;
@@ -121,46 +113,12 @@ export function AgentDashboard({
       </div>
     );
 
-  const rate = cacheRate(summary.usage);
-
   return (
     <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-3">
-      <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Tile
-          icon={Play}
-          label="running"
-          value={String(summary.running.length)}
-          tone={summary.running.length > 0 ? "success" : undefined}
-        />
-        <Tile
-          icon={CircleHelp}
-          label="waiting on you"
-          value={String(summary.blocked.length)}
-          tone={summary.blocked.length > 0 ? "warning" : undefined}
-        />
-        <Tile
-          icon={Wallet}
-          label={summary.estimated ? "spent (est.)" : "spent"}
-          value={
-            summary.spend > 0 ? formatMoney(summary.spend, "USD", locale) : "—"
-          }
-          title={
-            summary.estimated
-              ? "At least one session's cost was computed from a price list rather than billed, so this total is an estimate"
-              : undefined
-          }
-        />
-        <Tile
-          icon={Bot}
-          label="tokens"
-          value={`${formatCompact(summary.usage.input, locale)} / ${formatCompact(summary.usage.output, locale)}`}
-          title={
-            rate === undefined
-              ? `${formatExact(summary.usage.input, locale)} input / ${formatExact(summary.usage.output, locale)} output across every session`
-              : `${formatExact(summary.usage.input, locale)} input / ${formatExact(summary.usage.output, locale)} output — ${Math.round(rate * 100)}% of input came from cache`
-          }
-        />
-      </section>
+      <StatStrip
+        countLabel="runs"
+        stats={{ ...summariseHeads(sessions), count: sessions.length }}
+      />
 
       <Section title="Agents">
         {/*
@@ -213,41 +171,6 @@ export function AgentDashboard({
       <Section title="Recent">
         <Rows heads={summary.recent} onSelect={onSelect} showAgent />
       </Section>
-    </div>
-  );
-}
-
-function Tile({
-  icon: Icon,
-  label,
-  value,
-  tone,
-  title,
-}: {
-  icon: typeof Bot;
-  label: string;
-  value: string;
-  tone?: "success" | "warning";
-  title?: string;
-}) {
-  return (
-    <div
-      className="flex flex-col gap-0.5 rounded border border-dotted border-border p-2"
-      title={title}
-    >
-      <span className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-        <Icon className="h-3 w-3" />
-        {label}
-      </span>
-      <span
-        className={cn(
-          "font-mono text-lg leading-none",
-          tone === "success" && "text-success",
-          tone === "warning" && "text-warning",
-        )}
-      >
-        {value}
-      </span>
     </div>
   );
 }

@@ -4,41 +4,18 @@ import { Bot, Hash, MessageSquare, Users } from "lucide-react";
 import type { NostrEvent } from "@/types/nostr";
 import { parseAgentEvent } from "@/lib/agent-session/decode";
 import type { DecodedDefinition, DecodedHead } from "@/lib/agent-session/types";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/agent/status";
+import { StatStrip, summariseHeads } from "@/components/agent/Stats";
 import { UserName } from "@/components/nostr/UserName";
 import { RelayLink } from "@/components/nostr/RelayLink";
-import { cacheRate } from "@/lib/agent-session/usage";
-import {
-  formatCompact,
-  formatExact,
-  formatMoney,
-  useLocale,
-} from "@/hooks/useLocale";
 import { BaseEventContainer } from "./BaseEventRenderer";
 
 /**
  * One number, named. The point of the row is to be readable at a glance, so the
  * figure is the loud part and the word under it is the quiet part.
  */
-function Stat({
-  label,
-  value,
-  title,
-}: {
-  label: string;
-  value: string;
-  title?: string;
-}) {
-  return (
-    <div className="flex flex-col" title={title}>
-      <span className="font-mono text-sm text-foreground">{value}</span>
-      <span className="text-[10px] tracking-wide text-muted-foreground uppercase">
-        {label}
-      </span>
-    </div>
-  );
-}
 
 export function AgentSessionHeadBody({
   head,
@@ -54,18 +31,6 @@ export function AgentSessionHeadBody({
   head: DecodedHead;
   titled?: boolean;
 }) {
-  const { locale } = useLocale();
-  // Short on the row, exact in the tooltip: a session head sits beside a name,
-  // a model and a cost, and `1,048,576` crowds all three off the line.
-  const format = (value: number) => formatCompact(value, locale);
-  const exact = (value: number) => formatExact(value, locale);
-  const usage = head.usage;
-
-  // The number that explains a cheap long session. Shared, because the wrong
-  // version of it is easy to write and was written.
-  const rate = cacheRate(usage);
-  const cachePercent = rate === undefined ? undefined : Math.round(rate * 100);
-
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
@@ -85,49 +50,26 @@ export function AgentSessionHeadBody({
           is something this client could even open.
         */}
         {head.channel && (
-          <Label
-            size="sm"
-            className="ml-auto shrink-0"
+          <Badge
+            variant="secondary"
+            className="ml-auto shrink-0 font-mono text-[10px]"
             title={channelTitle(head.channel)}
           >
             {head.channel.transport}
-          </Label>
+          </Badge>
         )}
       </div>
       {head.channel?.id && <ChannelLine channel={head.channel} />}
-      <div className="flex flex-wrap items-end gap-x-5 gap-y-2">
-        {usage && (
-          <>
-            <Stat label="in" value={format(usage.input)} />
-            <Stat label="out" value={format(usage.output)} />
-            {usage.cacheRead > 0 && (
-              <Stat
-                label="cached"
-                value={format(usage.cacheRead)}
-                title={`${exact(usage.cacheRead)} input tokens served from the provider's cache`}
-              />
-            )}
-            {cachePercent !== undefined && (
-              <Stat
-                label="cache rate"
-                value={`${cachePercent}%`}
-                title={`${exact(usage.cacheRead)} of ${exact(usage.input)} input tokens came from cache`}
-              />
-            )}
-          </>
-        )}
-        {head.cost && (
-          <Stat
-            label={head.cost.estimated ? "est." : head.cost.currency}
-            value={formatMoney(
-              Number(head.cost.amount),
-              head.cost.currency,
-              locale,
-            )}
-            title={`What this session cost the operator: ${head.cost.amount} ${head.cost.currency}${head.cost.estimated ? " — estimated from a price list, not billed" : ""}`}
-          />
-        )}
-      </div>
+      {/*
+        The same four numbers the dashboard shows, scoped to this run — one
+        component, so a session's header and the strip above it cannot drift
+        into disagreeing about what "tokens" means. `runs` becomes `turns`,
+        which is the same question asked of one conversation.
+      */}
+      <StatStrip
+        countLabel="turns"
+        stats={{ ...summariseHeads([head]), count: head.lastSeq }}
+      />
     </div>
   );
 }
