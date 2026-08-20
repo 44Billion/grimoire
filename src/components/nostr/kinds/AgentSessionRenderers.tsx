@@ -5,6 +5,7 @@ import type { NostrEvent } from "@/types/nostr";
 import { parseAgentEvent } from "@/lib/agent-session/decode";
 import type { DecodedDefinition, DecodedHead } from "@/lib/agent-session/types";
 import { Label } from "@/components/ui/label";
+import { SessionTitle } from "@/components/agent/SessionTitle";
 import { NIPBadge } from "@/components/NIPBadge";
 import { StatusBadge } from "@/components/agent/status";
 import { StatStrip, summariseHeads } from "@/components/agent/Stats";
@@ -47,7 +48,7 @@ export function AgentSessionHeadBody({
           <>
             <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span className="truncate font-medium">
-              {head.title || "a run with no name yet"}
+              <SessionTitle title={head.title} />
             </span>
             <StatusBadge status={head.status} />
           </>
@@ -83,9 +84,13 @@ export function AgentSessionHeadBody({
         into disagreeing about what "tokens" means. `runs` becomes `turns`,
         which is the same question asked of one conversation.
       */}
+      {/*
+        No count on a session. It used to say "turns" and count published
+        EVENTS — one question with a tool call is four of them — so a
+        two-message run reported four and nobody could tell what it meant.
+      */}
       <StatStrip
-        countLabel="turns"
-        stats={{ ...summariseHeads([head]), count: head.lastSeq }}
+        stats={{ ...summariseHeads([head]), count: head.turns ?? 0 }}
         context={
           definition?.model?.contextWindow
             ? {

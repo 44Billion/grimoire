@@ -251,7 +251,16 @@ export interface SessionHeadInput {
    * The highest turn `seq` so far, which is also the turn count. The head
    * itself takes no sequence number.
    */
+  /**
+   * The highest `seq` seen. Counts EVENTS, not exchanges.
+   *
+   * One question that makes the agent call a tool publishes four of them — the
+   * question, the call, the result, the answer — so this is the cursor for
+   * spotting a hole in the chain and not a number to show a person.
+   */
   lastSeq: number;
+  /** Exchanges: the number a person means by "turns". Absent on older heads. */
+  turns?: number;
   started: number;
   ended?: number;
   model?: { id: string; provider?: string };
@@ -369,7 +378,12 @@ export interface DecodedHead extends DecodedBase {
   operator: { pubkey: string; relay?: string };
   observers: { pubkey: string; relay?: string }[];
   trigger?: { id: string; relay?: string };
+  /**
+   * The highest `seq` seen. Counts EVENTS, not exchanges — see the input type.
+   */
   lastSeq: number;
+  /** Exchanges: the number a person means by "turns". Absent on older heads. */
+  turns?: number;
   started: number;
   ended?: number;
   model?: { id: string; provider?: string };

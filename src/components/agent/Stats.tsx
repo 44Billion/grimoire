@@ -13,13 +13,7 @@
  */
 
 import type { ReactNode } from "react";
-import {
-  Coins,
-  Database,
-  DollarSign,
-  MessagesSquare,
-  Play,
-} from "lucide-react";
+import { Coins, Database, DollarSign, Gauge, Play } from "lucide-react";
 
 import {
   formatCompact,
@@ -49,7 +43,7 @@ export interface StatsInput {
   currency: string;
   /** True when any part of the spend was worked out rather than billed. */
   estimated?: boolean;
-  /** Runs across a dashboard, turns inside a session. */
+  /** Runs across a dashboard. A session shows none. */
   count: number;
 }
 
@@ -59,8 +53,16 @@ export function StatStrip({
   context,
 }: {
   stats: StatsInput;
-  /** `runs` on a dashboard, `turns` in a session. */
-  countLabel: "runs" | "turns";
+  /**
+   * `runs` on a dashboard. A session shows no count at all.
+   *
+   * It used to show "turns", which counted published EVENTS: one question that
+   * makes the agent reach for a tool is four of them, so a two-message session
+   * reported four and nobody could work out what it meant. The number a reader
+   * of one run actually wants is on the tiles beside it — what it cost, how
+   * much it read, how full it is.
+   */
+  countLabel?: "runs";
   /**
    * How much of the model's window this run is using, when it is knowable.
    *
@@ -78,17 +80,13 @@ export function StatStrip({
 
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-      <Tile
-        icon={
-          countLabel === "runs" ? (
-            <Play className="size-3.5" />
-          ) : (
-            <MessagesSquare className="size-3.5" />
-          )
-        }
-        label={countLabel}
-        value={formatCompact(stats.count, locale)}
-      />
+      {countLabel && (
+        <Tile
+          icon={<Play className="size-3.5" />}
+          label={countLabel}
+          value={formatCompact(stats.count, locale)}
+        />
+      )}
       <Tile
         icon={<DollarSign className="size-3.5" />}
         label={stats.estimated ? "spend (est.)" : "spend"}
@@ -113,7 +111,24 @@ export function StatStrip({
             : undefined
         }
       />
-      {context && context.maxTokens > 0 ? (
+      {/*
+        Cache and context are DIFFERENT questions and now look it. One is how
+        much of what was read had been read before — a property of the whole
+        run, and free money. The other is how full the window is right now —
+        a property of this moment, and a ceiling. Both were a database icon
+        and a percentage, which read as one number shown twice.
+      */}
+      <Tile
+        icon={<Database className="size-3.5" />}
+        label="cache"
+        value={rate === undefined ? "—" : `${Math.round(rate * 100)}%`}
+        hint={
+          stats.usage && rate !== undefined
+            ? `${formatExact(stats.usage.cacheRead, locale)} of ${formatExact(stats.usage.input, locale)} input tokens came from cache`
+            : undefined
+        }
+      />
+      {context && context.maxTokens > 0 && (
         <Context
           maxTokens={context.maxTokens}
           modelId={context.modelId}
@@ -126,7 +141,7 @@ export function StatStrip({
         >
           <div className="flex flex-col gap-1.5 rounded border border-border p-2">
             <span className="flex items-center gap-1 text-[10px] tracking-wide text-muted-foreground uppercase">
-              <Database className="size-3.5" />
+              <Gauge className="size-3.5" />
               context
             </span>
             <ContextTrigger className="h-auto w-fit p-0 font-mono text-lg leading-none tabular-nums hover:bg-transparent" />
@@ -144,17 +159,6 @@ export function StatStrip({
             <ContextContentFooter />
           </ContextContent>
         </Context>
-      ) : (
-        <Tile
-          icon={<Database className="size-3.5" />}
-          label="cache"
-          value={rate === undefined ? "—" : `${Math.round(rate * 100)}%`}
-          hint={
-            stats.usage && rate !== undefined
-              ? `${formatExact(stats.usage.cacheRead, locale)} of ${formatExact(stats.usage.input, locale)} input tokens came from cache`
-              : undefined
-          }
-        />
       )}
     </div>
   );

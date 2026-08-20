@@ -12,6 +12,7 @@ import { useMemo } from "react";
 import { Bot } from "lucide-react";
 
 import { StatusDot } from "@/components/agent/status";
+import { SessionTitle } from "@/components/agent/SessionTitle";
 import { SessionSetup } from "@/components/agent/SessionSetup";
 import { StartConversation } from "@/components/agent/StartConversation";
 import { StatStrip, summariseHeads } from "@/components/agent/Stats";
@@ -95,7 +96,7 @@ export function AgentPage({
             >
               <StatusDot status={head.status} live={head.status === "active"} />
               <span className="truncate">
-                {head.title || "untitled session"}
+                <SessionTitle title={head.title} />
               </span>
               <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
                 <Timestamp timestamp={head.started} />

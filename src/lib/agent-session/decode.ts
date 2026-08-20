@@ -295,6 +295,15 @@ function parseHead(rumor: UnsignedRumor & { id: string }): DecodedHead | null {
       .map((t) => personOf(t))
       .filter((p): p is { pubkey: string; relay?: string } => !!p),
     lastSeq: counter(value(rumor, "last-seq")) ?? 0,
+    /**
+     * Exchanges, when the agent counted them.
+     *
+     * Absent on a head published before this tag existed, and the caller falls
+     * back to `last-seq` — which overcounts, but overcounting is what those
+     * heads have always shown and inventing a smaller number for them would be
+     * worse.
+     */
+    turns: counter(value(rumor, "turns")),
     started,
     ended: integer(value(rumor, "ended")),
     model: modelOf(rumor),

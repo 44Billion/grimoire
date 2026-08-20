@@ -16,6 +16,7 @@ import { useMemo } from "react";
 import { FolderGit2, Globe } from "lucide-react";
 
 import { StatusDot } from "@/components/agent/status";
+import { SessionTitle } from "@/components/agent/SessionTitle";
 import { StartConversation } from "@/components/agent/StartConversation";
 import { UserName } from "@/components/nostr/UserName";
 import Timestamp from "@/components/Timestamp";
@@ -146,7 +147,7 @@ export function RepoConversation({
             >
               <StatusDot status={head.status} live={head.status === "active"} />
               <span className="truncate">
-                {head.title || "untitled session"}
+                <SessionTitle title={head.title} />
               </span>
               <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
                 <Timestamp timestamp={head.started} />

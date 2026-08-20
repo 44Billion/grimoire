@@ -26,6 +26,7 @@ import { useMemo } from "react";
 import { Bot } from "lucide-react";
 
 import { StatusBadge, StatusDot } from "@/components/agent/status";
+import { SessionTitle } from "@/components/agent/SessionTitle";
 import { StatStrip, summariseHeads } from "@/components/agent/Stats";
 import { UserName } from "@/components/nostr/UserName";
 import Timestamp from "@/components/Timestamp";
@@ -228,7 +229,9 @@ function Rows({
           className="flex items-center gap-2 rounded px-1 py-1 text-left text-xs hover:bg-muted/50"
         >
           <StatusDot status={head.status} live={head.status === "active"} />
-          <span className="truncate">{head.title || "untitled session"}</span>
+          <span className="truncate">
+            <SessionTitle title={head.title} />
+          </span>
           {/* What it is actually blocked on, when there is one — a row that
               says "waiting" without saying for what is a row you have to open
               to learn anything from. */}

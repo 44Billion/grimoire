@@ -29,6 +29,8 @@ import { StatusBadge } from "@/components/agent/status";
 import { SessionComposer } from "@/components/agent/SessionComposer";
 import { SessionSetup } from "@/components/agent/SessionSetup";
 import { SessionSubjects } from "@/components/agent/SessionSubjects";
+import { SessionTrigger } from "@/components/agent/SessionTrigger";
+import { SessionTitle } from "@/components/agent/SessionTitle";
 import {
   Conversation,
   ConversationContent,
@@ -229,13 +231,15 @@ export function AgentSessionViewer({
         <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-2">
           <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <span className="truncate text-sm font-semibold">
-            {showing.kind === "dashboard"
-              ? "Agents"
-              : showing.kind === "agent"
-                ? "Agent"
-                : showing.kind === "repo"
-                  ? showing.repository.name
-                  : view?.head?.title || "untitled session"}
+            {showing.kind === "dashboard" ? (
+              "Agents"
+            ) : showing.kind === "agent" ? (
+              "Agent"
+            ) : showing.kind === "repo" ? (
+              showing.repository.name
+            ) : (
+              <SessionTitle title={view?.head?.title} />
+            )}
           </span>
           {/*
             The status, and only the status.
@@ -296,8 +300,9 @@ export function AgentSessionViewer({
                   {view.definition && (
                     <SessionSetup definition={view.definition} />
                   )}
-                  {/* What it IS, then what it was pointed at. */}
+                  {/* What it IS, what it was pointed at, and who set it off. */}
                   <SessionSubjects subjects={view.head.subjects} />
+                  <SessionTrigger trigger={view.head.trigger} />
                 </>
               )}
 
