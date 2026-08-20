@@ -12,6 +12,14 @@
  * to be one click away, whereas compact and clear discard context no relay holds
  * a copy of. Those two ask twice, because the agent's memory of the conversation
  * is the one thing here that a republish cannot restore.
+ *
+ * `steer` and `cancel` also record an intent (`agent-intents.ts`) the instant
+ * they go out. Neither becomes a turn of its own — the transcript would
+ * otherwise go quiet about them for exactly as long as the agent takes to
+ * react — so the Stop button wears its own intent here, and the steer text
+ * (already cleared from this box by the time the promise settles) reappears
+ * as a preview in the transcript until the agent's own turn or status change
+ * confirms it.
  */
 
 import { useState } from "react";
@@ -37,6 +45,9 @@ import { useAccount } from "@/hooks/useAccount";
 import accountManager from "@/services/accounts";
 import { sendSessionControl } from "@/services/agent-control";
 import type { SessionCommand } from "@/services/agent-control";
+import { addIntent, removeIntent } from "@/services/agent-intents";
+import { useSessionIntents } from "@/hooks/useSessionIntents";
+import { Sending } from "@/components/agent/PendingIntent";
 import { TERMINAL_STATUSES } from "@/lib/agent-session/types";
 
 export function SessionComposer({
@@ -52,6 +63,11 @@ export function SessionComposer({
   const [busy, setBusy] = useState<SessionCommand | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<SessionCommand | null>(null);
+  const intents = useSessionIntents(agent, session);
+  // A stop already sent, with no status change confirming it yet — see the
+  // module docstring for why the button itself is the only place left to
+  // show a fact-less "cancel" at all.
+  const stopping = intents.some((intent) => intent.command === "cancel");
 
   const over = (TERMINAL_STATUSES as readonly string[]).includes(status);
 
@@ -60,6 +76,12 @@ export function SessionComposer({
     if (!pubkey || !signer) return;
     setBusy(command);
     setFailed(null);
+    // Only `steer` and `cancel` get a preview — see `agent-intents.ts` for why
+    // `compact`, `clear` and `reset` have no fact to reconcile against.
+    const intentId =
+      command === "steer" || command === "cancel"
+        ? addIntent(agent, session, { command, text })
+        : null;
     try {
       await sendSessionControl({
         viewer: pubkey,
@@ -70,6 +92,9 @@ export function SessionComposer({
         text,
       });
     } catch (error) {
+      // Never sent, so nothing to hold onto — leaving it would show a steer
+      // that failed as one still in flight.
+      if (intentId) removeIntent(agent, session, intentId);
       // Said, not swallowed: an instruction that silently failed leaves someone
       // believing they stopped something that is still running.
       setFailed(error instanceof Error ? error.message : String(error));
@@ -115,12 +140,16 @@ export function SessionComposer({
               reader to distrust the rest of them.
             */}
             <PromptInputButton
-              disabled={status !== "active" || busy !== null}
+              disabled={status !== "active" || busy !== null || stopping}
               onClick={() => void send("cancel")}
-              title="Stop whatever is running now"
+              title={
+                stopping
+                  ? "Already asked this run to stop"
+                  : "Stop whatever is running now"
+              }
             >
-              <SquareIcon className="size-3.5" />
-              Stop
+              {stopping ? <Sending /> : <SquareIcon className="size-3.5" />}
+              {stopping ? "Stopping…" : "Stop"}
             </PromptInputButton>
 
             {/*

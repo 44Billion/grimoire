@@ -13,6 +13,13 @@
  * `settled` renders the same question with its outcome. A transcript read
  * afterwards should show what was asked and what was decided — a live prompt for
  * a decision made an hour ago is worse than no prompt.
+ *
+ * Between "clicked" and `settled`, there is a gap a `1779` cannot close on its
+ * own — it never becomes a turn, so nothing says the answer landed until the
+ * request leaves the head's `pending` list. `agent-intents.ts` is that gap held
+ * in memory: the option or text picked replaces the buttons the moment they
+ * are clicked, faded, and stays that way until the fact — `pending` losing this
+ * request — catches up.
  */
 
 import { useState } from "react";
@@ -27,6 +34,9 @@ import {
 import { useAccount } from "@/hooks/useAccount";
 import accountManager from "@/services/accounts";
 import { sendSessionControl } from "@/services/agent-control";
+import { addIntent, removeIntent } from "@/services/agent-intents";
+import { useSessionIntents } from "@/hooks/useSessionIntents";
+import { Sending } from "@/components/agent/PendingIntent";
 import type { InputRequestPart } from "@/lib/agent-session/types";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -46,6 +56,15 @@ export function InputRequestRow({
   const [sending, setSending] = useState<string | null>(null);
   const [typed, setTyped] = useState("");
   const [failed, setFailed] = useState<string | null>(null);
+  const intents = useSessionIntents(agent, session);
+  // This request's own answer, sent but not yet confirmed by `pending`
+  // losing it — see the module docstring. Once `settled` flips, the effect in
+  // `AgentSessionViewer` has already dropped this from the registry, so the
+  // two never disagree about whether an answer is still "in flight".
+  const pendingAnswer = intents.find(
+    (intent) =>
+      intent.command === "respond" && intent.request === part.requestId,
+  );
 
   const approval = part.requestKind === "tool-approval";
   const Icon = approval ? ShieldQuestion : CircleHelp;
@@ -57,6 +76,12 @@ export function InputRequestRow({
     if (!pubkey || !signer) return;
     setSending(option ?? "text");
     setFailed(null);
+    const intentId = addIntent(agent, session, {
+      command: "respond",
+      request: part.requestId,
+      option,
+      text,
+    });
     try {
       await sendSessionControl({
         viewer: pubkey,
@@ -69,6 +94,9 @@ export function InputRequestRow({
         text,
       });
     } catch (error) {
+      // Never sent, so the buttons come back rather than a faded answer that
+      // will wait forever for a fact that is never coming.
+      removeIntent(agent, session, intentId);
       // Said, not swallowed: an answer that silently failed leaves someone
       // waiting on an agent that is waiting on them.
       setFailed(error instanceof Error ? error.message : String(error));
@@ -98,58 +126,75 @@ export function InputRequestRow({
       </ConfirmationTitle>
 
       {/*
-       * Wrapping, because these options are whatever the run asked — four of
-       * them, or one whose label is a sentence — inside a window a person is
-       * free to make narrow. A row that cannot wrap pushes the last button out
-       * of the pane, and the option you cannot see is the one you cannot pick.
+       * An answer already on its way out replaces the form entirely — two
+       * ways to answer the same question on screen at once is worse than a
+       * half-second where only one of them is clickable.
        */}
-      <ConfirmationActions className="flex-wrap">
-        {(part.options ?? []).map((option) => (
-          <ConfirmationAction
-            key={option.id}
-            className="h-auto max-w-full min-h-8 py-1 text-left whitespace-normal"
-            variant={
-              option.style === "danger"
-                ? "destructive"
-                : option.style === "primary"
-                  ? "default"
-                  : "outline"
-            }
-            /*
-             * A settled question keeps its options so the transcript still
-             * shows what was on offer — but they are a record by then, not a
-             * control. Pressed, they would publish an answer to a request the
-             * runtime closed an hour ago, which resolves nothing and reads to
-             * the person as a button that does not work.
-             */
-            disabled={!open || sending !== null}
-            title={option.description}
-            onClick={() => void answer(option.id)}
-          >
-            {option.label}
-          </ConfirmationAction>
-        ))}
-      </ConfirmationActions>
+      {open && pendingAnswer ? (
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground opacity-60">
+          <Sending />
+          {pendingAnswer.option
+            ? (part.options?.find((o) => o.id === pendingAnswer.option)
+                ?.label ?? pendingAnswer.option)
+            : pendingAnswer.text}
+        </p>
+      ) : (
+        <>
+          {/*
+           * Wrapping, because these options are whatever the run asked — four of
+           * them, or one whose label is a sentence — inside a window a person is
+           * free to make narrow. A row that cannot wrap pushes the last button out
+           * of the pane, and the option you cannot see is the one you cannot pick.
+           */}
+          <ConfirmationActions className="flex-wrap">
+            {(part.options ?? []).map((option) => (
+              <ConfirmationAction
+                key={option.id}
+                className="h-auto max-w-full min-h-8 py-1 text-left whitespace-normal"
+                variant={
+                  option.style === "danger"
+                    ? "destructive"
+                    : option.style === "primary"
+                      ? "default"
+                      : "outline"
+                }
+                /*
+                 * A settled question keeps its options so the transcript still
+                 * shows what was on offer — but they are a record by then, not a
+                 * control. Pressed, they would publish an answer to a request the
+                 * runtime closed an hour ago, which resolves nothing and reads to
+                 * the person as a button that does not work.
+                 */
+                disabled={!open || sending !== null}
+                title={option.description}
+                onClick={() => void answer(option.id)}
+              >
+                {option.label}
+              </ConfirmationAction>
+            ))}
+          </ConfirmationActions>
 
-      {/* Free text, when the asker allowed it or offered nothing to pick. */}
-      {open && (part.allowFreeform || !part.options?.length) && (
-        <form
-          className="flex gap-1.5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (typed.trim()) void answer(undefined, typed.trim());
-          }}
-        >
-          <Input
-            value={typed}
-            onChange={(event) => setTyped(event.target.value)}
-            placeholder="Your answer"
-            className="h-8 min-w-0 text-sm"
-          />
-          <Button size="sm" type="submit" disabled={sending !== null}>
-            Send
-          </Button>
-        </form>
+          {/* Free text, when the asker allowed it or offered nothing to pick. */}
+          {open && (part.allowFreeform || !part.options?.length) && (
+            <form
+              className="flex gap-1.5"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (typed.trim()) void answer(undefined, typed.trim());
+              }}
+            >
+              <Input
+                value={typed}
+                onChange={(event) => setTyped(event.target.value)}
+                placeholder="Your answer"
+                className="h-8 min-w-0 text-sm"
+              />
+              <Button size="sm" type="submit" disabled={sending !== null}>
+                Send
+              </Button>
+            </form>
+          )}
+        </>
       )}
 
       {failed && <p className="text-xs text-destructive">{failed}</p>}

@@ -31,6 +31,7 @@ filter can see any of it.
 | Reading sessions out of Dexie | `src/services/agent-store.ts` |
 | Live deltas (ephemeral, never stored) | `src/services/agent-delta-store.ts` |
 | Sending a control event | `src/services/agent-control.ts` |
+| Optimistic previews of a control event, until a fact confirms it | `src/services/agent-intents.ts` |
 | The window | `src/components/agent/AgentSessionViewer.tsx` |
 | Sessions nested under a chat message | `src/components/agent/MessageSessions.tsx` |
 
@@ -72,3 +73,16 @@ inbox relay is entitled to refuse kind 21059 — real ones do — so the head na
 where they actually go in `delta-relay` tags, and the reader listens there as
 well as on its own inbox. A missed delta costs nothing: everything it carried is
 repeated in the turn that closes it.
+
+## Intents
+
+A control event never becomes a turn — `agent-store.ts`'s `STORED_KINDS`
+deliberately excludes `1779` — so a steer, a stop or an answer produces nothing
+the transcript can show until the agent reacts to it: a `user` turn echoing a
+steer, a request leaving the head's `pending` list, a status moving off
+`active`. `agent-intents.ts` is the operator-side mirror of a delta: this tab's
+own memory of what it just sent, held only in memory, shown at reduced opacity
+by `PendingIntentBody` and inline in `InputRequestRow`, and dropped the moment
+`AgentSessionViewer` reads a fact that confirms it. Nothing here rides the wire
+and nothing survives a reload — a fresh read of the session is always the
+truth.

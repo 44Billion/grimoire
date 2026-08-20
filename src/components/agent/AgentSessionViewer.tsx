@@ -22,7 +22,10 @@ import {
 import { TERMINAL_STATUSES, type DecodedHead } from "@/lib/agent-session/types";
 import { TranscriptBlockBody } from "@/components/nostr/kinds/AgentTurnRenderer";
 import { LiveTurnBody } from "@/components/agent/LiveTurn";
+import { PendingIntentBody } from "@/components/agent/PendingIntent";
 import { useAgentDeltas } from "@/hooks/useAgentDeltas";
+import { useSessionIntents } from "@/hooks/useSessionIntents";
+import { reconcileIntents } from "@/services/agent-intents";
 import { groupTurns } from "@/components/agent/transcript";
 import { AgentSessionHeadBody } from "@/components/nostr/kinds/AgentSessionRenderers";
 import { StatusBadge } from "@/components/agent/status";
@@ -191,6 +194,27 @@ export function AgentSessionViewer({
     };
   }, [viewer, selected]);
 
+  /**
+   * What this browser is still waiting to hear back about.
+   *
+   * Read here rather than in the composer or `InputRequestRow` alone: a steer
+   * is rendered in the transcript itself, and only this component holds both
+   * the intents AND the fresh `view` a steer or a stop is judged against.
+   */
+  const intents = useSessionIntents(selected?.agent, selected?.session);
+
+  // Every read of the session is a fact. The moment one lands, drop whatever
+  // intent it already answers — never on a timer, because only the read
+  // itself knows what actually arrived.
+  useEffect(() => {
+    if (!selected || !view) return;
+    reconcileIntents(selected.agent, selected.session, {
+      status: view.head?.status,
+      pending: view.head?.pending,
+      turns: view.turns,
+    });
+  }, [selected, view]);
+
   if (!viewer)
     return (
       <div className="p-4 text-sm text-muted-foreground">
@@ -358,6 +382,26 @@ export function AgentSessionViewer({
                   </article>
                 ),
               )}
+
+              {/*
+                Steer and stop, said but not yet answered for by anything the
+                agent has published back. Rendered here rather than sorted
+                into `groupTurns`: an intent is not a turn and has no `seq`,
+                so it can only ever be the newest thing in the pane.
+              */}
+              {viewer &&
+                intents
+                  .filter(
+                    (intent) =>
+                      intent.command === "steer" || intent.command === "cancel",
+                  )
+                  .map((intent) => (
+                    <PendingIntentBody
+                      key={intent.id}
+                      intent={intent}
+                      viewer={viewer}
+                    />
+                  ))}
 
               {/* The turn being written, if one is. Ephemeral: nothing here is
                 stored, and it vanishes when the stored turn arrives. */}
