@@ -27,8 +27,14 @@ import { AgentSessionHeadBody } from "@/components/nostr/kinds/AgentSessionRende
 import { StatusBadge } from "@/components/agent/status";
 import { SessionComposer } from "@/components/agent/SessionComposer";
 import { SessionSetup } from "@/components/agent/SessionSetup";
+import {
+  Conversation,
+  ConversationContent,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation";
 import { AgentDashboard } from "@/components/agent/Dashboard";
-import { StartRunDialog } from "@/components/agent/StartRun";
+import { AgentPage } from "@/components/agent/AgentPage";
+import { RepoConversation } from "@/components/agent/RepoConversation";
 import {
   useMyRepositories,
   type MyRepository,
@@ -43,6 +49,13 @@ import { cn } from "@/lib/utils";
  * gift wraps through the ordinary DM inbox, so this window holds no
  * subscription of its own and works with no relay reachable.
  */
+
+/** What the main pane is showing. */
+type Showing =
+  | { kind: "dashboard" }
+  | { kind: "agent"; agent: string }
+  | { kind: "repo"; repository: MyRepository; agent: string }
+  | { kind: "session"; agent: string; session: string };
 
 interface AgentSessionViewerProps {
   agent?: string;
@@ -61,11 +74,37 @@ export function AgentSessionViewer({
   // relay reachable and never has to keep a wire up itself.
 
   const [sessions, setSessions] = useState<DecodedHead[]>([]);
-  const [selected, setSelected] = useState<{
-    agent: string;
-    session: string;
-  } | null>(agent && session ? { agent, session } : null);
+  /**
+   * What the main pane is showing.
+   *
+   * Four modes rather than "a session or nothing", because the sidebar offers
+   * three kinds of thing to click and each answers a different question. An
+   * agent is a subject; a repository is a run you have not started yet; a
+   * session is a record. Collapsing them into one selection meant clicking an
+   * agent could only ever filter a list.
+   */
+  const [showing, setShowing] = useState<Showing>(
+    agent && session
+      ? { kind: "session", agent, session }
+      : { kind: "dashboard" },
+  );
+  const selected =
+    showing.kind === "session"
+      ? { agent: showing.agent, session: showing.session }
+      : null;
+  const setSelected = (next: { agent: string; session: string }) =>
+    setShowing({ kind: "session", ...next });
   const [view, setView] = useState<AgentSessionView | null>(null);
+
+  /** Everyone who has published a transcript here, busiest first. */
+  const knownAgents = useMemo(() => {
+    const seen = new Map<string, number>();
+    for (const head of sessions)
+      seen.set(head.session.agent, (seen.get(head.session.agent) ?? 0) + 1);
+    return [...seen.entries()]
+      .sort(([, a], [, b]) => b - a)
+      .map(([agent]) => agent);
+  }, [sessions]);
 
   /**
    * Live progress for the open session.
@@ -145,7 +184,8 @@ export function AgentSessionViewer({
         <SessionList
           sessions={sessions}
           selected={selected}
-          onSelect={setSelected}
+          showing={showing}
+          onShow={setShowing}
         />
       )}
 
@@ -162,7 +202,13 @@ export function AgentSessionViewer({
         <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-2">
           <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <span className="truncate text-sm font-semibold">
-            {view?.head?.title || (view ? "untitled session" : "Agents")}
+            {showing.kind === "dashboard"
+              ? "Agents"
+              : showing.kind === "agent"
+                ? "Agent"
+                : showing.kind === "repo"
+                  ? showing.repository.name
+                  : view?.head?.title || "untitled session"}
           </span>
           {view?.head && <StatusBadge status={view.head.status} />}
           {view?.head && (
@@ -172,68 +218,114 @@ export function AgentSessionViewer({
           )}
         </div>
 
-        {!view ? (
+        {showing.kind === "dashboard" ? (
           /* Nothing picked is not nothing to say — see AgentDashboard. */
           <AgentDashboard sessions={sessions} onSelect={setSelected} />
+        ) : showing.kind === "agent" ? (
+          <AgentPage
+            agent={showing.agent}
+            sessions={sessions}
+            onSelect={setSelected}
+          />
+        ) : showing.kind === "repo" ? (
+          <RepoConversation
+            repository={showing.repository}
+            agent={showing.agent}
+            agents={knownAgents}
+            sessions={sessions}
+            onAgentChange={(next) => setShowing({ ...showing, agent: next })}
+            onSelect={setSelected}
+          />
+        ) : !view ? (
+          <p className="p-3 text-sm text-muted-foreground">Reading…</p>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-            {view.head && (
-              <>
-                <AgentSessionHeadBody head={view.head} titled={false} />
-                {view.definition && (
-                  <SessionSetup definition={view.definition} />
-                )}
-              </>
-            )}
+          /*
+           * The `ai` window's conversation, around a transcript instead of a
+           * live chat.
+           *
+           * They are one object seen from two ends — a run being written and a
+           * run being read — so the reading end should not scroll differently,
+           * space its turns differently, or follow a stream differently from
+           * the writing end. `Conversation` is StickToBottom: a delta arriving
+           * mid-read keeps the newest turn in view, which a plain
+           * `overflow-y-auto` never did.
+           */
+          <Conversation className="min-h-0 flex-1" initial="smooth">
+            <ConversationContent className="flex flex-col gap-3 p-3">
+              {view.head && (
+                <>
+                  <AgentSessionHeadBody head={view.head} titled={false} />
+                  {view.definition && (
+                    <SessionSetup definition={view.definition} />
+                  )}
+                </>
+              )}
 
-            {(view.gaps.length > 0 ||
-              view.forks.length > 0 ||
-              view.duplicates.length > 0) && (
-              <div className="flex flex-col gap-1 rounded border border-dotted border-border p-2 text-xs">
-                {view.gaps.length > 0 && (
-                  <span className="flex items-center gap-1 text-muted-foreground">
-                    <AlertTriangle className="h-3 w-3" />
-                    missing {view.gaps.length} event
-                    {view.gaps.length === 1 ? "" : "s"} (seq{" "}
-                    {view.gaps.slice(0, 12).join(", ")}
-                    {view.gaps.length > 12 ? "…" : ""})
-                  </span>
-                )}
-                {view.forks.length > 0 && (
-                  <span className="flex items-center gap-1 text-muted-foreground">
-                    <GitBranch className="h-3 w-3" />
-                    forked at seq {view.forks.join(", ")} — two chains claim the
-                    same history
-                  </span>
-                )}
-                {view.duplicates.length > 0 && (
-                  <span className="flex items-center gap-1 text-muted-foreground">
-                    <AlertTriangle className="h-3 w-3" />
-                    seq {view.duplicates.join(", ")} arrived twice
-                  </span>
-                )}
-              </div>
-            )}
+              {(view.gaps.length > 0 ||
+                view.forks.length > 0 ||
+                view.duplicates.length > 0) && (
+                <div className="flex flex-col gap-1 rounded border border-dotted border-border p-2 text-xs">
+                  {view.gaps.length > 0 && (
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      <AlertTriangle className="h-3 w-3" />
+                      missing {view.gaps.length} event
+                      {view.gaps.length === 1 ? "" : "s"} (seq{" "}
+                      {view.gaps.slice(0, 12).join(", ")}
+                      {view.gaps.length > 12 ? "…" : ""})
+                    </span>
+                  )}
+                  {view.forks.length > 0 && (
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      <GitBranch className="h-3 w-3" />
+                      forked at seq {view.forks.join(", ")} — two chains claim
+                      the same history
+                    </span>
+                  )}
+                  {view.duplicates.length > 0 && (
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      <AlertTriangle className="h-3 w-3" />
+                      seq {view.duplicates.join(", ")} arrived twice
+                    </span>
+                  )}
+                </div>
+              )}
 
-            {groupTurns(view.turns, view.head?.operator.pubkey).map((block) => (
-              <article key={block.turns[0]!.id} className="pb-1">
-                <TranscriptBlockBody
-                  block={block}
-                  pending={view.head?.pending}
-                />
-              </article>
-            ))}
+              {groupTurns(view.turns, view.head?.operator.pubkey).map(
+                (block) => (
+                  /*
+                   * A rule under the agent's side and none under yours, exactly as
+                   * the `ai` window closes an exchange: a question and the answer
+                   * to it are one thing, and ruling between them cuts the pair in
+                   * half.
+                   */
+                  <article
+                    key={block.turns[0]!.id}
+                    className={cn(
+                      "pb-2",
+                      block.side !== "user" && "border-b border-border/50",
+                      "last:border-0",
+                    )}
+                  >
+                    <TranscriptBlockBody
+                      block={block}
+                      pending={view.head?.pending}
+                    />
+                  </article>
+                ),
+              )}
 
-            {/* The turn being written, if one is. Ephemeral: nothing here is
+              {/* The turn being written, if one is. Ephemeral: nothing here is
                 stored, and it vanishes when the stored turn arrives. */}
-            {selected && <LiveTurnBody live={live} agent={selected.agent} />}
+              {selected && <LiveTurnBody live={live} agent={selected.agent} />}
 
-            {view.turns.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                This session's head is here, but none of its turns are.
-              </p>
-            )}
-          </div>
+              {view.turns.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  This session's head is here, but none of its turns are.
+                </p>
+              )}
+            </ConversationContent>
+            <ConversationScrollButton />
+          </Conversation>
         )}
 
         {view?.head && (
@@ -297,22 +389,34 @@ function statusRank(status: string): number {
 function SessionList({
   sessions,
   selected,
-  onSelect,
+  showing,
+  onShow,
 }: {
   sessions: DecodedHead[];
   selected: { agent: string; session: string } | null;
-  onSelect: (next: { agent: string; session: string }) => void;
+  showing: Showing;
+  onShow: (next: Showing) => void;
 }) {
+  const onSelect = (next: { agent: string; session: string }) =>
+    onShow({ kind: "session", ...next });
   const [open, setOpen] = useState(true);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState("");
   const { repositories } = useMyRepositories();
-  const [starting, setStarting] = useState<{
-    agent: string;
-    repository: MyRepository;
-  } | null>(null);
-  /** Which agent the list is narrowed to, or every agent. */
-  const [only, setOnly] = useState<string | null>(null);
+  /**
+   * Which agent the list is narrowed to.
+   *
+   * Derived from what the main pane is showing rather than held separately: an
+   * agent's page and a list narrowed to that agent are the same intent, and two
+   * pieces of state for it means clicking an agent can leave the list showing
+   * somebody else's runs.
+   */
+  const only =
+    showing.kind === "agent"
+      ? showing.agent
+      : showing.kind === "repo"
+        ? null
+        : null;
 
   /** Every agent that has published something here, with what it is doing. */
   const agents = useMemo(() => {
@@ -406,15 +510,19 @@ function SessionList({
               <button
                 key={agentKey}
                 type="button"
-                onClick={() => setOnly(only === agentKey ? null : agentKey)}
+                onClick={() =>
+                  onShow(
+                    only === agentKey
+                      ? { kind: "dashboard" }
+                      : { kind: "agent", agent: agentKey },
+                  )
+                }
                 className={cn(
                   "flex w-full items-center gap-1 px-2 py-0.5 text-left text-xs hover:bg-muted/50",
                   only === agentKey && "bg-muted",
                 )}
                 title={
-                  only === agentKey
-                    ? "Show every agent's sessions again"
-                    : "Show only this agent's sessions"
+                  only === agentKey ? "Back to every agent" : "Open this agent"
                 }
               >
                 <Bot className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -436,20 +544,22 @@ function SessionList({
                     key={repository.address}
                     type="button"
                     onClick={() =>
-                      // Whichever agent is in view, or the busiest one — the
-                      // choice is confirmed in the dialog either way, so this
-                      // only decides what it opens with.
-                      setStarting({
-                        agent: only ?? agents[0]![0],
+                      // Whichever agent is in view, or the busiest one. The
+                      // page offers a picker, so this only decides what it
+                      // opens with.
+                      onShow({
+                        kind: "repo",
                         repository,
+                        agent: only ?? agents[0]![0],
                       })
                     }
-                    className="flex w-full items-center gap-1.5 px-2 py-0.5 text-left text-xs hover:bg-muted/50"
-                    title={
-                      repository.description ??
-                      repository.clone ??
-                      repository.name
-                    }
+                    className={cn(
+                      "flex w-full items-center gap-1.5 px-2 py-0.5 text-left text-xs hover:bg-muted/50",
+                      showing.kind === "repo" &&
+                        showing.repository.address === repository.address &&
+                        "bg-muted",
+                    )}
+                    title={`Talk to an agent about ${repository.name}`}
                   >
                     <FolderGit2 className="h-3 w-3 shrink-0 text-muted-foreground" />
                     <span className="truncate">{repository.name}</span>
@@ -464,7 +574,7 @@ function SessionList({
               {only && (
                 <button
                   type="button"
-                  onClick={() => setOnly(null)}
+                  onClick={() => onShow({ kind: "dashboard" })}
                   className="ml-1 underline decoration-dotted hover:text-foreground"
                 >
                   clear filter
@@ -546,17 +656,6 @@ function SessionList({
           </>
         )}
       </div>
-
-      {starting && (
-        <StartRunDialog
-          agent={starting.agent}
-          repository={starting.repository}
-          open
-          onOpenChange={(open) => {
-            if (!open) setStarting(null);
-          }}
-        />
-      )}
     </aside>
   );
 }

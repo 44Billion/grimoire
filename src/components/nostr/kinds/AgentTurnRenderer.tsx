@@ -1,11 +1,5 @@
-import { useMemo, useState } from "react";
-import {
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  Bot,
-  Brain,
-  ChevronRight,
-} from "lucide-react";
+import { useMemo } from "react";
+import { ArrowDownToLine, ArrowUpFromLine, Bot } from "lucide-react";
 
 import type { NostrEvent } from "@/types/nostr";
 import { parseAgentEvent } from "@/lib/agent-session/decode";
@@ -14,6 +8,11 @@ import type { DecodedTurn, TurnPart } from "@/lib/agent-session/types";
 import { Check, Users } from "lucide-react";
 
 import { MessageResponse } from "@/components/ai-elements/message";
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from "@/components/ai-elements/reasoning";
 import { InputRequestRow } from "@/components/agent/InputRequest";
 import { RichText } from "@/components/nostr/RichText";
 import { Label } from "@/components/ui/label";
@@ -46,27 +45,25 @@ import { BaseEventContainer } from "./BaseEventRenderer";
  * client that cannot read the parts is supposed to show.
  */
 
-function Reasoning({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
+/**
+ * A trace, rendered the way the `ai` window renders one.
+ *
+ * It was a hand-rolled disclosure with a chevron and a `<p>`; ai-elements'
+ * `Reasoning` is the same affordance with the same collapsed default, and using
+ * it means a thought written in one window and read in the other looks like the
+ * same thought. Collapsed always: the trigger already says there was thinking,
+ * and an expanded trace pushes the answer down the pane.
+ */
+function ReasoningPart({ text }: { text: string }) {
   return (
-    <div className="flex flex-col gap-1">
-      <button
-        type="button"
-        onClick={() => setOpen((was) => !was)}
-        className="flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-      >
-        <ChevronRight
-          className={cn("h-3 w-3 transition-transform", open && "rotate-90")}
-        />
-        <Brain className="h-3 w-3" />
-        <span>Reasoning</span>
-      </button>
-      {open && (
-        <p className="border-l-2 border-border pl-3 text-xs whitespace-pre-wrap text-muted-foreground">
-          {text}
-        </p>
-      )}
-    </div>
+    <Reasoning className="w-full" defaultOpen={false}>
+      <ReasoningTrigger />
+      {/* Quoted and smaller, matching the `ai` window: a trace is something the
+          agent said to itself and must not compete with the answer. */}
+      <ReasoningContent className="mt-2 border-l-2 border-border pl-3 text-xs [&_li]:text-xs [&_p]:text-xs">
+        {text}
+      </ReasoningContent>
+    </Reasoning>
   );
 }
 
@@ -108,11 +105,16 @@ function AgentPart({
       return side === "user" ? (
         <RichText content={part.text} className="text-sm" />
       ) : (
-        <MessageResponse>{part.text}</MessageResponse>
+        /* `text-sm`, like the question above it and like every event body in
+           grimoire. Markdown's base size made the reply the largest text on
+           screen, which reads as a different application. */
+        <MessageResponse className="max-w-full break-words text-sm">
+          {part.text}
+        </MessageResponse>
       );
 
     case "reasoning":
-      return <Reasoning text={part.text} />;
+      return <ReasoningPart text={part.text} />;
 
     case "tool_call":
       // Reached only when a call arrives with no result in view — grouping pairs
