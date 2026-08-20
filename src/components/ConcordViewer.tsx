@@ -42,7 +42,10 @@ import {
   useConcordUnread,
   useConcordUnreadTotals,
 } from "@/hooks/useConcordUnread";
-import type { CommunityUnread } from "@/services/concord-reads";
+import type {
+  CommunityReadTarget,
+  CommunityUnread,
+} from "@/services/concord-reads";
 import { useConcordSearch } from "@/hooks/useConcordSearch";
 import type { ConcordSearchHit } from "@/services/concord-search";
 import { useConcordWire } from "@/hooks/useConcordWire";
@@ -80,7 +83,11 @@ import {
 import { DirectMessageList } from "./dm/DirectMessageList";
 import { dmRowRef } from "@/lib/dm/row-ref";
 import { markDmRead } from "@/services/dm-reads";
-import { markChannelRead, markCommunityRead } from "@/services/concord-reads";
+import {
+  markAllCommunitiesRead,
+  markChannelRead,
+  markCommunityRead,
+} from "@/services/concord-reads";
 import { readStoredState } from "@/services/concord-state";
 import { NewConversationDialog } from "./dm/NewConversationDialog";
 import { DmConsentGate } from "./dm/DmConsentGate";
@@ -701,6 +708,38 @@ export function ConcordViewer({
     [viewerPubkey, communities],
   );
 
+  /**
+   * Every community's count added up — what the heading's clear-all speaks
+   * for. The per-community numbers already sit on the rows themselves, so the
+   * heading carries the control and no count of its own.
+   */
+  const concordUnreadCount = useMemo(() => {
+    let total = 0;
+    for (const unread of totals.values()) total += unread.count;
+    return total;
+  }, [totals]);
+
+  /**
+   * Clear EVERY community at once — the heading's twin of the row menu's
+   * "Mark as read". The folds are re-read here rather than taken from
+   * `state`, the rule `markCommunityAllRead` already follows: only the OPEN
+   * community has one loaded, and this walks all of them.
+   */
+  const markAllCommunitiesAsRead = useCallback(async () => {
+    if (!viewerPubkey) return;
+    const targets: CommunityReadTarget[] = [];
+    for (const target of communities) {
+      const stored = await readStoredState(target).catch(() => undefined);
+      if (!stored) continue;
+      targets.push({
+        communityId: target.idHex,
+        channelIdsHex: stored.channels.map((ch) => ch.idHex.toLowerCase()),
+        bannedAuthors: stored.folded.banned,
+      });
+    }
+    await markAllCommunitiesRead(viewerPubkey, targets);
+  }, [viewerPubkey, communities]);
+
   const markChannelAllRead = useCallback(
     (channelIdHex: string, atSecs: number) => {
       if (!viewerPubkey || !communityIdHex) return;
@@ -1051,6 +1090,21 @@ export function ConcordViewer({
             in the sidebar for the openness badge to sit beside. */}
         {openness && communities.length <= 1 && (
           <OpennessBadge openness={openness} detail={opennessDetail} />
+        )}
+        {/* Only while something is waiting, so the control appears exactly
+            when it means anything and takes no width the rest of the time —
+            the rule the DM and Groups headings below already follow. */}
+        {concordUnreadCount > 0 && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-6"
+            title="Mark all as read"
+            onClick={() => void markAllCommunitiesAsRead()}
+          >
+            <CheckCheck className="size-3" />
+            <span className="sr-only">Mark all as read</span>
+          </Button>
         )}
         <Button
           variant="ghost"

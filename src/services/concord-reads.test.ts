@@ -12,6 +12,7 @@ import { KIND_MESSAGE } from "@/lib/concord/kinds";
 import {
   clearReads,
   communityUnread,
+  markAllCommunitiesRead,
   markChannelRead,
   markCommunityRead,
   readCommunityLastReads,
@@ -308,5 +309,173 @@ describe("markCommunityRead", () => {
     await post(CHANNEL, NOW - 300);
     await markCommunityRead(ME, COMMUNITY, [CHANNEL], undefined, NOW);
     expect(await readLastRead(THEM, COMMUNITY, CHANNEL)).toBe(0);
+  });
+});
+
+describe("markAllCommunitiesRead", () => {
+  const NOW = 1_800_000_000;
+  const OTHER_COMMUNITY = "dd".repeat(32);
+  let seq = 0;
+
+  async function post(
+    communityId: string,
+    channelId: string,
+    at: number,
+    author: string = THEM,
+  ): Promise<void> {
+    seq += 1;
+    await writeChatRumors(
+      communityId,
+      [
+        {
+          rumorId: (seq + 0xb000).toString(16).padStart(64, "0"),
+          author,
+          kind: KIND_MESSAGE,
+          content: "hi",
+          tags: [],
+          createdAt: at,
+          ms: at * 1000,
+          channel: channelId,
+        },
+      ],
+      0,
+    );
+  }
+
+  it("clears every channel of every community in one call", async () => {
+    await post(COMMUNITY, CHANNEL, NOW - 300);
+    await post(COMMUNITY, OTHER_CHANNEL, NOW - 200);
+    await post(OTHER_COMMUNITY, CHANNEL, NOW - 100);
+
+    await markAllCommunitiesRead(
+      ME,
+      [
+        { communityId: COMMUNITY, channelIdsHex: [CHANNEL, OTHER_CHANNEL] },
+        { communityId: OTHER_COMMUNITY, channelIdsHex: [CHANNEL] },
+      ],
+      NOW,
+    );
+
+    expect(
+      (await communityUnread(ME, COMMUNITY, [CHANNEL, OTHER_CHANNEL], NOW))
+        .count,
+    ).toBe(0);
+    expect(
+      (await communityUnread(ME, OTHER_COMMUNITY, [CHANNEL], NOW)).count,
+    ).toBe(0);
+  });
+
+  it("stamps each channel at ITS OWN newest message, not at the clock", async () => {
+    await post(COMMUNITY, CHANNEL, NOW - 300);
+    await post(OTHER_COMMUNITY, CHANNEL, NOW - 100);
+
+    await markAllCommunitiesRead(
+      ME,
+      [
+        { communityId: COMMUNITY, channelIdsHex: [CHANNEL] },
+        { communityId: OTHER_COMMUNITY, channelIdsHex: [CHANNEL] },
+      ],
+      NOW,
+    );
+
+    expect(await readLastRead(ME, COMMUNITY, CHANNEL)).toBe(NOW - 300);
+    expect(await readLastRead(ME, OTHER_COMMUNITY, CHANNEL)).toBe(NOW - 100);
+  });
+
+  it("writes nothing for a community with nothing waiting", async () => {
+    await post(COMMUNITY, CHANNEL, NOW - 300);
+
+    await markAllCommunitiesRead(
+      ME,
+      [
+        { communityId: COMMUNITY, channelIdsHex: [CHANNEL] },
+        { communityId: OTHER_COMMUNITY, channelIdsHex: [CHANNEL] },
+      ],
+      NOW,
+    );
+
+    // No row at all — a stamp moved forward in a community the reader never
+    // opened would silently swallow whatever arrives next below it.
+    expect(await readLastRead(ME, OTHER_COMMUNITY, CHANNEL)).toBe(0);
+    expect(
+      await db.chatReads.get([ME, "concord", OTHER_COMMUNITY, CHANNEL]),
+    ).toBe(undefined);
+  });
+
+  it("never moves a stamp backwards", async () => {
+    await post(COMMUNITY, CHANNEL, NOW - 300);
+    await markChannelRead(ME, COMMUNITY, CHANNEL, NOW);
+
+    await markAllCommunitiesRead(
+      ME,
+      [{ communityId: COMMUNITY, channelIdsHex: [CHANNEL] }],
+      NOW,
+    );
+
+    expect(await readLastRead(ME, COMMUNITY, CHANNEL)).toBe(NOW);
+  });
+
+  it("honours each community's own ban list", async () => {
+    await post(COMMUNITY, CHANNEL, NOW - 300);
+    await post(OTHER_COMMUNITY, CHANNEL, NOW - 200);
+
+    await markAllCommunitiesRead(
+      ME,
+      [
+        {
+          communityId: COMMUNITY,
+          channelIdsHex: [CHANNEL],
+          bannedAuthors: new Set([THEM]),
+        },
+        { communityId: OTHER_COMMUNITY, channelIdsHex: [CHANNEL] },
+      ],
+      NOW,
+    );
+
+    // Banned in the first community, so nothing countable there and nothing
+    // stamped — while the second, where the author stands, clears.
+    expect(await readLastRead(ME, COMMUNITY, CHANNEL)).toBe(0);
+    expect(await readLastRead(ME, OTHER_COMMUNITY, CHANNEL)).toBe(NOW - 200);
+  });
+
+  it("does not stamp a channel whose only rows are the reader's own", async () => {
+    // Own messages are never unread, so a channel holding nothing else has
+    // nothing to clear — and must keep its "never opened" stamp.
+    await post(COMMUNITY, CHANNEL, NOW - 300, ME);
+
+    await markAllCommunitiesRead(
+      ME,
+      [{ communityId: COMMUNITY, channelIdsHex: [CHANNEL] }],
+      NOW,
+    );
+
+    expect(await readLastRead(ME, COMMUNITY, CHANNEL)).toBe(0);
+  });
+
+  it("leaves another account alone", async () => {
+    await post(COMMUNITY, CHANNEL, NOW - 300);
+
+    await markAllCommunitiesRead(
+      ME,
+      [{ communityId: COMMUNITY, channelIdsHex: [CHANNEL] }],
+      NOW,
+    );
+
+    expect(await readLastRead(THEM, COMMUNITY, CHANNEL)).toBe(0);
+  });
+
+  it("resolves without writing when handed nothing", async () => {
+    await markAllCommunitiesRead(ME, [], NOW);
+    await markAllCommunitiesRead(
+      ME,
+      [{ communityId: COMMUNITY, channelIdsHex: [] }],
+      NOW,
+    );
+    await markAllCommunitiesRead(
+      "",
+      [{ communityId: COMMUNITY, channelIdsHex: [CHANNEL] }],
+      NOW,
+    );
+    expect(await db.chatReads.count()).toBe(0);
   });
 });
