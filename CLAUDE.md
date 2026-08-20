@@ -20,6 +20,7 @@ deliberately omits:
 | Applesauce v6 APIs, factories, helpers, relay semantics | `docs/applesauce.md` |
 | Custom React hooks (`useAccount`, `useTimeline`, …) | `docs/hooks.md` |
 | Chat protocol adapters (NIP-29) | `docs/chat-system.md` |
+| Agent sessions on Nostr (kinds 1777/1779/21777/31777/31779) | `docs/agent-sessions.md` |
 | Tailwind v4 conventions | `docs/tailwind-v4.md` |
 | Inference (`ai` window, IPA, tools, on-device fallback) | `docs/inference.md` |
 

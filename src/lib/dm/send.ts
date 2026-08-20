@@ -37,6 +37,15 @@ export interface SendDmParams {
   content: string;
   /** The rumor being replied to, if any. */
   replyTo?: Rumor;
+  /**
+   * Extra tags on the message itself.
+   *
+   * What a message is ABOUT, as pointers: `["a", …]` at a repository, `["e", …]`
+   * at an event. Added before the id is computed, since a tag appended
+   * afterwards leaves a rumor whose id does not match its own content — which
+   * every recipient recomputes and rejects.
+   */
+  tags?: string[][];
 }
 
 export interface SendDmResult {
@@ -87,7 +96,7 @@ export class DmUndeliverableError extends Error {
  * in a gift wrap, so this is the one delivery path and each caller only decides
  * what rumor to build.
  */
-async function deliverRumor(
+export async function deliverRumor(
   viewer: string,
   signer: EventSigner,
   peerRelays: Map<string, string[]>,
@@ -169,6 +178,7 @@ export async function sendDirectMessage({
   peers,
   content,
   replyTo,
+  tags = [],
 }: SendDmParams): Promise<SendDmResult> {
   const others = peers.filter((p) => p !== viewer);
 
@@ -181,6 +191,7 @@ export async function sendDirectMessage({
       [viewer],
     );
     if (replyTo) stamped.tags.push(["e", replyTo.id]);
+    stamped.tags.push(...tags);
     return deliverRumor(viewer, signer, new Map(), stamped);
   }
 
@@ -200,6 +211,7 @@ export async function sendDirectMessage({
     others,
   );
   if (replyTo) stamped.tags.push(["e", replyTo.id]);
+  stamped.tags.push(...tags);
 
   // Every participant, including the unreachable ones: the p tags are the
   // conversation's identity, so dropping someone would file the message under

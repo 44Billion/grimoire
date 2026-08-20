@@ -17,6 +17,7 @@ import {
   Wifi,
   MessageSquare,
   MessagesSquare,
+  Bot,
   Phone,
   Hash,
   Zap,
@@ -88,6 +89,10 @@ export const COMMAND_ICONS: Record<string, CommandIcon> = {
   chat: {
     icon: MessageSquare,
     description: "Join and participate in NIP-29 relay-based group chats",
+  },
+  agent: {
+    icon: Bot,
+    description: "Read an agent's transcript, as it published it",
   },
   concord: {
     icon: MessagesSquare,

@@ -19,7 +19,7 @@ type Tool = {
   inputSchema?: unknown;
 };
 import type { ComponentProps } from "react";
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 
 import { HexAvatar } from "../ai/Hex";
 import { ProviderLogo, providerFromModel } from "../ai/ProviderLogo";
@@ -37,10 +37,25 @@ export const Agent = memo(({ className, ...props }: AgentProps) => (
 export type AgentHeaderProps = ComponentProps<"div"> & {
   name: string;
   model?: string;
+  /**
+   * Local: who is answering, when it is not Hex.
+   *
+   * A published transcript is some other agent's, on some other machine, and
+   * badging it with Hex's face would be a lie told by a default. Hex stays the
+   * default because the `ai` window is where this element was first used.
+   */
+  avatar?: ReactNode;
 };
 
 export const AgentHeader = memo(
-  ({ className, children, name, model, ...props }: AgentHeaderProps) => (
+  ({
+    className,
+    children,
+    name,
+    model,
+    avatar,
+    ...props
+  }: AgentHeaderProps) => (
     <div
       className={cn(
         "flex w-full items-center justify-between gap-4 p-3",
@@ -49,7 +64,7 @@ export const AgentHeader = memo(
       {...props}
     >
       <div className="flex items-center gap-2">
-        <HexAvatar />
+        {avatar ?? <HexAvatar />}
         <span className="font-medium text-sm">{name}</span>
         {model && (
           // Local: the provider renders as its mark, matching the turn footer.

@@ -33,6 +33,20 @@ export const Tool = ({ className, ...props }: ToolProps) => (
 export type ToolPart = ToolUIPart | DynamicToolUIPart;
 
 export type ToolHeaderProps = {
+  /**
+   * Local: a per-tool icon, replacing the generic wrench.
+   *
+   * A transcript is a column of tool calls, and eight identical wrenches make a
+   * reader read every name to find the one they want.
+   */
+  icon?: ReactNode;
+  /**
+   * Local: a one-line summary of the call, beside its name.
+   *
+   * Same reason. `nostr_req` says what was used; `nostr_req kinds:[1] limit:5`
+   * says what it was used FOR, which is what someone scanning is looking for.
+   */
+  summary?: ReactNode;
   title?: string;
   className?: string;
 } & (
@@ -77,6 +91,8 @@ export const ToolHeader = ({
   type,
   state,
   toolName,
+  icon,
+  summary,
   ...props
 }: ToolHeaderProps) => {
   const derivedName =
@@ -90,9 +106,12 @@ export const ToolHeader = ({
       )}
       {...props}
     >
-      <div className="flex items-center gap-2">
-        <WrenchIcon className="size-4 text-muted-foreground" />
-        <span className="font-medium text-sm">{title ?? derivedName}</span>
+      <div className="flex min-w-0 items-center gap-2">
+        {icon ?? <WrenchIcon className="size-4 text-muted-foreground" />}
+        <span className="shrink-0 font-medium text-sm">
+          {title ?? derivedName}
+        </span>
+        {summary}
         {getStatusBadge(state)}
       </div>
       <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />

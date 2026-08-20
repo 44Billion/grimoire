@@ -19,6 +19,7 @@ export type AppId =
   | "conn"
   | "chat"
   | "concord"
+  | "agent"
   | "call"
   | "spells"
   | "spellbooks"

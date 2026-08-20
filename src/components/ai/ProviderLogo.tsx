@@ -67,9 +67,32 @@ const ALIASES: Record<string, keyof typeof MARKS> = {
  * Returns undefined when there is no slug to resolve.
  */
 export function providerFromModel(model?: string): string | undefined {
-  if (!model) return undefined;
-  const slash = model.indexOf("/");
-  return slash > 0 ? model.slice(0, slash).toLowerCase() : undefined;
+  return splitModel(model).vendor;
+}
+
+/**
+ * The vendor and the readable name inside a model id.
+ *
+ * An id carries its own path — `moonshotai/kimi-k3` — and a ROUTE may sit in
+ * front of it, so `ppq/moonshotai/kimi-k3` is three segments: who served it, who
+ * built it, and what it is. The logo means the vendor, so the vendor is the
+ * second-to-last segment and not the first; reading the first would badge every
+ * model an agent reaches through a router with the router's name.
+ *
+ * `provider` is a fallback, used only when the id carries no path at all.
+ */
+export function splitModel(
+  model: string | undefined,
+  provider?: string,
+): { vendor?: string; label?: string } {
+  if (!model) return {};
+  const parts = model.split("/").filter(Boolean);
+  if (parts.length === 1)
+    return { vendor: provider?.toLowerCase(), label: parts[0] };
+  return {
+    vendor: parts[parts.length - 2]?.toLowerCase(),
+    label: parts[parts.length - 1],
+  };
 }
 
 export function ProviderLogo({

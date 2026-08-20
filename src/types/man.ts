@@ -1,3 +1,4 @@
+import { parseAgentCommand } from "@/lib/agent-parser";
 import { parseReqCommand } from "../lib/req-parser";
 import { parseCountCommand } from "../lib/count-parser";
 import type { AppId } from "./app";
@@ -612,6 +613,35 @@ export const manPages: Record<string, ManPageEntry> = {
     appId: "call",
     category: "Nostr",
     argParser: async (args: string[]) => parseCallCommand(args),
+  },
+  agent: {
+    name: "agent",
+    section: "1",
+    synopsis: "agent [naddr | <agent-npub> [session-id]]",
+    description:
+      "Read an agent's transcript. An agent — grimoire's own `ai` sessions, a bot like Hex, a coding agent running on your machine — publishes what it did as events (NIP-xx): a session head, one turn per message, and ephemeral deltas while it types. The private copy arrives in your inbox as gift wraps, so this window holds no subscription of its own and works with no relay reachable: everything it shows was decrypted once by the DM inbox and stored locally. ORDERING: a gift wrap's timestamp is randomised up to two days into the past, so a transcript sorted by it would render in near-random order. Order comes from a sequence number inside the sealed payload instead, and each event names the one before it — which is what lets this window say a transcript has a HOLE in it, or has FORKED, rather than quietly showing you a plausible history that never happened. A missing turn is reported; a missing delta is not, because everything a delta carried is repeated in the turn that closes it. TRUST: an agent's key is named inside its own session address, so an event signed by anyone else is dropped before it can be rendered — and for a wrapped copy the seal's signature is the proof, never the wrap's, which is a throwaway key by design. A session is shown as run by a human only when both halves of the binding hold: the agent names its operator, and the operator lists the agent in their kind-30000 set with `d` of `agents`.",
+    options: [
+      {
+        flag: "[naddr]",
+        description:
+          "An naddr for a kind-31777 session head. Carries the agent and the session id together.",
+      },
+      {
+        flag: "[<agent-npub> [session-id]]",
+        description:
+          "An agent's npub or hex pubkey, optionally with the session id the head is filed under. Omit both to browse every session addressed to you.",
+      },
+    ],
+    examples: [
+      "agent                                     Browse every transcript addressed to you",
+      "agent naddr1...                           Open one session",
+      "agent npub1...                            Sessions from one agent",
+      "agent npub1... 3a7c1f9e...                Open a session by id",
+    ],
+    seeAlso: ["chat", "kind", "profile"],
+    appId: "agent",
+    category: "Nostr",
+    argParser: async (args: string[]) => parseAgentCommand(args),
   },
   concord: {
     name: "concord",

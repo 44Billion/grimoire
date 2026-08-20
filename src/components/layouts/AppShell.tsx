@@ -1,6 +1,7 @@
 import { useState, useEffect, ReactNode } from "react";
 import { Terminal } from "lucide-react";
 import { useAccountSync } from "@/hooks/useAccountSync";
+import { useDmIngest } from "@/hooks/useDmIngest";
 import { useRelayListCacheSync } from "@/hooks/useRelayListCacheSync";
 import { useBlossomServerCacheSync } from "@/hooks/useBlossomServerCacheSync";
 import { useEmojiSearchSync } from "@/hooks/useEmojiSearchSync";
@@ -27,6 +28,12 @@ export function AppShell({ children, hideBottomBar = false }: AppShellProps) {
 
   // Sync active account and fetch relay lists
   useAccountSync();
+
+  // One gift-wrap ingester for the whole app, held here rather than by whichever
+  // window happens to be open. Every pane that shows a wrapped event — a
+  // conversation, an agent transcript — is then a pure reader of the local
+  // mirror, which is what they all claim to be.
+  useDmIngest();
 
   // Auto-cache kind:10002 relay lists from EventStore to Dexie
   useRelayListCacheSync();

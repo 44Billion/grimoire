@@ -141,3 +141,52 @@ export function formatTimestamp(
 
   return date.toLocaleString(browserLocale);
 }
+
+/**
+ * A token count, short.
+ *
+ * `1,048,576` is nine characters of mostly-noise on a row that also has to hold
+ * a name, a model, a cost and a time — and nobody reading a transcript needs
+ * the exact figure, only its size. The full number stays in the `title`, which
+ * is where a reader who does want it looks.
+ *
+ * Locale-aware, so a German reader gets `1,0 Mio.` rather than an English
+ * abbreviation with a comma in the wrong place.
+ */
+export function formatCompact(value: number, locale: string): string {
+  return new Intl.NumberFormat(locale, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+/** The exact figure, for the tooltip the compact one hides it behind. */
+export function formatExact(value: number, locale: string): string {
+  return new Intl.NumberFormat(locale).format(value);
+}
+
+/**
+ * Money, at two decimals, in the reader's own locale.
+ *
+ * Two decimals because a currency has two and a column of `0.200693` is a
+ * column nobody can compare at a glance. The exception is an amount that is not
+ * zero but rounds to it: `$0.00` on a session that cost something is a lie a
+ * reader cannot detect, so it renders as `<$0.01` instead. The exact figure is
+ * always in the `title`.
+ */
+export function formatMoney(
+  amount: number,
+  currency: string,
+  locale: string,
+): string {
+  const money = (value: number, digits = 2) =>
+    new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency,
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    }).format(value);
+
+  if (amount > 0 && amount < 0.005) return `<${money(0.01)}`;
+  return money(amount);
+}
