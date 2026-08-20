@@ -505,6 +505,22 @@ There is one chain and one `last-seq`, so a public copy MUST carry the whole of 
 
 Two properties to state plainly, because a publisher cannot undo either: the events are permanent — [NIP-09](09.md) is a request, not a delete — and the transcript contains whatever the agent was told, including the operator's own words.
 
+**The room decides the carriage.** A wrapped transcript answers "who may read
+this" with a list of names, which is right for a private message and wrong for a
+public room: the question was visible to forty people and the answer to one. So
+an agent answering in a room that says it is public SHOULD publish the public
+copy as well as the wrapped one, and one answering anywhere else MUST NOT. A
+private group is not an exception waiting to be solved — its members go without
+a transcript rather than the room being unsealed on their behalf.
+
+The decision is made once, when the session opens, and does not change if the
+room's metadata does. There is one chain and one `last-seq`, so a public copy
+that begins at turn twelve is a transcript with a hole nobody can fill.
+
+A room that cannot be described is private. Guessing wrong in that direction
+costs a transcript; guessing wrong in the other is a permanent public record of a
+conversation that was not.
+
 **Only the author can do this.** The seal rule below makes forwarding impossible on purpose: a sharer who re-seals someone else's rumors signs the new seal, and a conforming reader rejects every one. Sharing a transcript you did not author means asking whoever did to publish it.
 
 ## Identity and Trust
