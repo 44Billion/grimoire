@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { formatCompact, formatExact, formatMoney } from "./useLocale";
 
-
 describe("formatCompact / formatMoney", () => {
   it("shortens a token count and keeps the exact one for the tooltip", () => {
     // `1,048,576` is nine characters of mostly-noise on a row that also holds a
@@ -24,4 +23,3 @@ describe("formatCompact / formatMoney", () => {
     expect(formatMoney(0, "USD", "en-US")).toBe("$0.00");
   });
 });
-
