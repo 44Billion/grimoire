@@ -166,6 +166,12 @@ export function AgentSessionViewer({
   useEffect(() => {
     if (!viewer || !selected) return;
     let live = true;
+    /*
+     * Clear first. `view` outlives the selection, so until the read lands the
+     * pane rendered the previous run's turns, head and stats under the newly
+     * chosen session's heading — one session wearing another's name.
+     */
+    setView(null);
     const read = async () => {
       const next = await readAgentSession(
         viewer,
@@ -364,8 +370,17 @@ export function AgentSessionViewer({
         */}
         {showing.kind === "session" && view?.head && (
           <SessionComposer
-            agent={view.head.session.agent}
-            session={view.head.session.session}
+            /*
+             * From the SELECTION, not from `view`.
+             *
+             * `view` holds whatever was read last and is asynchronous, so
+             * between picking a session and its read landing, the composer was
+             * addressing the PREVIOUS run — a steer typed into one transcript
+             * went to another, and the only sign was that nothing happened in
+             * the one you were looking at.
+             */
+            agent={showing.agent}
+            session={showing.session}
             status={view.head.status}
           />
         )}
