@@ -27,6 +27,18 @@ import {
   formatMoney,
   useLocale,
 } from "@/hooks/useLocale";
+import {
+  Context,
+  ContextCacheUsage,
+  ContextContent,
+  ContextContentBody,
+  ContextContentFooter,
+  ContextContentHeader,
+  ContextInputUsage,
+  ContextOutputUsage,
+  ContextReasoningUsage,
+  ContextTrigger,
+} from "@/components/ai-elements/context";
 import { billedTokens, cacheRate } from "@/lib/agent-session/usage";
 import type { Usage } from "@/lib/agent-session/types";
 
@@ -44,10 +56,21 @@ export interface StatsInput {
 export function StatStrip({
   stats,
   countLabel,
+  context,
 }: {
   stats: StatsInput;
   /** `runs` on a dashboard, `turns` in a session. */
   countLabel: "runs" | "turns";
+  /**
+   * How much of the model's window this run is using, when it is knowable.
+   *
+   * Only a session has one — a dashboard sums runs on different models with
+   * different windows, and a percentage of that is not a number. Absent when
+   * the agent published no window: how full is 32k depends entirely on whether
+   * the ceiling is 200k or a million, so a bar with a guessed maximum is worse
+   * than no bar.
+   */
+  context?: { usedTokens: number; maxTokens: number; modelId?: string };
 }) {
   const { locale } = useLocale();
   const tokens = billedTokens(stats.usage);
@@ -90,16 +113,49 @@ export function StatStrip({
             : undefined
         }
       />
-      <Tile
-        icon={<Database className="size-3.5" />}
-        label="cache"
-        value={rate === undefined ? "—" : `${Math.round(rate * 100)}%`}
-        hint={
-          stats.usage && rate !== undefined
-            ? `${formatExact(stats.usage.cacheRead, locale)} of ${formatExact(stats.usage.input, locale)} input tokens came from cache`
-            : undefined
-        }
-      />
+      {context && context.maxTokens > 0 ? (
+        <Context
+          maxTokens={context.maxTokens}
+          modelId={context.modelId}
+          usage={{
+            inputTokens: stats.usage?.input,
+            outputTokens: stats.usage?.output,
+            cachedInputTokens: stats.usage?.cacheRead,
+          }}
+          usedTokens={context.usedTokens}
+        >
+          <div className="flex flex-col gap-1.5 rounded border border-border p-2">
+            <span className="flex items-center gap-1 text-[10px] tracking-wide text-muted-foreground uppercase">
+              <Database className="size-3.5" />
+              context
+            </span>
+            <ContextTrigger className="h-auto w-fit p-0 font-mono text-lg leading-none tabular-nums hover:bg-transparent" />
+          </div>
+          <ContextContent>
+            <ContextContentHeader />
+            <ContextContentBody>
+              <div className="flex flex-col gap-1">
+                <ContextInputUsage />
+                <ContextOutputUsage />
+                <ContextCacheUsage />
+                <ContextReasoningUsage />
+              </div>
+            </ContextContentBody>
+            <ContextContentFooter />
+          </ContextContent>
+        </Context>
+      ) : (
+        <Tile
+          icon={<Database className="size-3.5" />}
+          label="cache"
+          value={rate === undefined ? "—" : `${Math.round(rate * 100)}%`}
+          hint={
+            stats.usage && rate !== undefined
+              ? `${formatExact(stats.usage.cacheRead, locale)} of ${formatExact(stats.usage.input, locale)} input tokens came from cache`
+              : undefined
+          }
+        />
+      )}
     </div>
   );
 }

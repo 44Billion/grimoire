@@ -29,6 +29,16 @@ import type {
   Usage,
 } from "./types";
 
+/**
+ * What a run can be ABOUT, in NIP-22's own scope vocabulary.
+ *
+ * An event (`e`), an addressable one (`a`), a person (`p`), a page on the web
+ * (`r`), or something outside Nostr entirely (`i`, NIP-73). Reusing the set a
+ * comment already uses means a client that can say "about this" has nothing
+ * new to learn.
+ */
+const SUBJECT_TAGS = new Set(["a", "e", "p", "r", "i"]);
+
 const ROLES: readonly string[] = ["user", "assistant", "tool"];
 const SESSION_STATUSES: readonly string[] = [
   "active",
@@ -299,13 +309,20 @@ function parseHead(rumor: UnsignedRumor & { id: string }): DecodedHead | null {
       // A relay URL, or nothing. An agent naming an http endpoint here is
       // either confused or trying something, and neither gets dialled.
       .filter((url) => url.startsWith("wss://") || url.startsWith("ws://")),
+    /**
+     * What the run is about, in NIP-22's own scope vocabulary.
+     *
+     * Not only events: a person (`p`), a page (`r`), and something outside
+     * Nostr entirely (`i`, NIP-73) are all things a run can be pointed at.
+     *
+     * A MARKER is what disqualifies one, rather than a list of letters. The
+     * same letters mean something else elsewhere on this event — a `p` marked
+     * `operator` or `observer` says who the run is for, and the `e` marked
+     * `trigger` points at the message that started it — and all of them say so
+     * in the fourth position. A pointer with nothing there is a subject.
+     */
     subjects: rumor.tags.filter(
-      (t) =>
-        (t[0] === "a" || t[0] === "e") &&
-        !!t[1] &&
-        // The trigger is an `e` too, and it points at the MESSAGE rather than
-        // at a subject. It has its own marker; anything wearing it is not this.
-        t[3] !== "trigger",
+      (t) => SUBJECT_TAGS.has(t[0] ?? "") && !!t[1] && !t[3],
     ),
     channel: (() => {
       const transport = value(rumor, "transport");
@@ -336,6 +353,16 @@ function parseDefinition(
     about: value(rumor, "about"),
     // The content is the system prompt itself, verbatim and unwrapped.
     instructions: rumor.content || undefined,
+    model: (() => {
+      const tag = rumor.tags.find((t) => t[0] === "model" && t[1]);
+      if (!tag?.[1]) return undefined;
+      const window = Number(tag[2]);
+      return {
+        id: tag[1],
+        contextWindow:
+          Number.isFinite(window) && window > 0 ? window : undefined,
+      };
+    })(),
     tools: rumor.tags
       .filter((t) => t[0] === "tool" && t[1])
       .map((t) => ({

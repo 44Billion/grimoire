@@ -417,6 +417,14 @@ export interface DecodedDefinition {
   about?: string;
   instructions?: string;
   tools: AgentToolSpec[];
+  /**
+   * The model the run was set up with, and how much context it holds.
+   *
+   * The window is the half a reader cannot derive: a session's token count
+   * means one thing against 200k and something else against a million, and
+   * "how close is this to compacting" is the question a long run is read for.
+   */
+  model?: { id: string; contextWindow?: number };
   suggestions: string[];
   /** Checkouts the agent has, and where they sit inside its sandbox. */
   repositories: DecodedRepository[];

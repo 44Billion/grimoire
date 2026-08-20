@@ -20,6 +20,14 @@ import { BaseEventContainer } from "./BaseEventRenderer";
 export function AgentSessionHeadBody({
   head,
   /**
+   * The session's own definition, for the one number the head cannot carry.
+   *
+   * How full the context is needs a ceiling, and the ceiling belongs to the
+   * model rather than to the run — so it is published once on the definition
+   * instead of on a head that is rewritten dozens of times a session.
+   */
+  definition,
+  /**
    * Drop the title row, for a caller that already renders one.
    *
    * The session viewer puts the title and status in its pane heading, where
@@ -29,6 +37,7 @@ export function AgentSessionHeadBody({
   titled = true,
 }: {
   head: DecodedHead;
+  definition?: DecodedDefinition;
   titled?: boolean;
 }) {
   return (
@@ -58,7 +67,16 @@ export function AgentSessionHeadBody({
           </span>
         )}
       </div>
-      {head.channel?.id && <ChannelLine channel={head.channel} />}
+      {/*
+        Where it happened, but only where that is news.
+        
+        In the session view the pane heading already names the run and the
+        transport tag already says how it was asked for — and for a private
+        channel the "room" IS the person, who is named again on the very next
+        line as the author of the first turn. Three sayings of one fact, and the
+        first one looked like a message from them.
+      */}
+      {titled && head.channel?.id && <ChannelLine channel={head.channel} />}
       {/*
         The same four numbers the dashboard shows, scoped to this run — one
         component, so a session's header and the strip above it cannot drift
@@ -68,6 +86,22 @@ export function AgentSessionHeadBody({
       <StatStrip
         countLabel="turns"
         stats={{ ...summariseHeads([head]), count: head.lastSeq }}
+        context={
+          definition?.model?.contextWindow
+            ? {
+                /*
+                 * What is IN the window right now, which is the input of the
+                 * latest turn — not the sum of every turn ever run. A session
+                 * that has spent two million tokens against a 200k window has
+                 * not overflowed it; it has been fed the same prefix eighty
+                 * times, which is what the cache figure beside it measures.
+                 */
+                usedTokens: head.usage?.input ?? 0,
+                maxTokens: definition.model.contextWindow,
+                modelId: definition.model.id,
+              }
+            : undefined
+        }
       />
     </div>
   );

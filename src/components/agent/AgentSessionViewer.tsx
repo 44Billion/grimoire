@@ -28,6 +28,7 @@ import { AgentSessionHeadBody } from "@/components/nostr/kinds/AgentSessionRende
 import { StatusBadge } from "@/components/agent/status";
 import { SessionComposer } from "@/components/agent/SessionComposer";
 import { SessionSetup } from "@/components/agent/SessionSetup";
+import { SessionSubjects } from "@/components/agent/SessionSubjects";
 import {
   Conversation,
   ConversationContent,
@@ -287,10 +288,16 @@ export function AgentSessionViewer({
             <ConversationContent className="flex flex-col gap-3 p-3">
               {view.head && (
                 <>
-                  <AgentSessionHeadBody head={view.head} titled={false} />
+                  <AgentSessionHeadBody
+                    head={view.head}
+                    definition={view.definition ?? undefined}
+                    titled={false}
+                  />
                   {view.definition && (
                     <SessionSetup definition={view.definition} />
                   )}
+                  {/* What it IS, then what it was pointed at. */}
+                  <SessionSubjects subjects={view.head.subjects} />
                 </>
               )}
 
