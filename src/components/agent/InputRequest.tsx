@@ -115,7 +115,14 @@ export function InputRequestRow({
                   ? "default"
                   : "outline"
             }
-            disabled={sending !== null}
+            /*
+             * A settled question keeps its options so the transcript still
+             * shows what was on offer — but they are a record by then, not a
+             * control. Pressed, they would publish an answer to a request the
+             * runtime closed an hour ago, which resolves nothing and reads to
+             * the person as a button that does not work.
+             */
+            disabled={!open || sending !== null}
             title={option.description}
             onClick={() => void answer(option.id)}
           >
