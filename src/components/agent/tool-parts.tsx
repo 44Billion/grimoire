@@ -128,6 +128,21 @@ function Block({ children }: { children: React.ReactNode }) {
  * ours and its output will change; a renderer that hid the parts it did not
  * recognise would silently stop showing them.
  */
+/**
+ * The prose inside a tool result, whichever shape it arrived in.
+ *
+ * `readOutput` unwraps `{ok, output}` only when the output is itself JSON; when
+ * it is prose it hands back the whole envelope, because for most tools the
+ * envelope IS the answer. These three return terminal text, so they want the
+ * inside — and they have to ask for it themselves rather than change a helper
+ * every other presenter depends on.
+ */
+function prose(parsed: unknown): string | undefined {
+  if (typeof parsed === "string") return parsed;
+  const out = record(parsed)?.output;
+  return typeof out === "string" ? out : undefined;
+}
+
 interface Proposal {
   id: string;
   status: string;
@@ -234,14 +249,16 @@ const PRESENTERS: Record<string, ToolPresenter> = {
     icon: GitPullRequest,
     summary: (args) => str(args.repo),
     outcome: (parsed) => {
-      const text = typeof parsed === "string" ? parsed : undefined;
+      const text = prose(parsed);
       if (text === undefined) return undefined;
       const open = parseProposals(text).filter((row) => row.status === "open");
       if (open.length === 0) return "nothing open";
       return `${open.length} open`;
     },
-    detail: (parsed) =>
-      typeof parsed === "string" ? <ProposalRows text={parsed} /> : undefined,
+    detail: (parsed) => {
+      const text = prose(parsed);
+      return text ? <ProposalRows text={text} /> : undefined;
+    },
   },
 
   /** `{repo, id}` → one proposal's header block and description. */
@@ -252,8 +269,10 @@ const PRESENTERS: Record<string, ToolPresenter> = {
       const repo = str(args.repo);
       return id && repo ? `${repo} ${id.slice(0, 8)}` : (repo ?? id);
     },
-    detail: (parsed) =>
-      typeof parsed === "string" ? <ProposalDetail text={parsed} /> : undefined,
+    detail: (parsed) => {
+      const text = prose(parsed);
+      return text ? <ProposalDetail text={text} /> : undefined;
+    },
   },
 
   /**
@@ -272,8 +291,10 @@ const PRESENTERS: Record<string, ToolPresenter> = {
       const repo = str(args.repo);
       return id && repo ? `${repo} ${id.slice(0, 8)}` : (repo ?? id);
     },
-    detail: (parsed) =>
-      typeof parsed === "string" ? <Block>{parsed}</Block> : undefined,
+    detail: (parsed) => {
+      const text = prose(parsed);
+      return text ? <Block>{text}</Block> : undefined;
+    },
   },
 
   /** `{command}` → `{exitCode, stdout, stderr, truncated}`. */
