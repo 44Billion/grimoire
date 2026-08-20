@@ -158,8 +158,51 @@ export async function markChannelRead(
   }
 }
 
+/** One community's part of a clear-all: which channels, and whose fold hides. */
+export interface CommunityReadTarget {
+  communityId: string;
+  channelIdsHex: readonly string[];
+  /** The community's banned authors, whose messages the timeline hides. */
+  bannedAuthors?: ReadonlySet<string>;
+}
+
 /**
- * Stamp every channel of one community read, in one transaction.
+ * Stamp every channel of one community read — the one-community case of {@link
+ * markAllCommunitiesRead}, which holds the why.
+ */
+export async function markCommunityRead(
+  pubkey: string,
+  communityId: string,
+  channelIdsHex: readonly string[],
+  bannedAuthors?: ReadonlySet<string>,
+  nowSecs: number = Math.floor(Date.now() / 1000),
+): Promise<void> {
+  if (channelIdsHex.length === 0) return;
+  await markAllCommunitiesRead(
+    pubkey,
+    [
+      {
+        communityId,
+        channelIdsHex,
+        ...(bannedAuthors ? { bannedAuthors } : {}),
+      },
+    ],
+    nowSecs,
+  );
+}
+
+/**
+ * Stamp every channel of EVERY community read, in one transaction.
+ *
+ * One transaction rather than a loop over the communities, and the reason is
+ * the repaint rather than the write: `useConcordUnread` watches this table,
+ * and Dexie fires its observers per transaction — so one mark per community
+ * would re-read every stamp once per community and repaint the sidebar under
+ * the reader's cursor. `markAllGroupsRead` holds the same line for NIP-29.
+ *
+ * The summaries are measured BEFORE the transaction opens: they scan
+ * `concordRumors`, and a Dexie `rw` transaction over `chatReads` should hold
+ * only that table's reads and writes.
  *
  * Each channel is stamped at ITS OWN newest countable message rather than at
  * the clock: the summary already applies the future ceiling, the ban list and
@@ -170,34 +213,34 @@ export async function markChannelRead(
  * stamp is a position, and moving one in a channel the reader never opened
  * would silently swallow whatever arrives next with an older `created_at`.
  */
-export async function markCommunityRead(
+export async function markAllCommunitiesRead(
   pubkey: string,
-  communityId: string,
-  channelIdsHex: readonly string[],
-  bannedAuthors?: ReadonlySet<string>,
+  communities: ReadonlyArray<CommunityReadTarget>,
   nowSecs: number = Math.floor(Date.now() / 1000),
 ): Promise<void> {
-  if (!pubkey || !communityId || channelIdsHex.length === 0) return;
+  if (!pubkey || communities.length === 0) return;
   try {
-    const stamps = await readCommunityLastReads(pubkey, communityId);
-    const wanted: Array<{ channelId: string; at: number }> = [];
-    for (const channelId of channelIdsHex) {
-      const id = channelId.toLowerCase();
-      const summary = await channelUnreadSummary(communityId, id, {
-        after: stamps.get(id) ?? 0,
-        nowSecs,
-        maxFutureSecs: CONCORD_READ_MAX_FUTURE_SECS,
-        selfPubkey: pubkey,
-        ...(bannedAuthors ? { bannedAuthors } : {}),
-      });
-      if (summary.count > 0 && summary.latest > 0)
-        wanted.push({ channelId: id, at: summary.latest });
+    const wanted: Array<{ id: ReturnType<typeof key>; at: number }> = [];
+    for (const { communityId, channelIdsHex, bannedAuthors } of communities) {
+      if (!communityId || channelIdsHex.length === 0) continue;
+      const stamps = await readCommunityLastReads(pubkey, communityId);
+      for (const channelId of channelIdsHex) {
+        const id = channelId.toLowerCase();
+        const summary = await channelUnreadSummary(communityId, id, {
+          after: stamps.get(id) ?? 0,
+          nowSecs,
+          maxFutureSecs: CONCORD_READ_MAX_FUTURE_SECS,
+          selfPubkey: pubkey,
+          ...(bannedAuthors ? { bannedAuthors } : {}),
+        });
+        if (summary.count > 0 && summary.latest > 0)
+          wanted.push({ id: key(pubkey, communityId, id), at: summary.latest });
+      }
     }
     if (wanted.length === 0) return;
 
     await db.transaction("rw", db.chatReads, async () => {
-      for (const { channelId, at } of wanted) {
-        const id = key(pubkey, communityId, channelId);
+      for (const { id, at } of wanted) {
         const existing = await db.chatReads.get(id);
         if (existing && existing.lastRead >= at) continue;
         await db.chatReads.put({
@@ -211,7 +254,7 @@ export async function markCommunityRead(
       }
     });
   } catch (error) {
-    console.warn("[concord] could not stamp the community as read:", error);
+    console.warn("[concord] could not stamp the communities as read:", error);
   }
 }
 
