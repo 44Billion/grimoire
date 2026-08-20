@@ -10,7 +10,7 @@ Agent Sessions
 
 Five kinds encode an autonomous agent's work and the operator's hand on it.
 
-Four are written by the agent — an **agent definition**, a **session head**, one **turn** per message, and an ephemeral **delta** while a turn is still being written. The fifth goes the other way: a **session control** event, written by the operator, is how a reader answers a question the agent stopped to ask, or redirects it, or stops it.
+Four are written by the agent — an **agent definition**, a **session head**, one **turn** per message, and an ephemeral **delta** while a turn is still being written. The fifth goes the other way: a **session control** event, written by the operator, is how a reader starts a run, answers a question the agent stopped to ask, redirects it, or stops it.
 
 They are rumors, carried as NIP-59 gift wraps to whoever is meant to read them. A turn's shape — a `role` and an ordered list of `parts`, each `text`, `reasoning`, a tool call or its result — is the shape an agent runtime already has, so publishing is a mapping rather than a translation. Nothing here depends on that envelope — a transport that carries the same rumors carries the same session — but this document specifies only the wrapped case, because that is the only one with an implementation behind it.
 
@@ -71,6 +71,8 @@ kilobytes; the head points at it through `agent`.
 | `about`   | `<string>` | no | no |
 | `tool`    | `<tool-name>`, `<description>`, `<parameters>` | yes | no |
 | `try`     | `<starter prompt>` | no | no |
+| `model`   | `<model-id>`, `<context-window>` | no | no |
+| `p`       | `<pubkey>` — a recipient this copy was sealed for | yes | no |
 | `repo`    | `<name>`, `<url>`, `<path>`, `<description>` | no | no |
 | `alt`     | `<string>` ([NIP-31](31.md)) | no | yes |
 
@@ -82,6 +84,16 @@ like it worked. The elements are positional, with empty strings for what is
 absent, so a missing url cannot shift the path into its place. It is not
 indexable: an agent's checkouts are not something a relay should let anyone
 enumerate by, and a reader holding the definition already holds them.
+
+`model` says what was answering, and its second element is the size of the
+window that model was answering in — the number a reader needs to say whether a
+run was near the edge of what it could hold. It is positional with an empty
+string for an unknown window, for the same reason `repo` is.
+
+The `p` tags are on the definition rather than only on the wrap because a wrap
+names one recipient by design and a reader holding one copy cannot tell whether
+anyone else got it. They say who the snapshot was meant for, not who may read it
+— a definition is not an access list.
 
 `tool` is indexable, so `{"#tool":["nostr.req"]}` finds every agent that can do a thing. Trailing elements are dropped when absent: a bare tool is a two-element tag, a fully described one is four. `<parameters>` is the tool's schema — usually JSON Schema — as a JSON string, which is the price of the content being prose rather than a document. A reader that cannot parse it treats the tool as having no schema rather than discarding the tool.
 
@@ -115,14 +127,15 @@ One run's current state. `content` is a human-readable summary and MAY be empty.
 | `p`        | `<pubkey>`, `<relay>`, `operator` — exactly one | yes | yes |
 | `p`        | `<pubkey>`, `<relay>`, `observer` | yes | no |
 | `e`        | `<event-id>`, `<relay>`, `trigger` — the message that started this run | yes | no |
-| `last-seq` | the highest turn `seq` so far, which is also the turn count | no | yes |
+| `last-seq` | the highest turn `seq` so far — how many EVENTS this session has published | no | yes |
+| `turns`    | how many exchanges the run has had | no | no |
 | `started`  | `<unix-seconds>` — the real start, unaffected by NIP-59 | no | yes |
 | `ended`    | `<unix-seconds>`; present iff `status` is terminal | no | no |
 | `model`    | `<model-id>`, `<provider>` | no | no |
 | `usage`    | `<in>`, `<out>`, `<cache-read>`, `<cache-write>` | no | no |
 | `cost`     | `<amount>`, `<currency>`, `estimated` | no | no |
 | `input`    | `<request-id>` — one per request the run is blocked on | no | no |
-| `transport` | `nip-17`\|`nip-29`\|… — the protocol this run is happening on | no | no |
+| `transport` | `nip-17`\|`nip-29`\|`nip-59`\|… — the protocol this run is happening on | no | no |
 | `channel`  | the room, in that protocol's own notation | no | no |
 | `delta-relay` | `<relay>` — where this session's `21777`s are published | no | no |
 | `agent`    | `31779:<pubkey>:<d>` — the definition or snapshot describing this run | no | no |
@@ -154,6 +167,27 @@ holding the head already holds the session.
 inbox relay is entitled to refuse — and in practice they do. A publisher that
 sends deltas anywhere other than the recipient's own inbox MUST say where, or the
 reader watches a status that never moves while the run goes perfectly.
+
+`last-seq` and `turns` are two different numbers and neither substitutes for the
+other. `last-seq` counts published events, and one exchange is routinely four or
+five of them — the question, the reasoning, two tool calls, the answer. `turns`
+counts the exchanges. A client showing "12 turns" from `last-seq` shows a number
+three times too large, which is what this tag exists to stop.
+
+`transport` `nip-59` is the case with no room in it: a run started over the
+control plane is happening in the wrapped channel itself and nowhere else. A
+client MUST NOT offer to open it, and an agent MUST NOT offer a run like this any
+tool that posts to a room, because there is none. It is a distinct value rather
+than an absent `transport` so that "no room" is a stated fact and not an omission
+a reader has to guess the meaning of.
+
+The `agent` tag is present only once the definition it names has actually been
+published. A head that points at an address nobody wrote sends every reader to
+fetch nothing, and repeatedly — worse than a head that admits it has no
+definition to offer. In particular a publisher MUST NOT fall back to its standing
+definition when a snapshot failed to send: the standing one describes the agent
+in general, and a reader shown it in a snapshot's place is told the prompt in
+force was one that was not.
 
 **`input` is what separates a blocked session from a finished one**, and nothing
 else does. See *Blocked Sessions*.
@@ -195,6 +229,31 @@ watches the session stay stuck. `input_resolved` records what became of it, so a
 transcript read afterwards is not left hanging. Whether a request is STILL open is
 not a property of a turn — turns are history — and lives on the head's `input`.
 
+`cancelled` is not a finish reason any model reports, because the model did not
+finish — somebody stopped it. It is distinguished from `error` because a run
+ended on purpose and a run that broke are different events in the life of a
+session, and folding them together loses the only part a reader is asking about.
+
+**Some turns record what happened TO a conversation** rather than what was said
+in it: the context was summarised, the context was thrown away, the run was
+stopped before it answered. They are ordinary turns with `role` `tool` and a
+`text` part saying so in a sentence, and they exist because the turns after them
+cannot be read correctly without them — an agent that has forgotten the first
+half of its own transcript is not the agent the reader thinks they are watching.
+
+This is the division of labour between `1779` and `1777`, and it is worth stating
+plainly: **a control event is an intent, a turn is a fact.** The operator's `1779`
+records what was asked for and by whom; the turn records what became of it, is
+written by the agent, and is written whether the effect was asked for or arose on
+its own — an automatic compaction under window pressure and one an operator
+ordered are the same event to everyone downstream, and a publisher SHOULD NOT
+claim to know which it was.
+
+Not every command earns a turn. One does when a later reader needs it to
+interpret what follows, and not otherwise: `respond` and `steer` already appear
+as the `user` turn they produce, and a `reset` has nothing after it to interpret,
+so the head's terminal status is its whole record.
+
 **The list of part types is open.** Those seven are the ones this revision defines and the ones a client should implement; an agent MAY emit others. A client MUST keep a part whose `type` it does not recognise, render what it can around it, and MUST NOT discard the turn — a turn from a later revision is still most of a turn.
 
 | tag     | value | indexable | req |
@@ -206,7 +265,7 @@ not a property of a turn — turns are history — and lives on the head's `inpu
 | `role`  | `user`\|`assistant`\|`tool` | no | yes |
 | `p`     | `<pubkey>`, `<relay>`, `<role>` — as on the head | yes | yes |
 | `subagent` | `<call-id>`, `<child-session-id>`, `<name>` — a child session this turn started | no | no |
-| `stop`  | `end_turn`\|`max_tokens`\|`tool_use`\|`content_filter`\|`error`; assistant only | no | no |
+| `stop`  | `end_turn`\|`max_tokens`\|`tool_use`\|`content_filter`\|`cancelled`\|`error`; assistant only | no | no |
 | `model` | `<model-id>`, `<provider>`; assistant only | no | no |
 | `usage` | `<in>`, `<out>`, `<cache-read>`, `<cache-write>` | no | no |
 | `cost`  | `<amount>`, `<currency>`, `estimated` | no | no |
@@ -249,10 +308,12 @@ wrapped and no relay can see any of it, and the verb set grows.
 | --------- | ----- | --------- | --- |
 | `a`       | `31777:<agent>:<session>` — the session this acts on | yes | yes |
 | `p`       | `<agent>` — the key that must act | yes | yes |
-| `command` | `respond`\|`steer`\|`cancel`\|`compact`\|`clear` | no | yes |
+| `command` | `start`\|`respond`\|`steer`\|`cancel`\|`compact`\|`clear`\|`reset` | no | yes |
 | `request` | the request id being answered; required for `respond` | no | no |
 | `turn`    | the turn being stopped, when `cancel` means a specific one | no | no |
 | `option`  | the chosen option's id, when the question offered any | no | no |
+| `policy`  | `queue`\|`steer` — what a message sent mid-turn does | no | no |
+| `a`/`e`/`p`/`r`/`i` | what the run is to be ABOUT, as on a head | yes | no |
 | `alt`     | `<string>` | no | yes |
 
 `content` is free text: the answer for a `respond`, the message for a `steer`,
@@ -274,6 +335,24 @@ it.
   ]
 }
 ```
+
+`policy` decides the one ambiguous act in the set: a message that arrives while a
+turn is running. `queue` waits for the running turn and then delivers; `steer`
+cancels it and starts again. **`queue` is the default**, which inverts what most
+runtimes do on their own — and deliberately. Cancelling is right in a room, where
+a message mid-turn means "not that, this". It is wrong from a session view, where
+the operator is watching the work happen and adding to it, and throwing away a
+turn that is minutes into a build because they had a second thought is the
+expensive reading of an ambiguous act. A client that means "stop and do this
+instead" says so.
+
+The subject tags are the same ones a head carries and mean the same thing: what
+the run is about. On a `start` they are how a client says it — a pointer, not a
+sentence in the message hoping the model notices. Because a control event already
+carries an `a` for the session and a `p` for the agent, a reader collecting
+subjects MUST exclude those two; everything else `a`, `e`, `p`, `r` or `i`
+([NIP-22](22.md)'s scope vocabulary, with `i` for external ids per
+[NIP-73](73.md)) is a subject.
 
 There is deliberately **no `pause`**. A run parks because something asked it a
 question, not because it was told to wait, and a verb that cannot be honoured is
@@ -303,25 +382,56 @@ and unknown statuses are: it is a newer client talking.
 
 ## Starting a Run
 
-There is no verb for it, and that is deliberate.
+Two ways, and they are for two different callers.
 
-An agent opens a session for a message that threads onto nothing and continues
-one for a message that replies — a rule the transport already needs for its own
-sake, since a new subject inheriting an hour of unrelated context is the failure
-it prevents. So starting a run is sending an ordinary message with no `e` tag,
-and a `1779` verb for it would be a second way to say a thing already said.
+**A message with nothing above it.** An agent opens a session for a message that
+threads onto nothing and continues one for a message that replies — a rule the
+transport already needs for its own sake, since a new subject inheriting an hour
+of unrelated context is the failure it prevents. Anything that can send a private
+message or post in a group can therefore start a run, and most runs start this
+way. There is nothing to implement.
 
-A client scoping a run to a repository puts that in the message, as words. There
-is no field an agent runtime would read as "work here": the receiving end is a
-model reading a chat message, so a sentence naming the repository is what
-functions. A client SHOULD show the composed message before sending it — a
-preamble the client wrote is text the operator did not, and it is the operator
-the whole message will be attributed to.
+**A `start` control event**, for a caller that has no room to send a message in.
+A session view is the case that forced it: a client offering "run this again" or
+"look at this repository" is not in a conversation with the agent, and composing
+a chat message to itself in order to be in one produces a run whose transcript
+begins with a sentence no human wrote and which is nevertheless attributed to
+one.
 
-What travels SHOULD be the repository's clone URL rather than a path, unless the
-path came from that agent's own `repo` tag. A path is a claim about the inside of
-someone else's machine, and a wrong one produces a prompt the agent silently
-ignores and a session that looks like it worked.
+A `start` carries three things a message cannot:
+
+- **The session id, chosen by the client.** The `a` tag names an address that
+  does not exist yet, and the agent adopts it. That is what lets the client watch
+  the address from the moment it asks, rather than sending a request into the
+  wrapped channel and scanning everything that comes back for something that
+  looks like an answer to it. The `d` element MUST be 32 random bytes as hex; an
+  agent MUST reject anything else, because a client-chosen name is a name in a
+  space the agent shares with every other client.
+- **Subjects as pointers.** `a`, `e`, `p`, `r` and `i` tags say what the run is
+  about, and the agent puts them in front of the model as resolved context. This
+  replaces the older advice to name the repository in the message as words, which
+  was a workaround for having no field and produced exactly the failure it was
+  meant to avoid: a sentence the model may or may not act on, in text the
+  operator did not write.
+- **The opening instruction**, in `content`, which becomes the run's first `user`
+  turn as if it had been sent.
+
+`start` is the scope rule's own instance: its target is the session, and a
+session settles by existing. An agent MUST refuse a `start` naming an address it
+has already published — that is a redelivered wrap, not a second run — and a
+client that wants a second run picks a second id.
+
+A run started this way has no room. Its head SHOULD carry `transport` `nip-59`
+and no `channel`, and the agent MUST NOT offer it any tool that posts to a room,
+because there is nowhere for the output to go and a tool that fails on every call
+is worse than one that was never offered. The transcript is the whole of the
+delivery.
+
+`reset` is the other end of the same life. It retires a session for good: the id
+never becomes a session again, and the head goes terminal — `aborted`, since a
+retired run did not finish what it was doing. Unlike every other verb it may
+leave no trace on the runtime's own stream, so a publisher MUST close the head
+itself rather than waiting to be told.
 
 ## Blocked Sessions
 
@@ -427,7 +537,12 @@ Publish: a persistent key with a `kind:0`, one `31777` head kept current, and on
 
 Control is optional to send and **mandatory to authorise**: an agent that reads
 `1779` at all MUST check the author against its own head's `operator` before
-honouring it. An agent that does not read it simply cannot be steered, which is a
-coherent thing to be.
+honouring it — and, for a `start`, against whatever it uses to decide who may
+talk to it at all, since there is no head yet to name an operator.
+
+An agent that does not read `1779` cannot be started, steered or stopped except
+by talking to it, which is a coherent thing to be: everything in the four
+agent-written kinds still works, and a client that finds no way to control a
+session says so rather than offering buttons that do nothing.
 
 A client MUST NOT require deltas to render a session, nor blob fetching to render a turn, nor a definition to render either.
