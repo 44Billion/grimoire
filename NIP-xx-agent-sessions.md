@@ -505,21 +505,36 @@ There is one chain and one `last-seq`, so a public copy MUST carry the whole of 
 
 Two properties to state plainly, because a publisher cannot undo either: the events are permanent — [NIP-09](09.md) is a request, not a delete — and the transcript contains whatever the agent was told, including the operator's own words.
 
-**The room decides the carriage.** A wrapped transcript answers "who may read
-this" with a list of names, which is right for a private message and wrong for a
-public room: the question was visible to forty people and the answer to one. So
-an agent answering in a room that says it is public SHOULD publish the public
-copy as well as the wrapped one, and one answering anywhere else MUST NOT. A
-private group is not an exception waiting to be solved — its members go without
-a transcript rather than the room being unsealed on their behalf.
+**A run in a group belongs to the group.** A wrapped transcript answers "who may
+read this" with a list of names, which is right for a private message and wrong
+for a room: the question was visible to everyone in it and the answer to one
+person, who had not asked it.
 
-The decision is made once, when the session opens, and does not change if the
-room's metadata does. There is one chain and one `last-seq`, so a public copy
-that begins at turn twelve is a transcript with a hole nobody can fill.
+The answer is not to publish it in the open. An agent answering in a
+[NIP-29](29.md) group SHOULD also publish each of its events to **the relay that
+hosts the group**, carrying the group's `h` tag — and nowhere else. That relay is
+the group's access control, and it is the only party that knows who the group is
+for. A private group stays private with nothing here reasoning about it; a public
+one is readable by whoever the group is readable by. Publishing the same events
+to the agent's own relays instead would route around the decision the group
+already made.
 
-A room that cannot be described is private. Guessing wrong in that direction
-costs a transcript; guessing wrong in the other is a permanent public record of a
-conversation that was not.
+The `h` tag goes on the rumor **before it is sealed**, so the wrapped copy and
+the group copy are one event with one id. A relay carrying the wrap sees nothing
+— the tag is inside the seal — and a reader holding both copies sees one session,
+by the merge rule above. Tagging only the group copy would produce two events at
+one `seq`, which this NIP tells a client to treat as the signature of a forgery.
+
+The choice is made once, when the session opens. There is one chain and one
+`last-seq`, so a group copy that begins at turn twelve is a transcript with a
+hole nobody can fill.
+
+Note for implementers: a NIP-29 relay accepts a fixed set of kinds, and at the
+time of writing the common implementations do not include these. Until they do,
+an agent's group copy is refused and its transcript reaches the operator only.
+An agent SHOULD stop the group copy at the first refusal rather than skipping the
+event and carrying on — a chain that is visibly short is readable, one with a
+hole in it is not — and MUST NOT let that refusal stop the wrapped copy.
 
 **Only the author can do this.** The seal rule below makes forwarding impossible on purpose: a sharer who re-seals someone else's rumors signs the new seal, and a conforming reader rejects every one. Sharing a transcript you did not author means asking whoever did to publish it.
 
