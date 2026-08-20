@@ -19,10 +19,13 @@
  * showing the text.
  */
 
+import { Fragment } from "react";
+
 import {
   BookText,
   CircleDot,
   GitPullRequest,
+  GitMerge,
   FileText,
   FolderSearch,
   Globe,
@@ -113,7 +116,166 @@ function Block({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * `ngit`'s own output, which is a terminal table rather than JSON.
+ *
+ * These tools shell out, so what comes back is what a maintainer would have
+ * read on their own screen. Parsing it into rows is worth doing anyway: the id
+ * is sixty-four characters of hex nobody reads, the status is the thing being
+ * scanned for, and the title is the only part that says what it is.
+ *
+ * Anything that does not parse falls through to the raw text. `ngit` is not
+ * ours and its output will change; a renderer that hid the parts it did not
+ * recognise would silently stop showing them.
+ */
+interface Proposal {
+  id: string;
+  status: string;
+  title: string;
+}
+
+function parseProposals(text: string): Proposal[] {
+  const rows: Proposal[] = [];
+  for (const line of text.split("\n")) {
+    const match = /^([0-9a-f]{64})\s+(\S+)\s+(.*)$/.exec(line.trim());
+    if (!match) continue;
+    rows.push({
+      id: match[1]!,
+      status: match[2]!,
+      // The label column trails the title; it is noise on a row this narrow.
+      title: match[3]!.replace(/\s+#\S+\s*$/, "").trim(),
+    });
+  }
+  return rows;
+}
+
+/** `open` is the one worth colouring; the rest are over and quiet. */
+function proposalTone(status: string): string {
+  if (status === "open") return "text-success";
+  if (status === "draft") return "text-warning";
+  return "text-muted-foreground";
+}
+
+function ProposalRows({ text }: { text: string }) {
+  const rows = parseProposals(text);
+  if (rows.length === 0) return undefined;
+  return (
+    <div className="flex flex-col gap-1">
+      {rows.map((row) => (
+        <div key={row.id} className="flex items-baseline gap-2 text-xs">
+          <span
+            className={cn(
+              "shrink-0 font-mono tabular-nums",
+              proposalTone(row.status),
+            )}
+          >
+            {row.status}
+          </span>
+          <span className="min-w-0 flex-1 truncate">{row.title}</span>
+          {/* The id, short. Enough to name it back to the tool, not enough to
+              take a line of its own. */}
+          <span
+            className="shrink-0 font-mono text-[10px] text-muted-foreground"
+            title={row.id}
+          >
+            {row.id.slice(0, 8)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** `Subject: …` / `Author: …` — ngit's one-per-line header block. */
+function parseFields(text: string): [string, string][] {
+  const fields: [string, string][] = [];
+  for (const line of text.split("\n")) {
+    const match =
+      /^(Subject|Author|Status|Branch|Labels|Comments):\s*(.+)$/.exec(
+        line.trim(),
+      );
+    if (match) fields.push([match[1]!, match[2]!.trim()]);
+  }
+  return fields;
+}
+
+function ProposalDetail({ text }: { text: string }) {
+  const fields = parseFields(text);
+  if (fields.length === 0) return undefined;
+  const npub = /npub1[0-9a-z]{20,}/.exec(text)?.[0];
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+        {fields.map(([name, value]) => (
+          <Fragment key={name}>
+            <span className="text-muted-foreground">{name}</span>
+            {/* An author is a person, and grimoire knows how to draw one. */}
+            {name === "Author" && npub ? (
+              <UserName pubkey={npub} className="min-w-0 truncate text-xs" />
+            ) : (
+              <span className="min-w-0 truncate font-mono">{value}</span>
+            )}
+          </Fragment>
+        ))}
+      </div>
+      <Block>{text}</Block>
+    </div>
+  );
+}
+
 const PRESENTERS: Record<string, ToolPresenter> = {
+  /**
+   * `{repo}` → ngit's proposal table.
+   *
+   * The count goes on the row because that is the answer to "is there anything
+   * to do", which is why anyone calls this.
+   */
+  git_proposals: {
+    icon: GitPullRequest,
+    summary: (args) => str(args.repo),
+    outcome: (parsed) => {
+      const text = typeof parsed === "string" ? parsed : undefined;
+      if (text === undefined) return undefined;
+      const open = parseProposals(text).filter((row) => row.status === "open");
+      if (open.length === 0) return "nothing open";
+      return `${open.length} open`;
+    },
+    detail: (parsed) =>
+      typeof parsed === "string" ? <ProposalRows text={parsed} /> : undefined,
+  },
+
+  /** `{repo, id}` → one proposal's header block and description. */
+  git_proposal: {
+    icon: GitPullRequest,
+    summary: (args) => {
+      const id = str(args.id);
+      const repo = str(args.repo);
+      return id && repo ? `${repo} ${id.slice(0, 8)}` : (repo ?? id);
+    },
+    detail: (parsed) =>
+      typeof parsed === "string" ? <ProposalDetail text={parsed} /> : undefined,
+  },
+
+  /**
+   * `{repo, id}` → whatever ngit said about merging it.
+   *
+   * A merge publishes in the operator's name and does not push, so BOTH
+   * outcomes matter to a reader: that it worked, and — far more often — the
+   * sentence explaining why it did not. `ngit` refuses in prose ("has diverged
+   * from the published proposal", "does not match the published PR tip"), and
+   * that prose is the whole value of the row.
+   */
+  git_merge: {
+    icon: GitMerge,
+    summary: (args) => {
+      const id = str(args.id);
+      const repo = str(args.repo);
+      return id && repo ? `${repo} ${id.slice(0, 8)}` : (repo ?? id);
+    },
+    detail: (parsed) =>
+      typeof parsed === "string" ? <Block>{parsed}</Block> : undefined,
+  },
+
   /** `{command}` → `{exitCode, stdout, stderr, truncated}`. */
   bash: {
     icon: Terminal,
