@@ -363,11 +363,10 @@ export function AgentSessionViewer({
                 stored, and it vanishes when the stored turn arrives. */}
               {selected && <LiveTurnBody live={live} agent={selected.agent} />}
 
-              {view.turns.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  This session's head is here, but none of its turns are.
-                </p>
-              )}
+              {/* A run whose turns have not arrived shows nothing rather than
+                  a sentence about its own bookkeeping: the head above already
+                  says what the run is and what it spent, and "none of its turns
+                  are here" is a fact about this browser, not about the run. */}
             </ConversationContent>
             <ConversationScrollButton />
           </Conversation>
@@ -734,7 +733,10 @@ function SessionList({
                             )}
                             title={sessionLabel(head)}
                           >
-                            <span className="truncate">
+                            {/* `min-w-0` so the title can shrink below its
+                                content: a flex child will not, and the row
+                                grows instead of the text ellipsing. */}
+                            <span className="min-w-0 flex-1 truncate">
                               {/* Resolved, like every other place a title is
                                   shown: "nostr:npub1…" in a forty-character
                                   row is the one part that says nothing. */}

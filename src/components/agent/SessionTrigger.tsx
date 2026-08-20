@@ -25,6 +25,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import db from "@/services/db";
 import { useAccount } from "@/hooks/useAccount";
 import { EmbeddedEvent } from "@/components/nostr/EmbeddedEvent";
+import { useNostrEvent } from "@/hooks/useNostrEvent";
 import { RichText } from "@/components/nostr/RichText";
 import { UserName } from "@/components/nostr/UserName";
 import Timestamp from "@/components/Timestamp";
@@ -52,10 +53,30 @@ export function SessionTrigger({
     return row && row.viewer === pubkey ? row : null;
   }, [trigger?.id, pubkey]);
 
+  /**
+   * The same read `EmbeddedEvent` does, done here so the SECTION can decide.
+   *
+   * A trigger this browser cannot resolve used to render the heading with a
+   * sentence under it explaining the absence — an explanation nobody asked for,
+   * taking a block of a pane, for a run whose starting message is simply not
+   * here. Nothing at all is the better answer: a reader who cannot see the
+   * message is not helped by being told so every time they open the run.
+   */
+  const event = useNostrEvent(
+    trigger?.id
+      ? {
+          id: trigger.id,
+          relays: trigger.relay ? [trigger.relay] : undefined,
+        }
+      : undefined,
+  );
+
   if (!trigger?.id) return null;
   // Undefined means the local lookup has not answered yet. Rendering the public
   // fallback first would flash a skeleton for every private message.
   if (rumor === undefined) return null;
+  // Neither ours nor anyone's, as far as this browser can tell.
+  if (!rumor && !event) return null;
 
   return (
     <section className="flex flex-col gap-1">
@@ -79,12 +100,6 @@ export function SessionTrigger({
             relays: trigger.relay ? [trigger.relay] : undefined,
           }}
           className="overflow-hidden rounded border border-border"
-          loadingFallback={
-            <p className="rounded border border-dotted border-border p-2 text-xs text-muted-foreground">
-              A message this browser does not hold. It was private, or it is on
-              a relay you do not read.
-            </p>
-          }
         />
       )}
     </section>

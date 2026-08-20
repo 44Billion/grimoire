@@ -146,7 +146,10 @@ export function RepoConversation({
               className="flex items-center gap-2 rounded px-1 py-1 text-left text-xs hover:bg-muted/50"
             >
               <StatusDot status={head.status} live={head.status === "active"} />
-              <span className="truncate">
+              {/* `min-w-0 flex-1`: a flex child will not shrink below its
+                  content, so without it the row grows instead of the title
+                  ellipsing. */}
+              <span className="min-w-0 flex-1 truncate">
                 <SessionTitle title={head.title} />
               </span>
               <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
