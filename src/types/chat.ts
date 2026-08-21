@@ -196,6 +196,15 @@ export interface Message {
   timestamp: number;
   type?: MessageType; // Defaults to "user" if not specified
   replyTo?: EventPointer | AddressPointer; // Parent message pointer with relay hints
+  /**
+   * The message this one's thread hangs off, when the wire states it.
+   *
+   * Absent means the format carries only an immediate parent — NIP-29's `q`, a
+   * NIP-17 `e` written before the markers — and the root has to be walked
+   * client-side through whatever is loaded. Present is always preferred: a walk
+   * stops at the edge of the window, and this does not.
+   */
+  threadRoot?: string;
   metadata?: MessageMetadata;
   protocol: ChatProtocol;
   event: NostrEvent; // Original Nostr event for verification

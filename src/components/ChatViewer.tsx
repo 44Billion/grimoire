@@ -86,6 +86,8 @@ import {
 } from "./editor/MentionEditor";
 import { useProfileSearch } from "@/hooks/useProfileSearch";
 import profileSearch from "@/services/profile-search";
+import type { ProfileSearchResult } from "@/services/profile-search";
+import type { EmojiSearchResult } from "@/services/emoji-search";
 import { makeRosterProfileSearch } from "@/lib/chat/roster-search";
 import { useEmojiSearch } from "@/hooks/useEmojiSearch";
 import { useCopy } from "@/hooks/useCopy";
@@ -125,6 +127,10 @@ import {
   writeDraft,
 } from "@/services/chat-drafts";
 import { mentionsPubkey } from "@/lib/chat/mentions";
+import { foldThreads, type ThreadSummary } from "@/lib/chat/threads";
+import { ThreadPane } from "./chat/ThreadPane";
+import { ThreadSummaryButton } from "./chat/ThreadSummaryButton";
+import { useSettings } from "@/hooks/useSettings";
 import { cn } from "@/lib/utils";
 
 interface ChatViewerProps {
@@ -644,6 +650,9 @@ const MessageItem = memo(function MessageItem({
   isPinned,
   canManagePins,
   onTogglePin,
+  thread,
+  onOpenThread,
+  threadActive,
 }: {
   message: Message;
   adapter: ChatProtocolAdapter;
@@ -661,6 +670,11 @@ const MessageItem = memo(function MessageItem({
   /** Whether the viewer may pin/unpin — an admin or moderator of this group. */
   canManagePins?: boolean;
   onTogglePin?: (messageId: string) => void;
+  /** The replies folded under this message, when it has any. */
+  thread?: ThreadSummary;
+  onOpenThread?: (rootId: string) => void;
+  /** Whether the pane is already showing this message's thread. */
+  threadActive?: boolean;
 }) {
   const addWindow = useAddWindow();
   // Get relays for this conversation (memoized to prevent unnecessary re-subscriptions)
@@ -959,6 +973,16 @@ const MessageItem = memo(function MessageItem({
               agent having replied — and renders nothing at all for the vast
               majority of messages, which started nothing. */}
           <MessageSessions messageId={message.id} />
+          {/* Under the sessions, because a message can have both and they are
+              different things: a session is what this message SET RUNNING, a
+              thread is what people said back. */}
+          {thread && onOpenThread && (
+            <ThreadSummaryButton
+              thread={thread}
+              active={threadActive}
+              onOpen={() => onOpenThread(thread.rootId)}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -973,6 +997,11 @@ const MessageItem = memo(function MessageItem({
         onReply={
           canReply && onReply && !isRootMessage
             ? () => onReply(message.id)
+            : undefined
+        }
+        onReplyInThread={
+          canReply && onOpenThread && !isRootMessage
+            ? () => onOpenThread(message.id)
             : undefined
         }
         conversation={conversation}
@@ -990,6 +1019,67 @@ const MessageItem = memo(function MessageItem({
 
   return messageContent;
 });
+
+/**
+ * The thread pane's own composer.
+ *
+ * Its own `MentionEditor` because the channel's is bound to one `editorRef` that
+ * the draft restore polls and the upload dialog inserts into; a second consumer
+ * of that ref would have the two boxes overwrite each other's text.
+ *
+ * Deliberately smaller than the channel's: mentions and emoji, no attachments,
+ * no slash commands, and no draft. Everything it drops is still reachable — the
+ * channel composer replies to any message, thread root included — and a reply
+ * typed here and lost to a reload is a sentence, not a document.
+ *
+ * Every reply targets the thread ROOT, never the message above it. The timeline
+ * flattens a thread to one level (`foldThreads`), so writing depth the pane
+ * cannot draw would only produce replies nobody can find.
+ */
+function ThreadComposer({
+  onSend,
+  searchProfiles,
+  searchEmojis,
+  disabled,
+}: {
+  onSend: (
+    content: string,
+    emojiTags: EmojiTag[],
+    blobAttachments: BlobAttachment[],
+  ) => Promise<void>;
+  searchProfiles: (query: string) => Promise<ProfileSearchResult[]>;
+  searchEmojis: (query: string) => Promise<EmojiSearchResult[]>;
+  disabled: boolean;
+}) {
+  const editorRef = useRef<MentionEditorHandle>(null);
+
+  return (
+    <div className="flex shrink-0 items-center gap-1.5 border-t px-2 py-1">
+      <MentionEditor
+        ref={editorRef}
+        placeholder="Reply in thread..."
+        searchProfiles={searchProfiles}
+        searchEmojis={searchEmojis}
+        onSubmit={(content, emojiTags, blobAttachments) =>
+          content.trim()
+            ? onSend(content, emojiTags, blobAttachments)
+            : undefined
+        }
+        className="min-w-0 flex-1"
+      />
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        className="h-7 flex-shrink-0 px-2 text-xs"
+        disabled={disabled}
+        onClick={() => editorRef.current?.submit()}
+      >
+        {disabled ? <Loader2 className="size-3 animate-spin" /> : "Send"}
+      </Button>
+    </div>
+  );
+}
 
 /**
  * ChatViewer - Main chat interface component
@@ -1232,24 +1322,60 @@ export function ChatViewer({
     pubkey,
   );
 
+  const { settings } = useSettings();
+  const collapseThreads = settings?.appearance?.collapseThreads ?? true;
+
+  /**
+   * Replies folded out of the timeline and into threads.
+   *
+   * Outside the row-building memo below because three other things read it: the
+   * unread divider (whose id was chosen over the UNFOLDED list), a jump (whose
+   * target may no longer have a row), and the pane itself.
+   *
+   * `conversationRootId` is what keeps a conversation that IS a thread flat —
+   * NIP-10 and NIP-22 timelines are entirely replies to one event, and folding
+   * those would hide the whole channel. See `foldThreads`.
+   */
+  const conversationRootId =
+    conversation?.metadata?.rootEventId ??
+    conversation?.metadata?.commentRootEventId;
+  const folded = useMemo(
+    () =>
+      foldThreads(messages ?? [], {
+        conversationRootId,
+        collapse: collapseThreads,
+      }),
+    [messages, conversationRootId, collapseThreads],
+  );
+
   // Process messages to include day markers and group system messages
   const messagesWithMarkers = useMemo(() => {
     if (!messages || messages.length === 0) return [];
 
     // For NIP-22, ensure root event is always first regardless of timestamp
-    let orderedMessages = messages;
+    let orderedMessages = folded.rows;
     const nip22RootId =
       protocol === "nip-22"
         ? conversation?.metadata?.commentRootEventId
         : undefined;
     if (nip22RootId) {
-      const rootMsg = messages.find((m) => m.id === nip22RootId);
-      const rest = messages.filter((m) => m.id !== nip22RootId);
+      const rootMsg = folded.rows.find((m) => m.id === nip22RootId);
+      const rest = folded.rows.filter((m) => m.id !== nip22RootId);
       orderedMessages = rootMsg ? [rootMsg, ...rest] : rest;
     }
 
     // First, group consecutive system messages
     const groupedMessages = groupSystemMessages(orderedMessages);
+
+    // The divider was chosen over the UNFOLDED timeline, so the first unread
+    // message may be a reply with no row of its own any more. Folded away, the
+    // `=== dividerMessageId` test below never matches and the line silently
+    // vanishes — the same failure `docs/chat-system.md` warns about for read
+    // order. Moved to the root it now lives under, it still says "everything
+    // below here is new".
+    const dividerRowId = dividerMessageId
+      ? (folded.replyToRoot.get(dividerMessageId) ?? dividerMessageId)
+      : undefined;
 
     const items: Array<
       | { type: "message"; data: Message }
@@ -1298,7 +1424,7 @@ export function ChatViewer({
         // The "New messages" line sits directly ABOVE the first unread message,
         // and below its day marker: the reader is looking for where they left
         // off, not for a second date heading.
-        if (dividerMessageId && item.id === dividerMessageId) {
+        if (dividerRowId && item.id === dividerRowId) {
           items.push({ type: "unread-divider" });
         }
         items.push({ type: "message", data: item });
@@ -1308,6 +1434,7 @@ export function ChatViewer({
     return items;
   }, [
     messages,
+    folded,
     protocol,
     conversation?.metadata?.commentRootEventId,
     dividerMessageId,
@@ -1357,6 +1484,52 @@ export function ChatViewer({
   const [replyTo, setReplyTo] = useState<string | undefined>();
   const replyToRef = useRef<string | undefined>(undefined);
   replyToRef.current = replyTo;
+
+  /**
+   * Which thread the pane is showing, by root id.
+   *
+   * Stored WITH the conversation it belongs to and derived back out, rather than
+   * cleared from an effect on conversation change: ChatViewer does not remount
+   * between conversations, so an effect is the only other way to stop one
+   * channel's thread reopening over the next — and it would paint the wrong pane
+   * for a frame first. The same reasoning as the Virtuoso anchor above.
+   *
+   * A root that has left the loaded window needs no clearing at all: `threadView`
+   * resolves through `messages` and the pane is gated on it, so the id simply
+   * stops naming anything until the row pages back in.
+   */
+  const [openThread, setOpenThread] = useState<{
+    conversationId?: string;
+    rootId?: string;
+  }>({});
+  const threadRootId =
+    openThread.conversationId === conversation?.id
+      ? openThread.rootId
+      : undefined;
+  const conversationId = conversation?.id;
+  const showThread = useCallback(
+    (rootId: string) => setOpenThread({ conversationId, rootId }),
+    [conversationId],
+  );
+  const closeThread = useCallback(() => setOpenThread({}), []);
+
+  /**
+   * What the pane shows: the root and its replies, from the same timeline the
+   * channel is reading.
+   *
+   * No separate REQ. Every reply this can show is already in the window the
+   * adapter loaded — the standing `#h` subscription for NIP-29, the local mirror
+   * for Concord and NIP-17 — so opening a thread costs nothing and fetches
+   * nothing. The cost is that a thread whose replies are older than the window
+   * fills in as history pages, rather than on open.
+   */
+  const threadView = useMemo(() => {
+    if (!threadRootId || !messages) return undefined;
+    const root = messages.find((m) => m.id === threadRootId);
+    if (!root) return undefined;
+    const replyIds = new Set(folded.threads.get(threadRootId)?.replyIds ?? []);
+    return { root, replies: messages.filter((m) => replyIds.has(m.id)) };
+  }, [threadRootId, messages, folded]);
 
   // State for loading older messages
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
@@ -1561,6 +1734,22 @@ export function ChatViewer({
     // stuck send into every later one vanishing without a word.
     if (isSending) throw new Error("Still sending the last message.");
 
+    /**
+     * Clear the composer's reply context — but only if this send is the one it
+     * was pointing at.
+     *
+     * The thread pane sends through here too, always targeting its own root, and
+     * clearing unconditionally would drop the reply target out from under the
+     * channel composer while the reader still had text sitting in it: their next
+     * Send would go as a plain message with no sign anything changed.
+     */
+    const ownsChannelReply = replyToId === replyToRef.current;
+    const clearChannelReply = () => {
+      if (!ownsChannelReply) return;
+      replyToRef.current = undefined;
+      setReplyTo(undefined);
+    };
+
     // Check if this is a slash command
     const slashCmd = parseSlashCommand(content);
     if (slashCmd) {
@@ -1586,8 +1775,7 @@ export function ChatViewer({
       } finally {
         setIsSending(false);
         // Clear reply context after slash command execution
-        replyToRef.current = undefined;
-        setReplyTo(undefined);
+        clearChannelReply();
       }
       return;
     }
@@ -1620,8 +1808,7 @@ export function ChatViewer({
       });
       // Clear reply context immediately (ref + state) so the next send
       // cannot read a stale value before React re-renders.
-      replyToRef.current = undefined;
-      setReplyTo(undefined);
+      clearChannelReply();
     } catch (error) {
       console.error("[Chat] Failed to send message:", error);
       const errorMessage =
@@ -1704,12 +1891,32 @@ export function ChatViewer({
     pageSize: OLDER_PAGE_SIZE,
   });
 
+  /**
+   * Show the reader a message, wherever it now lives.
+   *
+   * A folded reply has no row to scroll to, and `useJumpToMessage` answers that
+   * by paging history for a row that will never appear and then giving up
+   * silently. So a target that was folded away opens its thread instead, and the
+   * scroll lands on the root — which is the row that IS on screen.
+   */
+  const revealMessage = useCallback(
+    (messageId: string) => {
+      const rootId = folded.replyToRoot.get(messageId);
+      if (rootId) {
+        showThread(rootId);
+        return jump({ kind: "id", id: rootId });
+      }
+      return jump({ kind: "id", id: messageId });
+    },
+    [folded, jump, showThread],
+  );
+
   // Handle scroll to message (when clicking on reply preview)
   const handleScrollToMessage = useCallback(
     (messageId: string) => {
-      void jump({ kind: "id", id: messageId });
+      void revealMessage(messageId);
     },
-    [jump],
+    [revealMessage],
   );
 
   // A jump asked for from OUTSIDE — a search result the reader clicked, which
@@ -1762,14 +1969,14 @@ export function ChatViewer({
     if (jumpedNonce.current === jumpTo.nonce) return;
     jumpedNonce.current = jumpTo.nonce;
     const { nonce, messageId } = jumpTo;
-    void jump({ kind: "id", id: messageId }).then(() => onJumpHandled?.(nonce));
+    void revealMessage(messageId).then(() => onJumpHandled?.(nonce));
   }, [
     jumpTo,
     conversation,
     resolvedFor,
     identifier,
     messages,
-    jump,
+    revealMessage,
     onJumpHandled,
   ]);
 
@@ -2001,430 +2208,487 @@ export function ChatViewer({
   }
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Header with conversation info and controls */}
-      {/* `h-8` to sit level with the sidebar's search heading beside it. The
+    <div className="flex h-full min-w-0">
+      {/* The conversation. `min-w-0` so the pane beside it takes its width from
+          its own class rather than from whatever the longest message is. */}
+      <div className="flex h-full min-w-0 flex-1 flex-col">
+        {/* Header with conversation info and controls */}
+        {/* `h-8` to sit level with the sidebar's search heading beside it. The
           old `py-0.5` made the height depend on whichever control inside was
           tallest, so the two headers lined up only by coincidence — and stopped
           doing so as soon as the search box was empty and this header, rather
           than the results heading, was the thing next to it. */}
-      <div className="flex h-8 w-full items-center border-b pl-2 pr-0">
-        <div className="flex w-full items-center justify-between gap-3">
-          <div className="flex flex-1 min-w-0 items-center gap-2">
-            {headerPrefix}
-            <TooltipProvider>
-              <Tooltip open={tooltipOpen} onOpenChange={setTooltipOpen}>
-                <TooltipTrigger asChild>
-                  <button
-                    className="text-sm font-semibold truncate cursor-help text-left"
-                    onClick={() => setTooltipOpen(!tooltipOpen)}
+        <div className="flex h-8 w-full items-center border-b pl-2 pr-0">
+          <div className="flex w-full items-center justify-between gap-3">
+            <div className="flex flex-1 min-w-0 items-center gap-2">
+              {headerPrefix}
+              <TooltipProvider>
+                <Tooltip open={tooltipOpen} onOpenChange={setTooltipOpen}>
+                  <TooltipTrigger asChild>
+                    <button
+                      className="text-sm font-semibold truncate cursor-help text-left"
+                      onClick={() => setTooltipOpen(!tooltipOpen)}
+                    >
+                      {customTitle || conversation.title}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="bottom"
+                    align="start"
+                    className="max-w-md p-3"
                   >
-                    {customTitle || conversation.title}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent
-                  side="bottom"
-                  align="start"
-                  className="max-w-md p-3"
-                >
-                  <div className="flex flex-col gap-2">
-                    {/* Icon + Name */}
-                    <div className="flex items-center gap-2">
-                      {conversation.metadata?.icon && (
-                        <img
-                          src={conversation.metadata.icon}
-                          alt=""
-                          className="size-6 rounded object-cover flex-shrink-0"
-                          onError={(e) => {
-                            // Hide image if it fails to load
-                            e.currentTarget.style.display = "none";
-                          }}
-                        />
+                    <div className="flex flex-col gap-2">
+                      {/* Icon + Name */}
+                      <div className="flex items-center gap-2">
+                        {conversation.metadata?.icon && (
+                          <img
+                            src={conversation.metadata.icon}
+                            alt=""
+                            className="size-6 rounded object-cover flex-shrink-0"
+                            onError={(e) => {
+                              // Hide image if it fails to load
+                              e.currentTarget.style.display = "none";
+                            }}
+                          />
+                        )}
+                        <span className="font-semibold">
+                          {conversation.title}
+                        </span>
+                      </div>
+                      {/* Description */}
+                      {conversation.metadata?.description && (
+                        <p className="text-xs opacity-90">
+                          {conversation.metadata.description}
+                        </p>
                       )}
-                      <span className="font-semibold">
-                        {conversation.title}
-                      </span>
-                    </div>
-                    {/* Description */}
-                    {conversation.metadata?.description && (
-                      <p className="text-xs opacity-90">
-                        {conversation.metadata.description}
-                      </p>
-                    )}
-                    {/* Protocol Type - Clickable */}
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleNipClick();
-                        }}
-                        className="rounded bg-tooltip-foreground/20 px-1.5 py-0.5 font-mono hover:bg-tooltip-foreground/30 transition-colors cursor-pointer"
-                      >
-                        {conversation.protocol.toUpperCase()}
-                      </button>
-                      <span className="opacity-60">•</span>
-                      {conversation.protocol === "nip-10" ? (
-                        <span className="flex items-center gap-1 opacity-80">
-                          <FileText className="size-3" />
-                          Thread
-                        </span>
-                      ) : conversation.protocol === "nip-22" ? (
-                        <span className="flex items-center gap-1 opacity-80">
-                          <MessageSquare className="size-3" />
-                          Comments
-                        </span>
-                      ) : (
-                        <span className="capitalize opacity-80">
-                          {conversation.type}
-                        </span>
-                      )}
-                    </div>
-                    {/* Live Activity Status */}
-                    {liveActivity?.status && (
+                      {/* Protocol Type - Clickable */}
                       <div className="flex items-center gap-1.5 text-xs">
-                        <span className="opacity-80">Status:</span>
-                        <StatusBadge status={liveActivity.status} size="xs" />
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleNipClick();
+                          }}
+                          className="rounded bg-tooltip-foreground/20 px-1.5 py-0.5 font-mono hover:bg-tooltip-foreground/30 transition-colors cursor-pointer"
+                        >
+                          {conversation.protocol.toUpperCase()}
+                        </button>
+                        <span className="opacity-60">•</span>
+                        {conversation.protocol === "nip-10" ? (
+                          <span className="flex items-center gap-1 opacity-80">
+                            <FileText className="size-3" />
+                            Thread
+                          </span>
+                        ) : conversation.protocol === "nip-22" ? (
+                          <span className="flex items-center gap-1 opacity-80">
+                            <MessageSquare className="size-3" />
+                            Comments
+                          </span>
+                        ) : (
+                          <span className="capitalize opacity-80">
+                            {conversation.type}
+                          </span>
+                        )}
                       </div>
-                    )}
-                    {/* Host Info */}
-                    {liveActivity?.hostPubkey && (
-                      <div className="flex items-center gap-1.5 text-xs opacity-80">
-                        <span>Host:</span>
-                        <UserName
-                          pubkey={liveActivity.hostPubkey}
-                          className="text-xs"
-                        />
-                      </div>
-                    )}
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            {/* Says the counterpart is automation, from their kind 0. A DM
+                      {/* Live Activity Status */}
+                      {liveActivity?.status && (
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <span className="opacity-80">Status:</span>
+                          <StatusBadge status={liveActivity.status} size="xs" />
+                        </div>
+                      )}
+                      {/* Host Info */}
+                      {liveActivity?.hostPubkey && (
+                        <div className="flex items-center gap-1.5 text-xs opacity-80">
+                          <span>Host:</span>
+                          <UserName
+                            pubkey={liveActivity.hostPubkey}
+                            className="text-xs"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              {/* Says the counterpart is automation, from their kind 0. A DM
                 heading is where someone decides how much to trust an answer. */}
-            <BotMarker pubkey={dmPeer} className="w-4 h-4" />
-            {/* Copy Chat ID button */}
-            {getChatIdentifier(conversation) && (
-              <button
-                onClick={() => {
-                  const chatId = getChatIdentifier(conversation);
-                  if (chatId) copyChatId(chatId);
-                }}
-                className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-                aria-label="Copy chat ID"
-              >
-                {chatIdCopied ? (
-                  <CopyCheck className="size-3.5" />
-                ) : (
-                  <Copy className="size-3.5" />
-                )}
-              </button>
-            )}
-          </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground p-1">
-            {/* Jump-to-date is hidden from the header: it earned a permanent
+              <BotMarker pubkey={dmPeer} className="w-4 h-4" />
+              {/* Copy Chat ID button */}
+              {getChatIdentifier(conversation) && (
+                <button
+                  onClick={() => {
+                    const chatId = getChatIdentifier(conversation);
+                    if (chatId) copyChatId(chatId);
+                  }}
+                  className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+                  aria-label="Copy chat ID"
+                >
+                  {chatIdCopied ? (
+                    <CopyCheck className="size-3.5" />
+                  ) : (
+                    <Copy className="size-3.5" />
+                  )}
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground p-1">
+              {/* Jump-to-date is hidden from the header: it earned a permanent
                 slot next to members and relays without being reached for at
                 that rate. `jump({kind:"date"})` and the whole paging walk stay,
                 so a date entry point costs one element wherever it belongs. */}
-            {headerExtra}
-            {protocol === "nip-29" && (
-              <PinsHeaderButton
-                count={nip29Pins.pins.length}
-                unavailable={false}
-                open={showGroupPins}
-                onToggle={() => setShowGroupPins((v) => !v)}
-              />
-            )}
-            <MembersDropdown participants={derivedParticipants} />
-            <RelaysDropdown conversation={conversation} />
-            <button
-              onClick={handleNipClick}
-              className="rounded bg-muted px-1.5 py-0.5 font-mono hover:bg-muted/80 transition-colors cursor-pointer"
-            >
-              {conversation.protocol.toUpperCase()}
-            </button>
+              {headerExtra}
+              {protocol === "nip-29" && (
+                <PinsHeaderButton
+                  count={nip29Pins.pins.length}
+                  unavailable={false}
+                  open={showGroupPins}
+                  onToggle={() => setShowGroupPins((v) => !v)}
+                />
+              )}
+              <MembersDropdown participants={derivedParticipants} />
+              <RelaysDropdown conversation={conversation} />
+              <button
+                onClick={handleNipClick}
+                className="rounded bg-muted px-1.5 py-0.5 font-mono hover:bg-muted/80 transition-colors cursor-pointer"
+              >
+                {conversation.protocol.toUpperCase()}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
-      {protocol === "nip-29" && showGroupPins ? (
-        <ConcordPinsList
-          pins={nip29Pins.pins}
-          onOpen={(id) => {
-            handleScrollToMessage(id);
-            setShowGroupPins(false);
-          }}
-        />
-      ) : (
-        belowHeader
-      )}
+        {protocol === "nip-29" && showGroupPins ? (
+          <ConcordPinsList
+            pins={nip29Pins.pins}
+            onOpen={(id) => {
+              handleScrollToMessage(id);
+              setShowGroupPins(false);
+            }}
+          />
+        ) : (
+          belowHeader
+        )}
 
-      {/* Message timeline with virtualization */}
-      <div
-        ref={timelineBox}
-        className="flex-1 overflow-hidden"
-        onKeyDown={handleFeedKeyDown}
-      >
-        {/* Not mounted until the pane can be measured in a painting document —
+        {/* Message timeline with virtualization */}
+        <div
+          ref={timelineBox}
+          className="flex-1 overflow-hidden"
+          onKeyDown={handleFeedKeyDown}
+        >
+          {/* Not mounted until the pane can be measured in a painting document —
             `use-painted-container.ts` for what mounting early does to a list
             that opens itself at the newest message, and `timeline-state.ts` for
             why waiting behind that gate is not the same as having nothing. */}
-        {timeline === "list" ? (
-          <Virtuoso
-            ref={virtuosoRef}
-            data={messagesWithMarkers}
-            firstItemIndex={anchor.firstItemIndex}
-            initialTopMostItemIndex={{ index: "LAST", align: "end" }}
-            followOutput="smooth"
-            alignToBottom
-            components={{
-              Header: () => {
-                // NIP-22 external root header (hashtag, URL, country, etc.)
-                if (
-                  protocol === "nip-22" &&
-                  conversation.metadata?.commentRootType === "external" &&
-                  conversation.metadata?.commentRootExternal
-                ) {
+          {timeline === "list" ? (
+            <Virtuoso
+              ref={virtuosoRef}
+              data={messagesWithMarkers}
+              firstItemIndex={anchor.firstItemIndex}
+              initialTopMostItemIndex={{ index: "LAST", align: "end" }}
+              followOutput="smooth"
+              alignToBottom
+              components={{
+                Header: () => {
+                  // NIP-22 external root header (hashtag, URL, country, etc.)
+                  if (
+                    protocol === "nip-22" &&
+                    conversation.metadata?.commentRootType === "external" &&
+                    conversation.metadata?.commentRootExternal
+                  ) {
+                    return (
+                      <ExternalRootHeader
+                        external={conversation.metadata.commentRootExternal}
+                        kValue={conversation.metadata.commentRootKind || "web"}
+                      />
+                    );
+                  }
+
+                  // "Load older" for protocols that support it.
+                  //
+                  // Hidden until the timeline is at least a full page deep. A
+                  // channel holding fewer messages than one page has nothing
+                  // older by construction, so offering to fetch it is an empty
+                  // promise the reader can only discover by clicking — and on a
+                  // quiet channel that button was the ONLY thing in the pane.
+                  if (
+                    hasMore &&
+                    messages !== undefined &&
+                    messages.length >= OLDER_PAGE_SIZE &&
+                    conversationResult.status === "success" &&
+                    protocol !== "nip-10" &&
+                    protocol !== "nip-22"
+                  ) {
+                    return (
+                      <div className="flex justify-center py-2">
+                        <Button
+                          onClick={handleLoadOlder}
+                          disabled={isLoadingOlder}
+                          variant="ghost"
+                          size="sm"
+                        >
+                          {isLoadingOlder ? (
+                            <>
+                              <Loader2 className="size-3 animate-spin" />
+                              <span className="text-xs">Loading...</span>
+                            </>
+                          ) : (
+                            "Load older messages"
+                          )}
+                        </Button>
+                      </div>
+                    );
+                  }
+
+                  return null;
+                },
+                Footer: () => <div className="h-1" />,
+              }}
+              itemContent={(_index, item) => {
+                if (item.type === "day-marker") {
                   return (
-                    <ExternalRootHeader
-                      external={conversation.metadata.commentRootExternal}
-                      kValue={conversation.metadata.commentRootKind || "web"}
+                    <div
+                      className="flex justify-center py-2"
+                      key={`marker-${item.timestamp}`}
+                    >
+                      <Label className="text-[10px] text-muted-foreground">
+                        {item.data}
+                      </Label>
+                    </div>
+                  );
+                }
+
+                if (item.type === "unread-divider") {
+                  return (
+                    <div
+                      className="flex items-center gap-2 px-3 py-1"
+                      key="unread-divider"
+                    >
+                      <div className="h-px flex-1 bg-destructive/60" />
+                      <span className="rounded-sm bg-destructive/15 px-1 text-[10px] font-semibold uppercase tracking-wide text-destructive">
+                        New
+                      </span>
+                    </div>
+                  );
+                }
+
+                if (item.type === "grouped-system") {
+                  return (
+                    <GroupedSystemMessageItem
+                      key={item.data.messageIds.join("-")}
+                      grouped={item.data}
                     />
                   );
                 }
 
-                // "Load older" for protocols that support it.
-                //
-                // Hidden until the timeline is at least a full page deep. A
-                // channel holding fewer messages than one page has nothing
-                // older by construction, so offering to fetch it is an empty
-                // promise the reader can only discover by clicking — and on a
-                // quiet channel that button was the ONLY thing in the pane.
-                if (
-                  hasMore &&
-                  messages !== undefined &&
-                  messages.length >= OLDER_PAGE_SIZE &&
-                  conversationResult.status === "success" &&
-                  protocol !== "nip-10" &&
-                  protocol !== "nip-22"
-                ) {
+                // For NIP-10 threads, check if this is the root message
+                const isRootMessage =
+                  protocol === "nip-10" &&
+                  conversation.metadata?.rootEventId === item.data.id;
+
+                // NIP-22 root: render with feed KindRenderer (no border)
+                const isNip22Root =
+                  protocol === "nip-22" &&
+                  item.data.id === conversation.metadata?.commentRootEventId;
+                if (isNip22Root && item.data.event) {
                   return (
-                    <div className="flex justify-center py-2">
-                      <Button
-                        onClick={handleLoadOlder}
-                        disabled={isLoadingOlder}
-                        variant="ghost"
-                        size="sm"
-                      >
-                        {isLoadingOlder ? (
-                          <>
-                            <Loader2 className="size-3 animate-spin" />
-                            <span className="text-xs">Loading...</span>
-                          </>
-                        ) : (
-                          "Load older messages"
-                        )}
-                      </Button>
+                    <div key={item.data.id}>
+                      <div className="[&>*]:border-b-0">
+                        <KindRenderer event={item.data.event} />
+                      </div>
+                      <div className="px-3 pb-2">
+                        <MessageReactions
+                          messageId={item.data.id}
+                          relays={conversationRelays}
+                          adapter={adapter}
+                          conversation={conversation}
+                          reactions={item.data.metadata?.reactions}
+                        />
+                      </div>
                     </div>
                   );
                 }
 
-                return null;
-              },
-              Footer: () => <div className="h-1" />,
-            }}
-            itemContent={(_index, item) => {
-              if (item.type === "day-marker") {
                 return (
-                  <div
-                    className="flex justify-center py-2"
-                    key={`marker-${item.timestamp}`}
-                  >
-                    <Label className="text-[10px] text-muted-foreground">
-                      {item.data}
-                    </Label>
-                  </div>
-                );
-              }
-
-              if (item.type === "unread-divider") {
-                return (
-                  <div
-                    className="flex items-center gap-2 px-3 py-1"
-                    key="unread-divider"
-                  >
-                    <div className="h-px flex-1 bg-destructive/60" />
-                    <span className="rounded-sm bg-destructive/15 px-1 text-[10px] font-semibold uppercase tracking-wide text-destructive">
-                      New
-                    </span>
-                  </div>
-                );
-              }
-
-              if (item.type === "grouped-system") {
-                return (
-                  <GroupedSystemMessageItem
-                    key={item.data.messageIds.join("-")}
-                    grouped={item.data}
+                  <MessageItem
+                    key={item.data.id}
+                    message={item.data}
+                    adapter={adapter}
+                    conversation={conversation}
+                    onReply={handleReply}
+                    canReply={canSign}
+                    onScrollToMessage={handleScrollToMessage}
+                    isRootMessage={isRootMessage}
+                    activePubkey={pubkey}
+                    isFlashing={flashId === item.data.id}
+                    isPinned={
+                      protocol === "nip-29"
+                        ? nip29PinnedIds.has(item.data.id)
+                        : undefined
+                    }
+                    canManagePins={canManageGroupPins}
+                    onTogglePin={
+                      canManageGroupPins ? handleTogglePin : undefined
+                    }
+                    thread={folded.threads.get(item.data.id)}
+                    onOpenThread={showThread}
+                    threadActive={threadRootId === item.data.id}
                   />
                 );
-              }
+              }}
+              style={{ height: "100%" }}
+            />
+          ) : timeline === "waiting" ? (
+            <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
+              <Loader2 className="size-5 animate-spin" />
+              <span className="text-xs">Loading messages...</span>
+            </div>
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              No messages yet. Start the conversation!
+            </div>
+          )}
+        </div>
 
-              // For NIP-10 threads, check if this is the root message
-              const isRootMessage =
-                protocol === "nip-10" &&
-                conversation.metadata?.rootEventId === item.data.id;
-
-              // NIP-22 root: render with feed KindRenderer (no border)
-              const isNip22Root =
-                protocol === "nip-22" &&
-                item.data.id === conversation.metadata?.commentRootEventId;
-              if (isNip22Root && item.data.event) {
-                return (
-                  <div key={item.data.id}>
-                    <div className="[&>*]:border-b-0">
-                      <KindRenderer event={item.data.event} />
-                    </div>
-                    <div className="px-3 pb-2">
-                      <MessageReactions
-                        messageId={item.data.id}
-                        relays={conversationRelays}
-                        adapter={adapter}
-                        conversation={conversation}
-                        reactions={item.data.metadata?.reactions}
-                      />
-                    </div>
-                  </div>
-                );
-              }
-
-              return (
-                <MessageItem
-                  key={item.data.id}
-                  message={item.data}
-                  adapter={adapter}
-                  conversation={conversation}
-                  onReply={handleReply}
-                  canReply={canSign}
-                  onScrollToMessage={handleScrollToMessage}
-                  isRootMessage={isRootMessage}
-                  activePubkey={pubkey}
-                  isFlashing={flashId === item.data.id}
-                  isPinned={
-                    protocol === "nip-29"
-                      ? nip29PinnedIds.has(item.data.id)
-                      : undefined
-                  }
-                  canManagePins={canManageGroupPins}
-                  onTogglePin={canManageGroupPins ? handleTogglePin : undefined}
-                />
-              );
-            }}
-            style={{ height: "100%" }}
-          />
-        ) : timeline === "waiting" ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
-            <Loader2 className="size-5 animate-spin" />
-            <span className="text-xs">Loading messages...</span>
-          </div>
-        ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            No messages yet. Start the conversation!
-          </div>
-        )}
-      </div>
-
-      {/* Message composer - only show if user can sign, and only where the room
+        {/* Message composer - only show if user can sign, and only where the room
           takes messages at all. An AV-only NIP-29 space says so in its
           `supported_kinds`, and a box whose every send the relay rejects is
           worse than no box. */}
-      {acceptsMessages === false ? (
-        <div className="border-t px-2 py-1 text-center text-sm text-muted-foreground">
-          This space carries live audio and video, not messages.
-        </div>
-      ) : canSign ? (
-        <div className="border-t px-2 py-1 pb-0">
-          {replyTo && (
-            <ComposerReplyPreview
-              replyToId={replyTo}
+        {acceptsMessages === false ? (
+          <div className="border-t px-2 py-1 text-center text-sm text-muted-foreground">
+            This space carries live audio and video, not messages.
+          </div>
+        ) : canSign ? (
+          <div className="border-t px-2 py-1 pb-0">
+            {replyTo && (
+              <ComposerReplyPreview
+                replyToId={replyTo}
+                adapter={adapter}
+                conversation={conversation}
+                onClear={() => setReplyTo(undefined)}
+              />
+            )}
+            <div className="flex gap-1.5 items-center">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="flex-shrink-0 size-7 text-muted-foreground hover:text-foreground"
+                      onClick={() => openUpload()}
+                      disabled={isSending}
+                    >
+                      <Paperclip className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    <p>Attach media</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <MentionEditor
+                ref={editorRef}
+                placeholder="Type a message..."
+                searchProfiles={searchMentions}
+                searchEmojis={searchEmojis}
+                searchCommands={searchCommands}
+                onCommandExecute={handleCommandExecute}
+                onChange={handleEditorChange}
+                onFilePaste={(files) => {
+                  // Open upload dialog with pasted files
+                  openUpload(files);
+                }}
+                onSubmit={(content, emojiTags, blobAttachments) =>
+                  content.trim()
+                    ? handleSend(
+                        content,
+                        replyToRef.current,
+                        emojiTags,
+                        blobAttachments,
+                      )
+                    : undefined
+                }
+                className="flex-1 min-w-0"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="flex-shrink-0 h-7 px-2 text-xs"
+                disabled={isSending}
+                onClick={() => {
+                  editorRef.current?.submit();
+                }}
+              >
+                {isSending ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  "Send"
+                )}
+              </Button>
+            </div>
+            {uploadDialog}
+          </div>
+        ) : (
+          <div className="border-t px-2 py-1 text-center text-sm text-muted-foreground">
+            <button
+              onClick={() => setShowLogin(true)}
+              className="hover:text-foreground transition-colors underline"
+            >
+              Sign in
+            </button>{" "}
+            to post
+          </div>
+        )}
+
+        {/* Login dialog */}
+        <LoginDialog open={showLogin} onOpenChange={setShowLogin} />
+      </div>
+
+      {threadView && (
+        <ThreadPane
+          count={threadView.replies.length}
+          onClose={closeThread}
+          root={
+            <MessageItem
+              message={threadView.root}
               adapter={adapter}
               conversation={conversation}
-              onClear={() => setReplyTo(undefined)}
+              canReply={false}
+              activePubkey={pubkey}
             />
-          )}
-          <div className="flex gap-1.5 items-center">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="flex-shrink-0 size-7 text-muted-foreground hover:text-foreground"
-                    onClick={() => openUpload()}
-                    disabled={isSending}
-                  >
-                    <Paperclip className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  <p>Attach media</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <MentionEditor
-              ref={editorRef}
-              placeholder="Type a message..."
-              searchProfiles={searchMentions}
-              searchEmojis={searchEmojis}
-              searchCommands={searchCommands}
-              onCommandExecute={handleCommandExecute}
-              onChange={handleEditorChange}
-              onFilePaste={(files) => {
-                // Open upload dialog with pasted files
-                openUpload(files);
-              }}
-              onSubmit={(content, emojiTags, blobAttachments) =>
-                content.trim()
-                  ? handleSend(
-                      content,
-                      replyToRef.current,
-                      emojiTags,
-                      blobAttachments,
-                    )
-                  : undefined
-              }
-              className="flex-1 min-w-0"
+          }
+          replies={threadView.replies.map((reply) => (
+            <MessageItem
+              key={reply.id}
+              message={reply}
+              adapter={adapter}
+              conversation={conversation}
+              canReply={false}
+              activePubkey={pubkey}
+              isFlashing={flashId === reply.id}
             />
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="flex-shrink-0 h-7 px-2 text-xs"
-              disabled={isSending}
-              onClick={() => {
-                editorRef.current?.submit();
-              }}
-            >
-              {isSending ? <Loader2 className="size-3 animate-spin" /> : "Send"}
-            </Button>
-          </div>
-          {uploadDialog}
-        </div>
-      ) : (
-        <div className="border-t px-2 py-1 text-center text-sm text-muted-foreground">
-          <button
-            onClick={() => setShowLogin(true)}
-            className="hover:text-foreground transition-colors underline"
-          >
-            Sign in
-          </button>{" "}
-          to post
-        </div>
+          ))}
+          composer={
+            canSign && acceptsMessages !== false ? (
+              <ThreadComposer
+                searchProfiles={searchMentions}
+                searchEmojis={searchEmojis}
+                disabled={isSending}
+                onSend={(content, emojiTags, blobAttachments) =>
+                  handleSend(
+                    content,
+                    threadView.root.id,
+                    emojiTags,
+                    blobAttachments,
+                  )
+                }
+              />
+            ) : undefined
+          }
+        />
       )}
-
-      {/* Login dialog */}
-      <LoginDialog open={showLogin} onOpenChange={setShowLogin} />
     </div>
   );
 }

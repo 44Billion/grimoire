@@ -284,7 +284,7 @@ describe("replies", () => {
     });
 
     const [row] = await db.dmRumors.toArray();
-    expect(row.tags).toContainEqual(["e", "a".repeat(64)]);
+    expect(row.tags).toContainEqual(["e", "a".repeat(64), "", "root"]);
   });
 
   it("keeps every recipient when replying in a group", async () => {
@@ -341,7 +341,56 @@ describe("replies", () => {
     });
 
     const [row] = await db.dmRumors.toArray();
-    expect(row.tags).toContainEqual(["e", "a".repeat(64)]);
+    expect(row.tags).toContainEqual(["e", "a".repeat(64), "", "root"]);
+  });
+
+  it("names the root, not the parent, when replying to a reply", async () => {
+    // The whole point of the markers. Without a root the timeline has to walk
+    // the parent chain, and the walk stops at the edge of the loaded window —
+    // so a reply to an old reply threads nowhere until history pages in.
+    const { sendDirectMessage } = await import("./send");
+    const root = "c".repeat(64);
+    await sendDirectMessage({
+      viewer: ALICE,
+      signer: alice,
+      peers: [BOB],
+      content: "re re",
+      replyTo: {
+        ...parent(),
+        tags: [
+          ["p", ALICE],
+          ["e", root, "", "root"],
+        ],
+      },
+    });
+
+    const [row] = await db.dmRumors.toArray();
+    expect(row.tags).toContainEqual(["e", root, "", "root"]);
+    expect(row.tags).toContainEqual(["e", "a".repeat(64), "", "reply"]);
+  });
+
+  it("threads onto a parent written before the markers existed", async () => {
+    // Every reply in the conversations this shipped into carries one unmarked
+    // `e`. applesauce reports it as the root, so the new reply threads there —
+    // one level shallower than the truth, and visible.
+    const { sendDirectMessage } = await import("./send");
+    await sendDirectMessage({
+      viewer: ALICE,
+      signer: alice,
+      peers: [BOB],
+      content: "re",
+      replyTo: {
+        ...parent(),
+        tags: [
+          ["p", ALICE],
+          ["e", "b".repeat(64)],
+        ],
+      },
+    });
+
+    const [row] = await db.dmRumors.toArray();
+    expect(row.tags).toContainEqual(["e", "b".repeat(64), "", "root"]);
+    expect(row.tags).toContainEqual(["e", "a".repeat(64), "", "reply"]);
   });
 
   it("can reply to a file message", async () => {

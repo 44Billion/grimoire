@@ -818,6 +818,10 @@ export class Nip10Adapter extends ChatProtocolAdapter {
         timestamp: event.created_at,
         type: "user",
         replyTo,
+        // The conversation IS this thread, so every reply's root is the
+        // conversation's own root. `foldThreads` reads that and keeps the
+        // timeline flat rather than collapsing all of it into one thread.
+        threadRoot: refs.root?.e?.id ?? rootEventId,
         protocol: "nip-10",
         metadata: {
           encrypted: false,

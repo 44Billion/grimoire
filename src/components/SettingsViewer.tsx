@@ -123,6 +123,28 @@ export function SettingsViewer() {
                   }
                 />
               </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <label
+                    htmlFor="collapse-threads"
+                    className="text-base font-medium cursor-pointer"
+                  >
+                    Collapse threads
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Fold chat replies under the message they answer, and open
+                    them in a thread beside the conversation
+                  </p>
+                </div>
+                <Switch
+                  id="collapse-threads"
+                  checked={settings?.appearance?.collapseThreads ?? true}
+                  onCheckedChange={(checked: boolean) =>
+                    updateSetting("appearance", "collapseThreads", checked)
+                  }
+                />
+              </div>
             </div>
           </TabsContent>
 

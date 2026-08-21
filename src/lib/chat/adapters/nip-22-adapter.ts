@@ -1025,6 +1025,16 @@ export class Nip22Adapter extends ChatProtocolAdapter {
         };
       }
 
+      // The uppercase root scope, which for this adapter is the conversation
+      // itself — an addressable or external root has no id, and `foldThreads`
+      // only compares against `conversationRootId`, which is likewise absent
+      // then. Either way a comment never collapses under its own thread.
+      const rootPointer = getCommentRootPointer(event);
+      const threadRoot =
+        rootPointer && isCommentEventPointer(rootPointer)
+          ? rootPointer.id
+          : undefined;
+
       return {
         id: event.id,
         conversationId,
@@ -1033,6 +1043,7 @@ export class Nip22Adapter extends ChatProtocolAdapter {
         timestamp: event.created_at,
         type: "user",
         replyTo,
+        ...(threadRoot ? { threadRoot } : {}),
         protocol: "nip-22",
         metadata: { encrypted: false },
         event,

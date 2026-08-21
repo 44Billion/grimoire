@@ -26,6 +26,7 @@ import {
   conversationScope,
   emitDmScopes,
 } from "@/services/dm-bus";
+import { nip10ThreadRoot } from "@/lib/chat/thread-root";
 import { ownDmReadRelays, resolveDmRelays } from "./relays";
 import { publishGiftWrap, type GiftWrapDelivery } from "./publish";
 
@@ -172,6 +173,30 @@ async function resolvePeerRelays(
   return { reachable, unreachable };
 }
 
+/**
+ * NIP-10 thread tags for a reply, from the parent alone.
+ *
+ * The parent carries its own root, so the thread is resolved here rather than
+ * threaded through `SendDmParams` — and the read side resolves it with the same
+ * function, which is the only way the two cannot disagree.
+ *
+ * A reply directly to a root gets ONE tag. NIP-10 says a direct reply needs no
+ * `reply` reference, and applesauce's reader reports a lone `root` as both, so
+ * the second tag would be noise the parent's own id already carries.
+ *
+ * A parent written before markers existed reports itself as its own root, so a
+ * reply to it roots there rather than at the true head of the conversation. One
+ * level shallower than the truth, and threaded, which is the trade.
+ */
+function threadTags(parent: Rumor): string[][] {
+  const root = nip10ThreadRoot(parent) ?? parent.id;
+  if (root === parent.id) return [["e", root, "", "root"]];
+  return [
+    ["e", root, "", "root"],
+    ["e", parent.id, "", "reply"],
+  ];
+}
+
 export async function sendDirectMessage({
   viewer,
   signer,
@@ -190,7 +215,7 @@ export async function sendDirectMessage({
       await WrappedMessageFactory.create([viewer], content).as(signer).stamp(),
       [viewer],
     );
-    if (replyTo) stamped.tags.push(["e", replyTo.id]);
+    if (replyTo) stamped.tags.push(...threadTags(replyTo));
     stamped.tags.push(...tags);
     return deliverRumor(viewer, signer, new Map(), stamped);
   }
@@ -210,7 +235,7 @@ export async function sendDirectMessage({
     await WrappedMessageFactory.create(others, content).as(signer).stamp(),
     others,
   );
-  if (replyTo) stamped.tags.push(["e", replyTo.id]);
+  if (replyTo) stamped.tags.push(...threadTags(replyTo));
   stamped.tags.push(...tags);
 
   // Every participant, including the unreachable ones: the p tags are the

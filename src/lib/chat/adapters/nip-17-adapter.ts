@@ -58,6 +58,7 @@ import { pageDmInboxBefore, topUpDmInbox } from "@/services/dm-pipeline";
 import { resolveDmRelays, warmDmRelays } from "@/lib/dm/relays";
 import { sendDirectMessage, sendDirectReaction } from "@/lib/dm/send";
 import { timelineSignature } from "@/lib/chat/timeline-signature";
+import { nip10Parent, nip10ThreadRoot } from "@/lib/chat/thread-root";
 import { dmConversationIdFor, dmOthersIn } from "@/lib/dm/conversation-id";
 import { markDmRead, readDmLastRead } from "@/services/dm-reads";
 
@@ -121,7 +122,11 @@ function toMessage(
   conversationId: string,
   reactions: DmRumorRow[] = [],
 ): Message {
-  const parent = row.tags.find((t: string[]) => t[0] === "e" && t[1])?.[1];
+  // Markers when the sender wrote them, the deprecated positional form when
+  // they did not — `nip10ThreadRoot` reads both, so a conversation predating
+  // the markers still threads. See `src/lib/chat/thread-root.ts`.
+  const parent = nip10Parent(row);
+  const threadRoot = nip10ThreadRoot(row);
   return {
     id: row.id,
     conversationId,
@@ -132,6 +137,7 @@ function toMessage(
     protocol: "nip-17",
     event: toEvent(row),
     ...(parent ? { replyTo: { id: parent } as EventPointer } : {}),
+    ...(threadRoot ? { threadRoot } : {}),
     metadata: {
       encrypted: true,
       // ALWAYS present, even when empty — see the module docstring. Absent is

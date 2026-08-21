@@ -24,6 +24,18 @@ export interface AppearanceSettings {
   showClientTags: boolean;
   /** Load media inline (images, videos, audio) - when false, show compact links */
   loadMedia: boolean;
+  /**
+   * Fold chat replies under the message they answer.
+   *
+   * On, a reply leaves the timeline and its parent grows a "n replies" row that
+   * opens the thread beside the channel. Off, replies stay inline where they
+   * are, each under its own quote of the parent — which is what every version
+   * before this did.
+   *
+   * A reply whose parent is not loaded is never folded either way: see
+   * `foldThreads` (`src/lib/chat/threads.ts`).
+   */
+  collapseThreads: boolean;
 }
 
 /**
@@ -77,6 +89,7 @@ const DEFAULT_POST_SETTINGS: PostSettings = {
 const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   showClientTags: true,
   loadMedia: true,
+  collapseThreads: true,
 };
 
 /**

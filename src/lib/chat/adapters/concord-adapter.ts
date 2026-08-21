@@ -1214,6 +1214,7 @@ export class ConcordAdapter extends ChatProtocolAdapter {
     const conversationId = conversationIdOf(identifier);
     const messages = timeline.messages.map((ev): Message => {
       const parent = parentPointerOf(ev);
+      const threadRoot = threadRootOf(ev);
       return {
         id: ev.rumorId,
         conversationId,
@@ -1222,6 +1223,7 @@ export class ConcordAdapter extends ChatProtocolAdapter {
         timestamp: ev.createdAt,
         type: "user" as const,
         ...(parent ? { replyTo: parent } : {}),
+        ...(threadRoot ? { threadRoot } : {}),
         metadata: {
           encrypted: true,
           // Concord seals reactions inside wraps, so a `#e` relay query can
@@ -1410,6 +1412,25 @@ function parentPointerOf(ev: {
       : ev.tags.find((t) => t[0] === "q" && t[1]);
   if (!tag) return undefined;
   return { id: tag[1], ...(tag[3] ? { author: tag[3] } : {}) };
+}
+
+/**
+ * The message whose thread a rumor belongs to, when the wire says so.
+ *
+ * A kind-1111 states it outright: `buildConcordCommentTags` copies the parent's
+ * uppercase `E` when the parent had one and otherwise names the parent, so `E`
+ * is the thread root at any depth — no walk, and no dependence on the ancestors
+ * still being inside the loaded window.
+ *
+ * A kind-9 `q` quote states nothing. Its root is whatever `foldThreads` can
+ * reach by following parents, which is the same ceiling every NIP-29 reply has.
+ */
+function threadRootOf(ev: {
+  kind: number;
+  tags: string[][];
+}): string | undefined {
+  if (ev.kind !== KIND_COMMENT) return undefined;
+  return ev.tags.find((t) => t[0] === "E" && t[1])?.[1];
 }
 
 /**
