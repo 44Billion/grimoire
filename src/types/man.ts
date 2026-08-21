@@ -670,14 +670,19 @@ export const manPages: Record<string, ManPageEntry> = {
   chat: {
     name: "chat",
     section: "1",
-    synopsis: "chat [identifier|community]",
+    synopsis: "chat [identifier|recipients|community]",
     description:
-      "Join and participate in Nostr chat conversations. With no argument it opens the browser: private conversations, NIP-29 relay groups and Concord communities as collapsible sections in one sidebar, each sorted by its most recent message. A Concord community can be named directly — by name or id prefix, matched against your own decrypted list exactly as `concord` does, which `chat` supersedes. Each window keeps its own place, so two of them open two channels. Supports NIP-17 private direct messages, NIP-29 relay-based groups, NIP-53 live activity chat, NIP-10 thread chat, NIP-22 comment threads on any event kind, and multi-room group list interface. A direct message is gift-wrapped (NIP-59): the outer event is signed by a throwaway key, so the relay holding it cannot tell who sent it, and grimoire never authenticates on the socket it publishes one over. Messages are decrypted once and mirrored locally, so a conversation opens with no signer prompt; the first time an account reads its inbox it is asked for permission, because opening a backlog of wraps means two decryptions each. NIP-22 comments work as a catch-all: any event that isn't kind 1 (NIP-10) or a relay group/live activity gets a comment thread. You can also comment on URLs and hashtags. In a room that can page backwards — a relay group, a live chat, a Concord channel — clicking a reply preview fetches history until it finds the message being answered, and the calendar button in the header jumps to a date. A thread or a comment set is loaded whole, so neither applies there.",
+      "Join and participate in Nostr chat conversations. With no argument it opens the browser: private conversations, NIP-29 relay groups and Concord communities as collapsible sections in one sidebar, each sorted by its most recent message. A Concord community can be named directly — by name or id prefix, matched against your own decrypted list exactly as `concord` does, which `chat` supersedes. Each window keeps its own place, so two of them open two channels. Supports NIP-17 private direct messages, NIP-29 relay-based groups, NIP-53 live activity chat, NIP-10 thread chat, NIP-22 comment threads on any event kind, and multi-room group list interface. A direct message is gift-wrapped (NIP-59): the outer event is signed by a throwaway key, so the relay holding it cannot tell who sent it, and grimoire never authenticates on the socket it publishes one over. Messages are decrypted once and mirrored locally, so a conversation opens with no signer prompt; the first time an account reads its inbox it is asked for permission, because opening a backlog of wraps means two decryptions each. NIP-22 comments work as a catch-all: any event that isn't kind 1 (NIP-10) or a relay group/live activity gets a comment thread. You can also comment on URLs and hashtags. In a room that can page backwards — a relay group, a live chat, a Concord channel — clicking a reply preview fetches history until it finds the message being answered, and the calendar button in the header jumps to a date. A thread or a comment set is loaded whole, so neither applies there. A private conversation can be named by npub, nprofile or NIP-05, and several of them comma-separated open a group — where the participants ARE the conversation's identity, so one unresolvable recipient is refused rather than quietly dropped, and nobody can be added later without starting a different conversation.",
     options: [
       {
         flag: "<identifier>",
         description:
-          "NIP-17 direct message (npub1.../nprofile1...), NIP-29 group (relay'group-id), NIP-53 live activity (naddr1...), NIP-10 thread (nevent1.../note1... kind 1), NIP-22 comments (nevent1.../naddr1... any other kind, URL, or #hashtag)",
+          "NIP-17 direct message (npub1.../nprofile1.../user@domain), NIP-29 group (relay'group-id), NIP-53 live activity (naddr1...), NIP-10 thread (nevent1.../note1... kind 1), NIP-22 comments (nevent1.../naddr1... any other kind, URL, or #hashtag)",
+      },
+      {
+        flag: "<recipients>",
+        description:
+          "Two or more people, comma-separated, in any mix of npub, nprofile and NIP-05: a group direct message. Commas rather than spaces, because a space-separated list is indistinguishable from a relay and a group id. A bare domain is NOT read as a NIP-05 here, unlike `profile` — a hostname typed into `chat` is as plausibly a relay.",
       },
       {
         flag: "<community>",
@@ -691,6 +696,8 @@ export const manPages: Record<string, ManPageEntry> = {
       "chat 3fa2c1                               Open a Concord community by id prefix",
       "chat npub1...                             Open a private conversation (NIP-17)",
       "chat nprofile1...                         Same, with relay hints",
+      "chat alice@example.com                    Same, by NIP-05",
+      "chat npub1...,bob@example.com             Group conversation: comma-separated",
       "chat relay.example.com'bitcoin-dev        Join NIP-29 relay group",
       "chat wss://nos.lol'welcome                Join NIP-29 group with explicit protocol",
       "chat naddr1...30311...                    Join NIP-53 live activity chat",

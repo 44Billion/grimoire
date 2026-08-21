@@ -1,7 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { nip19 } from "nostr-tools";
 import { parseChatCommand } from "./chat-parser";
 import type { ProtocolIdentifier } from "@/types/chat";
+
+// Only the resolver is faked. `isNip05` decides what the parser CLAIMS, and a
+// test that stubbed it would stop testing the rule that a bare domain is not
+// a recipient.
+const resolveNip05 = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/nip05", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/nip05")>()),
+  resolveNip05,
+}));
 
 /**
  * Narrow a parsed identifier to one of the relay-backed shapes that carry
@@ -97,6 +106,86 @@ describe("parseChatCommand", () => {
       expect(result.protocol).toBe("nip-29");
       expect(relayBacked(result.identifier).value).toBe("welcome");
       expect(relayBacked(result.identifier).relays).toEqual(["wss://nos.lol"]);
+    });
+  });
+
+  describe("NIP-17 recipients", () => {
+    beforeEach(() => resolveNip05.mockReset());
+
+    const ALICE = "a".repeat(64);
+    const BOB = "b".repeat(64);
+    const CAROL = "c".repeat(64);
+
+    it("resolves a single NIP-05 address", async () => {
+      resolveNip05.mockResolvedValueOnce(ALICE);
+      const result = await parseChatCommand(["alice@example.com"]);
+
+      expect(result.protocol).toBe("nip-17");
+      expect(result.identifier).toEqual({
+        type: "chat-partner",
+        value: ALICE,
+      });
+    });
+
+    it("opens a group from a comma-separated list, in any mix", async () => {
+      resolveNip05.mockResolvedValueOnce(CAROL);
+      const nprofile = nip19.nprofileEncode({
+        pubkey: BOB,
+        relays: ["wss://relay.example.com"],
+      });
+      const result = await parseChatCommand([
+        `${nip19.npubEncode(ALICE)},${nprofile},carol@example.com`,
+      ]);
+
+      expect(result.protocol).toBe("nip-17");
+      expect(result.identifier).toEqual({
+        type: "chat-partner",
+        value: [ALICE, BOB, CAROL].join(":"),
+        relays: ["wss://relay.example.com"],
+      });
+    });
+
+    it("survives the shell splitting the list on its spaces", async () => {
+      const result = await parseChatCommand([
+        `${nip19.npubEncode(ALICE)},`,
+        nip19.npubEncode(BOB),
+      ]);
+
+      expect(relayBacked(result.identifier).value).toBe([ALICE, BOB].join(":"));
+    });
+
+    it("refuses the whole group when one recipient does not resolve", async () => {
+      // The participants ARE the conversation, so dropping the unresolvable
+      // one would open a DIFFERENT conversation than the one that was typed.
+      resolveNip05.mockResolvedValueOnce(null);
+      await expect(
+        parseChatCommand([`${nip19.npubEncode(ALICE)},ghost@example.com`]),
+      ).rejects.toThrow(/ghost@example.com/);
+    });
+
+    it("does not read a bare domain as a recipient", async () => {
+      // Unlike `profile`. A hostname typed into `chat` is as plausibly a relay,
+      // and `_@` resolution would open a private conversation with a stranger.
+      await expect(parseChatCommand(["example.com"])).rejects.toThrow(
+        /Unable to determine chat protocol/,
+      );
+      expect(resolveNip05).not.toHaveBeenCalled();
+    });
+
+    it("leaves a lone npub to the adapter, relay hints and all", async () => {
+      const nprofile = nip19.nprofileEncode({
+        pubkey: ALICE,
+        relays: ["wss://relay.example.com"],
+      });
+      const result = await parseChatCommand([nprofile]);
+
+      expect(result.protocol).toBe("nip-17");
+      expect(result.identifier).toEqual({
+        type: "chat-partner",
+        value: ALICE,
+        relays: ["wss://relay.example.com"],
+      });
+      expect(resolveNip05).not.toHaveBeenCalled();
     });
   });
 

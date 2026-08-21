@@ -259,18 +259,11 @@ export interface LiveActivityIdentifier {
  */
 export interface DMIdentifier {
   type: "dm-recipient" | "chat-partner";
-  /** Recipient pubkey (hex) */
-  value: string;
-  /** Relay hints */
-  relays?: string[];
-}
-
-/**
- * NIP-05 identifier for DMs (needs resolution)
- */
-export interface NIP05Identifier {
-  type: "chat-partner-nip05";
-  /** NIP-05 address to resolve */
+  /**
+   * Who the conversation is with: one hex pubkey, or several colon-joined for
+   * a group. The adapter adds the viewer and sorts — a conversation id has to
+   * be the same string on both sides — so the order here does not matter.
+   */
   value: string;
   /** Relay hints */
   relays?: string[];
@@ -365,7 +358,6 @@ export type ProtocolIdentifier =
   | GroupIdentifier
   | LiveActivityIdentifier
   | DMIdentifier
-  | NIP05Identifier
   | ChannelIdentifier
   | GroupListIdentifier
   | ThreadIdentifier
