@@ -89,8 +89,18 @@ export function removeIntent(agent: string, session: string, id: string): void {
   ring(k);
 }
 
-export function getIntents(agent: string, session: string): SessionIntent[] {
-  return intents.get(key(agent, session)) ?? [];
+/**
+ * The snapshot for a session with nothing pending. One frozen array, not a
+ * fresh `[]` per call: `useSessionIntents` feeds this to `useSyncExternalStore`,
+ * which re-renders forever if the snapshot's identity changes every read.
+ */
+export const NO_INTENTS: readonly SessionIntent[] = Object.freeze([]);
+
+export function getIntents(
+  agent: string,
+  session: string,
+): readonly SessionIntent[] {
+  return intents.get(key(agent, session)) ?? NO_INTENTS;
 }
 
 export function subscribeIntents(

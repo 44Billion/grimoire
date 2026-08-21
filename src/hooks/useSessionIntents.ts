@@ -5,10 +5,11 @@
  * this just re-renders when it rings.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 import {
   getIntents,
+  NO_INTENTS,
   subscribeIntents,
   type SessionIntent,
 } from "@/services/agent-intents";
@@ -16,21 +17,17 @@ import {
 export function useSessionIntents(
   agent: string | undefined,
   session: string | undefined,
-): SessionIntent[] {
-  const [list, setList] = useState<SessionIntent[]>(
-    agent && session ? getIntents(agent, session) : [],
+): readonly SessionIntent[] {
+  const subscribe = useCallback(
+    (onChange: () => void) =>
+      agent && session ? subscribeIntents(agent, session, onChange) : () => {},
+    [agent, session],
   );
 
-  useEffect(() => {
-    if (!agent || !session) {
-      setList([]);
-      return;
-    }
-    setList(getIntents(agent, session));
-    return subscribeIntents(agent, session, () =>
-      setList(getIntents(agent, session)),
-    );
-  }, [agent, session]);
+  const snapshot = useCallback(
+    () => (agent && session ? getIntents(agent, session) : NO_INTENTS),
+    [agent, session],
+  );
 
-  return list;
+  return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
