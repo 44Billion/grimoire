@@ -1,6 +1,8 @@
 import { kinds } from "nostr-tools";
 import { UserName } from "../UserName";
 import { EventEmbed } from "./EventEmbed";
+import { SessionEmbed } from "./SessionEmbed";
+import { KIND_SESSION_HEAD } from "@/lib/agent-session/kinds";
 import { EventPointer, AddressPointer } from "nostr-tools/nip19";
 import { useDepth, useRichTextOptions } from "../RichText";
 import { getKindName } from "@/constants/kinds";
@@ -76,6 +78,12 @@ export function Mention({ node }: MentionNodeProps) {
 
     if (!options.showEventEmbeds) {
       return <EventPlaceholder kind={pointer.kind} />;
+    }
+
+    // An agent session lives in a local store before — and often instead of —
+    // a relay. See `SessionEmbed`.
+    if (pointer.kind === KIND_SESSION_HEAD) {
+      return <SessionEmbed pointer={pointer} depth={depth} />;
     }
 
     return <EventEmbed node={{ pointer }} depth={depth} />;

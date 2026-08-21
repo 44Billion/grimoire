@@ -173,6 +173,39 @@ export interface AgentSessionView {
   duplicates: number[];
 }
 
+/**
+ * The newest head for one session, as the rumor itself.
+ *
+ * For the `naddr` an agent posts into a room. That pointer names a replaceable
+ * event, and the reflex is to hand it to the relay loader — but the only copies
+ * of this one are local: sealed to a channel, or gift-wrapped to this viewer.
+ * Neither is on a relay in a form anything can query, so the pointer opened
+ * nothing while the run sat in a store two panes away. Local first, and the
+ * caller falls back to the network for the ordinary case where a session really
+ * was published in the open.
+ *
+ * Newest wins: a head is replaceable, so a run that published six of them has
+ * six rows here.
+ */
+export async function readSessionHeadRumor(
+  viewer: string,
+  agent: string,
+  session: string,
+): Promise<Rumor | null> {
+  const rows = await scan(viewer, new Set([KIND_SESSION_HEAD]));
+  const byId = new Map(rows.map((rumor) => [rumor.id, rumor]));
+  const heads = rows
+    .map(decode)
+    .filter(
+      (event): event is DecodedHead =>
+        event?.type === "head" &&
+        event.session.agent === agent &&
+        event.session.session === session,
+    );
+  const newest = newestHeads(heads)[0];
+  return newest ? (byId.get(newest.id) ?? null) : null;
+}
+
 /** One session, ordered by the rules in `order.ts` — never by the wrap's clock. */
 export async function readAgentSession(
   viewer: string,
