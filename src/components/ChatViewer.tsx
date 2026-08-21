@@ -741,13 +741,23 @@ const MessageItem = memo(function MessageItem({
     return (
       <div className="flex items-center gap-1 px-3 py-1 text-xs text-muted-foreground">
         <Icon className="size-3 shrink-0" />
-        <UserName pubkey={message.author} className="text-xs" />
+        {/* Who did it never shrinks. `UserName` hides its own overflow, which
+            makes it a flex item that can collapse to nothing — and a row
+            reading "ver… sent a patch" loses the only part that is about a
+            person. The subject is the long half and the half that can afford
+            an ellipsis, since clicking it opens the thing in full. Capped all
+            the same: a pathological display name must not leave a narrow pane
+            with no room for the subject at all. */}
+        <UserName
+          pubkey={message.author}
+          className="max-w-32 shrink-0 text-xs"
+        />
         <span className="shrink-0">{action}</span>
         {subject && (
           <button
             type="button"
             onClick={() => addWindow("open", { pointer })}
-            className="truncate text-left font-medium text-primary hover:underline"
+            className="min-w-0 truncate text-left font-medium text-primary hover:underline"
           >
             {subject}
           </button>
