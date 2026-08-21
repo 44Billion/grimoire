@@ -113,7 +113,7 @@ import {
   type ThreadSummary,
 } from "@/lib/chat/threads";
 import { ThreadPane, THREAD_PANE_DEFAULT_WIDTH } from "./chat/ThreadPane";
-import { ThreadSummaryButton } from "./chat/ThreadSummaryButton";
+import { MessageActivity } from "./chat/MessageActivity";
 import { useSettings } from "@/hooks/useSettings";
 import { cn } from "@/lib/utils";
 
@@ -544,7 +544,9 @@ const MessageItem = memo(function MessageItem({
   thread,
   threadUnread,
   onOpenThread,
+  onCloseThread,
   threadActive,
+  activityView,
   inThreadRootId,
 }: {
   message: Message;
@@ -568,8 +570,19 @@ const MessageItem = memo(function MessageItem({
   /** How many of those replies the reader has not seen. */
   threadUnread?: number;
   onOpenThread?: (rootId: string) => void;
+  /** Closes it — the row that opened the pane is also the way back out. */
+  onCloseThread?: () => void;
   /** Whether the pane is already showing this message's thread. */
   threadActive?: boolean;
+  /**
+   * How the follow-on activity under this message is drawn.
+   *
+   * `"merged"` is the channel: replies and runs on one line, opening the thread.
+   * `"sessions"` is inside the pane, where the thread is already open and every
+   * run gets its own row — the only place a second session is reachable, since
+   * the merged row speaks for one.
+   */
+  activityView?: "merged" | "sessions";
   /**
    * The thread this row is being rendered INSIDE, if any.
    *
@@ -878,20 +891,25 @@ const MessageItem = memo(function MessageItem({
               {message.content}
             </span>
           )}
-          {/* What this message set an agent doing, if anything. The link runs
-              from the session to the message, so a run shows up here without the
-              agent having replied — and renders nothing at all for the vast
-              majority of messages, which started nothing. */}
-          <MessageSessions messageId={message.id} />
-          {/* Under the sessions, because a message can have both and they are
-              different things: a session is what this message SET RUNNING, a
-              thread is what people said back. */}
-          {thread && onOpenThread && (
-            <ThreadSummaryButton
+          {/* What came of this message: the replies folded under it and the runs
+              it set going, on one line. Renders nothing at all for the vast
+              majority of messages, which started nothing and got no reply.
+              `MessageActivity` for the channel, where one line is the budget;
+              the pane lists every run separately, because there it has room and
+              a second session needs its own way in. */}
+          {activityView === "sessions" ? (
+            <MessageSessions messageId={message.id} />
+          ) : (
+            <MessageActivity
+              messageId={message.id}
               thread={thread}
-              active={threadActive}
               unread={threadUnread}
-              onOpen={() => onOpenThread(thread.rootId)}
+              active={threadActive}
+              onOpenThread={onOpenThread}
+              onCloseThread={onCloseThread}
+              onOpenSession={(agent, session) =>
+                addWindow("agent", { agent, session })
+              }
             />
           )}
         </div>
@@ -1340,6 +1358,30 @@ export function ChatViewer({
     [conversationId],
   );
   const closeThread = useCallback(() => setOpenThread({}), []);
+
+  /**
+   * Which message in the thread the pane's composer is answering.
+   *
+   * Undefined means the thread itself, which is the default and the common case.
+   * Picking a particular reply is worth having anyway: the fold flattens a thread
+   * on READ, so a reply naming its real parent still lands in the same thread —
+   * the wire keeps who was answered, and the pane keeps its one level.
+   *
+   * Stored with the thread it belongs to and derived back out, like the open
+   * thread above: a target left over from another thread would answer a message
+   * the reader is no longer looking at.
+   */
+  const [threadReply, setThreadReply] = useState<{
+    rootId?: string;
+    messageId?: string;
+  }>({});
+  const threadReplyTo =
+    threadReply.rootId === threadRootId ? threadReply.messageId : undefined;
+  const replyInThread = useCallback(
+    (messageId: string | undefined) =>
+      setThreadReply({ rootId: threadRootId, messageId }),
+    [threadRootId],
+  );
 
   /**
    * What the pane shows: the root and its replies, from the same timeline the
@@ -2250,6 +2292,7 @@ export function ChatViewer({
                     thread={folded.threads.get(item.data.id)}
                     threadUnread={threadUnread?.get(item.data.id)}
                     onOpenThread={showThread}
+                    onCloseThread={closeThread}
                     threadActive={threadRootId === item.data.id}
                   />
                 );
@@ -2322,8 +2365,10 @@ export function ChatViewer({
               message={threadView.root}
               adapter={adapter}
               conversation={conversation}
-              canReply={false}
+              canReply={canSign}
+              onReply={replyInThread}
               activePubkey={pubkey}
+              activityView="sessions"
             />
           }
           replies={threadView.replies.map((reply) => (
@@ -2332,10 +2377,15 @@ export function ChatViewer({
               message={reply}
               adapter={adapter}
               conversation={conversation}
-              canReply={false}
+              // Answerable, one by one. The fold flattens a thread on READ, so a
+              // reply naming its real parent still lands in this same thread —
+              // the wire keeps who was answered and the pane keeps one level.
+              canReply={canSign}
+              onReply={replyInThread}
               activePubkey={pubkey}
               isFlashing={flashId === reply.id}
               inThreadRootId={threadView.root.id}
+              activityView="sessions"
             />
           ))}
           composer={
@@ -2354,9 +2404,14 @@ export function ChatViewer({
                     ? `${draftKeyFor}#thread:${threadView.root.id}`
                     : undefined
                 }
-                // Fixed, and NOT changeable: every reply in a flattened thread
-                // targets its root, so there is no choice here to show or undo.
-                replyTo={threadView.root.id}
+                // The thread itself by default, or whichever message in it the
+                // reader picked. `onReplyToChange` only once they have picked:
+                // its absence is what keeps the banner off the common case,
+                // where the target is the thread the pane is already showing.
+                replyTo={threadReplyTo ?? threadView.root.id}
+                onReplyToChange={
+                  threadReplyTo ? () => replyInThread(undefined) : undefined
+                }
                 onSend={handleSend}
                 isSending={isSending}
                 attachmentEncryption={attachmentEncryption}

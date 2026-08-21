@@ -162,10 +162,11 @@ export function ThreadPane({
         onScroll={onScroll}
         className="min-h-0 flex-1 overflow-y-auto py-1"
       >
+        {/* No rule under the root. The pane's heading already says this is a
+            thread, and a line across a 22rem column reads as a section break in
+            a conversation that has none — the replies follow the message they
+            answer, the way they do everywhere else. */}
         {root}
-        {/* The root is the thread's subject, not one of its replies, so the line
-            says which is which without a label. */}
-        <div className="my-1 border-t" />
         {replies}
       </div>
       {composer}

@@ -1,33 +1,33 @@
 /**
- * The agent sessions a message set running, listed under it.
+ * The agent sessions a message set running, listed one per row.
  *
  * A session's head names the event that caused the run, so this is the question
  * asked from the other end: what did this message start? That direction is the
  * whole point — an agent does not have to reply, or carry a pointer in its answer,
- * for a reader to find the work. It publishes a transcript that says which message
- * it came from, and the conversation grows a row.
+ * for a reader to find the work. It publishes a transcript that says which
+ * message it came from, and the conversation grows a row.
+ *
+ * **This is the THREAD PANE's view.** In the channel the same fact is folded into
+ * one line with the replies (`MessageActivity`), because a run and the replies it
+ * produced were two rows answering one question. Here there is room, so every run
+ * gets its own row and its own way in — which is what keeps a second session
+ * reachable after the channel row started speaking for only one.
  *
  * Live, because a run in progress is exactly when this is worth looking at: the
- * status moves `active` → `awaiting-input` → `idle`, the turn count climbs, and
- * both come off the local mirror through the same doorbell every other pane uses.
- * There is no subscription here.
+ * status moves `active` → `awaiting-input` → `idle` off the local mirror, through
+ * the same doorbell every other pane uses. There is no subscription here.
  *
  * Renders NOTHING when there are no sessions, which is almost every message in
  * almost every conversation.
  */
 
-import { useEffect, useState } from "react";
-import { DollarSign } from "lucide-react";
-
-import { useAccount } from "@/hooks/useAccount";
-import { listSessionsForEvent, onAgentEvents } from "@/services/agent-store";
-import type { SessionForEvent } from "@/services/agent-store";
-import type { DecodedHead } from "@/lib/agent-session/types";
 import { useAddWindow } from "@/core/state";
 import { useAgentActivity } from "@/hooks/useAgentActivity";
+import { useSessionsForEvent } from "@/hooks/useSessionsForEvent";
 import { UserName } from "@/components/nostr/UserName";
 import { StatusDot, statusStyle } from "@/components/agent/status";
-import { useLocale, formatMoney } from "@/hooks/useLocale";
+import { SessionSpend } from "@/components/agent/SessionSpend";
+import type { DecodedHead } from "@/lib/agent-session/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -56,10 +56,13 @@ function SessionRow({
     <button
       type="button"
       onClick={onOpen}
-      // Fixed height, and the thread row under it matches: both grow under a
-      // message already on screen, and a row that changes height when a figure
-      // or a name arrives shifts the timeline under the reader.
-      className="flex h-5 w-full max-w-full items-center gap-1.5 whitespace-nowrap rounded px-1 text-left text-xs hover:bg-muted/50"
+      // Fixed height, matching the channel's activity row: both grow under a
+      // message already on screen, and a row that changes height when a figure or
+      // a name arrives shifts the timeline under the reader.
+      // No horizontal padding: this is only rendered in the thread pane, under
+      // the message it belongs to, and a step to the right of that message's own
+      // text read as an indent nothing had asked for.
+      className="flex h-5 w-full max-w-full items-center gap-1.5 whitespace-nowrap rounded text-left text-xs hover:bg-muted/50"
       title={head.title}
     >
       <StatusDot status={head.status} live={Boolean(activity)} />
@@ -69,71 +72,16 @@ function SessionRow({
       <span className={cn("truncate", style.text)}>
         {activity?.verb ?? style.label ?? head.status}
       </span>
-      <SessionSpend head={head} />
+      <span className="ml-auto pl-2">
+        <SessionSpend heads={[head]} />
+      </span>
     </button>
   );
 }
 
-/**
- * What the run has spent — and nothing else, on this row.
- *
- * It used to carry spend, tokens, cache and context, the same four figures as
- * the tiles in the session view. Four is right in the session view, where they
- * are the subject; under a chat message they are four things to read on a line
- * whose job is to say an agent did something, and they crowded out the row that
- * sits beside them saying who replied. The other three are one click away, in
- * the transcript, where they are laid out to be compared.
- *
- * Spend earns its place because it is the one figure that is not recoverable by
- * looking: a reader scanning a channel wants to know what the runs cost, not how
- * full a context window got.
- *
- * Still invented from nothing: a head carrying no cost renders nothing rather
- * than a zero, and the tilde says when arithmetic is standing in for a bill.
- */
-function SessionSpend({ head }: { head: DecodedHead }) {
-  const { locale } = useLocale();
-  const money = head.cost ? Number(head.cost.amount) : undefined;
-  if (money === undefined || money <= 0) return null;
-
-  return (
-    <span
-      className="ml-auto flex shrink-0 items-center gap-0.5 pl-2 font-mono text-[10px] text-muted-foreground/70"
-      title={
-        head.cost?.estimated
-          ? `About ${head.cost.amount} ${head.cost.currency} — worked out from token counts and list prices, not billed`
-          : `${head.cost?.amount} ${head.cost?.currency}`
-      }
-    >
-      <DollarSign className="h-2.5 w-2.5" />
-      {/* A tilde, because arithmetic is not a bill. */}
-      {head.cost?.estimated ? "~" : ""}
-      {formatMoney(money, head.cost?.currency ?? "USD", locale)}
-    </span>
-  );
-}
-
 export function MessageSessions({ messageId }: { messageId: string }) {
-  const { pubkey } = useAccount();
   const addWindow = useAddWindow();
-  const [sessions, setSessions] = useState<SessionForEvent[]>([]);
-
-  useEffect(() => {
-    if (!pubkey || !messageId) return;
-    let live = true;
-    const read = async () => {
-      const next = await listSessionsForEvent(pubkey, messageId);
-      if (live) setSessions(next);
-    };
-    void read();
-    // A rumor is written to Dexie before the doorbell rings, so re-reading on any
-    // ring is enough: a missed ring costs a stale row, never a lost session.
-    const off = onAgentEvents(() => void read());
-    return () => {
-      live = false;
-      off();
-    };
-  }, [pubkey, messageId]);
+  const sessions = useSessionsForEvent(messageId);
 
   if (sessions.length === 0) return null;
 
