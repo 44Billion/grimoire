@@ -7,6 +7,7 @@ import {
   DM_UNREAD_CAP,
   clearDirectMessages,
   countUnreadDms,
+  dmDeleteTargets,
   dmUnreadSummary,
   foldDmMessages,
   listDmConversations,
@@ -470,9 +471,10 @@ describe("countUnreadDms", () => {
     ]);
 
     // Nothing to read: the fold removes it from the timeline, so a badge
-    // pointing at it sends the reader to an empty conversation. The count
-    // skips side rows, and the target is the only row-kind left.
-    expect(await countUnreadDms(ME, id, 0)).toBe(1);
+    // pointing at it sends the reader to a conversation with nothing new in
+    // it. It used to count, and the badge cleared only because opening the
+    // conversation stamped it away.
+    expect(await countUnreadDms(ME, id, 0)).toBe(0);
   });
 
   it("does not count a message past its deadline", async () => {
@@ -519,8 +521,9 @@ describe("dmUnreadSummary", () => {
     // timeline is a fold, so a message its author deleted can be NEWER than
     // anything on screen — and a reader who stamps what they saw stamps below
     // it and can never clear the badge by any action.
-    const visible = rumor({ created_at: nowSecs() - 100, content: "seen" });
-    await writeDmRumors(ME, [visible]);
+    const older = rumor({ created_at: nowSecs() - 100, content: "read" });
+    const newer = rumor({ created_at: nowSecs() - 50, content: "unread" });
+    await writeDmRumors(ME, [older, newer]);
     const id = await conversationId();
 
     const removed = rumor({ created_at: nowSecs() - 10, content: "gone" });
@@ -534,18 +537,71 @@ describe("dmUnreadSummary", () => {
       }),
     ]);
 
-    const summary = await dmUnreadSummary(ME, id, { after: 0 });
-    // `latest` reaches the hidden row even though the timeline stops short.
+    const summary = await dmUnreadSummary(ME, id, { after: older.created_at });
+    // One badge for the one message there is to read — the deleted row is not
+    // it — but `latest` reaches past it anyway.
+    expect(summary.count).toBe(1);
     expect(summary.latest).toBe(removed.created_at);
-    expect(summary.latest).toBeGreaterThan(visible.created_at);
+    expect(summary.latest).toBeGreaterThan(newer.created_at);
 
-    // Stamping there clears it; stamping what was shown would not.
+    // Stamping there clears it; stamping what was shown leaves nothing to
+    // count either, since the row above the stamp is the deleted one.
     expect(
       (await dmUnreadSummary(ME, id, { after: summary.latest })).count,
     ).toBe(0);
     expect(
-      (await dmUnreadSummary(ME, id, { after: visible.created_at })).count,
-    ).toBeGreaterThan(0);
+      (await dmUnreadSummary(ME, id, { after: newer.created_at })).count,
+    ).toBe(0);
+  });
+
+  it("counts a message a STRANGER claims to have deleted", async () => {
+    // Authors delete their own messages and no one else's. A kind 5 naming
+    // someone else's rumor is a stranger trying to empty your mailbox, and
+    // honouring it here would let them clear your badges.
+    const target = rumor({ content: "still yours to read" });
+    await writeDmRumors(ME, [target]);
+    const id = await conversationId();
+    await writeDmRumors(ME, [
+      rumor({ kind: 5, pubkey: STRANGER, tags: [["e", target.id]] }),
+    ]);
+
+    expect(await countUnreadDms(ME, id, 0)).toBe(1);
+  });
+
+  it("finds a delete filed under another conversation", async () => {
+    // A bare NIP-09 rumor carries only an `e` tag, so it is filed under its
+    // author alone — never under the conversation it removes something from.
+    // A count that looked for tombstones in this conversation would find none.
+    const group = rumor({
+      pubkey: PEER,
+      tags: [
+        ["p", ME],
+        ["p", STRANGER],
+      ],
+      content: "in the group",
+    });
+    await writeDmRumors(ME, [group]);
+    const id = await conversationId();
+    await writeDmRumors(ME, [
+      rumor({ kind: 5, pubkey: PEER, tags: [["e", group.id]] }),
+    ]);
+
+    expect(await countUnreadDms(ME, id, 0)).toBe(0);
+  });
+
+  it("takes a delete index from the caller, for a whole sidebar in one pass", async () => {
+    const target = rumor({ content: "regretted" });
+    await writeDmRumors(ME, [target]);
+    const id = await conversationId();
+    await writeDmRumors(ME, [
+      rumor({ kind: 5, pubkey: PEER, tags: [["e", target.id]] }),
+    ]);
+
+    const deleted = await dmDeleteTargets(ME);
+    expect(deleted.has(`${PEER}:${target.id}`)).toBe(true);
+    expect((await dmUnreadSummary(ME, id, { after: 0, deleted })).count).toBe(
+      0,
+    );
   });
 
   it("walks newest-first, so the cap cannot strand the stamp", async () => {

@@ -670,14 +670,14 @@ export interface DmUnread {
  * Deliberately the same shape as Concord's `channelUnreadSummary`, because it
  * is the same problem and the same three rules apply (`docs/chat-system.md`):
  *
- * **The stamp must be able to cover everything the count counts.** This is a
- * raw index scan, not a fold — a count needs no delete tally — so it counts
- * rows the timeline will not show. A message its author deleted is the case
- * that bites: it can be the NEWEST row in a conversation, so a reader who
- * stamps the newest message the TIMELINE showed them stamps below it and can
- * never clear the badge by any action. Hence `latest`, the newest `created_at`
- * among exactly the rows counted, whatever the fold does with them.
- * `markRead` stamps `max(what was shown, latest)`.
+ * **The stamp must be able to cover more than the count counts.** A message
+ * its author deleted is the case that bites: it does not badge — the timeline
+ * will not show it, so a badge for it sends the reader to a conversation with
+ * nothing new in it — but it can be the NEWEST row in a conversation, so a
+ * reader who stamps the newest message the TIMELINE showed them stamps below
+ * it and can never clear an older badge by any action. Hence `latest`, which
+ * covers every row the scan walked, counted or not; `markRead` stamps
+ * `max(what was shown, latest)`.
  *
  * **The walk is DESCENDING.** Ascending, a capped scan would report the newest
  * of the OLDEST hundred rows as `latest`, the stamp could never reach past the
@@ -700,10 +700,53 @@ export interface DmUnread {
  * on every message, so the predicate is vacuously true: a conversation where
  * everything is a mention has no mentions.
  */
+/**
+ * Every `author:targetId` a delete names, across the whole mailbox.
+ *
+ * Viewer-wide because that is where deletes live: a NIP-09 rumor usually
+ * carries only an `e` tag, so it is filed under its author alone rather than
+ * under the conversation it removes something from. Keyed by author, exactly
+ * as {@link foldDmMessages} matches them — a kind 5 naming someone else's
+ * rumor is a stranger trying to edit your mailbox.
+ *
+ * Built once and passed to {@link dmUnreadSummary} when a caller is about to
+ * ask about many conversations, which is the sidebar's whole job.
+ */
+export async function dmDeleteTargets(viewer: string): Promise<Set<string>> {
+  const deleted = new Set<string>();
+  if (!viewer) return deleted;
+
+  try {
+    await db.dmRumors
+      .where("[viewer+created_at]")
+      .between([viewer, Dexie.minKey], [viewer, Dexie.maxKey])
+      .filter((row) => row.kind === DM_DELETE_KIND)
+      .each((row) => {
+        for (const tag of row.tags)
+          if (tag[0] === "e" && tag[1]) deleted.add(`${row.pubkey}:${tag[1]}`);
+      });
+  } catch (error) {
+    console.warn("[dm] delete scan failed:", error);
+  }
+
+  return deleted;
+}
+
 export async function dmUnreadSummary(
   viewer: string,
   conversationId: string,
-  opts: { after: number; nowSecs?: number; cap?: number } = { after: 0 },
+  opts: {
+    after: number;
+    nowSecs?: number;
+    cap?: number;
+    /**
+     * A delete index from {@link dmDeleteTargets}, when the caller has one.
+     *
+     * Omitted, this scans for one — correct, but one mailbox-wide pass per
+     * conversation asked about. The sidebar asks about all of them.
+     */
+    deleted?: Set<string>;
+  } = { after: 0 },
 ): Promise<DmUnread> {
   const empty: DmUnread = { count: 0, latest: 0, capped: false };
   if (!viewer || !conversationId) return empty;
@@ -713,6 +756,8 @@ export async function dmUnreadSummary(
   const upper = at + DM_MAX_FUTURE_SECS;
   const after = Math.max(0, opts.after);
   if (upper <= after) return empty;
+
+  const deleted = opts.deleted ?? (await dmDeleteTargets(viewer));
 
   let count = 0;
   let latest = 0;
@@ -733,10 +778,16 @@ export async function dmUnreadSummary(
         if (!DM_ROW_KINDS.includes(row.kind)) return;
         if (row.pubkey === viewer) return;
         if (isExpired(row, at)) return;
-        // BEFORE the count and before anything the fold might hide: a deleted
-        // message must not badge, but it must still be stampable, or the badge
-        // it left behind could never clear.
+        // BEFORE the delete check: a deleted message must not badge, but it
+        // must still be STAMPABLE. It can be the newest row in a conversation,
+        // and a reader who could only stamp what the timeline showed them would
+        // stamp below it and never clear the badge it left.
         if (row.created_at > latest) latest = row.created_at;
+        // What the timeline will not show does not count. The fold hides a
+        // message its author deleted, so counting it badges a conversation
+        // that opens with nothing new in it — and the badge only cleared
+        // because opening stamped it away.
+        if (deleted.has(`${row.pubkey}:${row.id}`)) return;
         count += 1;
         if (count >= cap) capped = true;
       });

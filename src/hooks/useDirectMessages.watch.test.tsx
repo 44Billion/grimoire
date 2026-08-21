@@ -43,6 +43,7 @@ vi.mock("@/services/dm-inbox", () => ({
 
 vi.mock("@/services/dm-store", () => ({
   listDmConversations: vi.fn(async () => []),
+  dmDeleteTargets: vi.fn(async () => new Set<string>()),
   dmUnreadSummary: vi.fn(async () => ({ count: 0 })),
 }));
 

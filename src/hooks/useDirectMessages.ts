@@ -27,7 +27,11 @@ import {
   restartDmInbox,
   topUpDmInbox,
 } from "@/services/dm-pipeline";
-import { dmUnreadSummary, listDmConversations } from "@/services/dm-store";
+import {
+  dmDeleteTargets,
+  dmUnreadSummary,
+  listDmConversations,
+} from "@/services/dm-store";
 import { markAllDmsRead, readDmLastRead } from "@/services/dm-reads";
 import { resetLegacyImport } from "@/services/dm-legacy-inbox";
 import type { DmConversationRow } from "@/services/db";
@@ -168,6 +172,9 @@ export function useDirectMessages(
 
     const read = async (status: DirectMessagesStatus) => {
       const rows = await listDmConversations(pubkey);
+      // Once for the whole list. Deletes are filed by author rather than by
+      // conversation, so each count would otherwise scan the mailbox again.
+      const deleted = await dmDeleteTargets(pubkey);
       const conversations = await Promise.all(
         rows.map(async (row) => {
           const lastRead = await readDmLastRead(pubkey, row.conversationId);
@@ -180,6 +187,7 @@ export function useDirectMessages(
             : (
                 await dmUnreadSummary(pubkey, row.conversationId, {
                   after: lastRead,
+                  deleted,
                 })
               ).count;
           return {
