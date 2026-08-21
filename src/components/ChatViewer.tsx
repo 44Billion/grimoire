@@ -8,7 +8,6 @@ import {
   Zap,
   AlertTriangle,
   RefreshCw,
-  Paperclip,
   Copy,
   CopyCheck,
   FileText,
@@ -49,12 +48,7 @@ import type {
   BlobAttachmentMeta,
   ChatProtocolAdapter,
 } from "@/lib/chat/adapters/base-adapter";
-import {
-  prepareAttachment,
-  type EncryptedUpload,
-} from "@/lib/concord/attachment-upload";
 import type { Message } from "@/types/chat";
-import type { NostrEvent } from "@/types/nostr";
 import type { ChatAction } from "@/types/chat-actions";
 import { parseSlashCommand } from "@/lib/chat/slash-command-parser";
 import {
@@ -78,16 +72,9 @@ import { useAddWindow } from "@/core/state";
 import { MessageSessions } from "@/components/agent/MessageSessions";
 import { Button } from "./ui/button";
 import LoginDialog from "./nostr/LoginDialog";
-import {
-  MentionEditor,
-  type MentionEditorHandle,
-  type EmojiTag,
-  type BlobAttachment,
-} from "./editor/MentionEditor";
+import type { EmojiTag, BlobAttachment } from "./editor/MentionEditor";
 import { useProfileSearch } from "@/hooks/useProfileSearch";
 import profileSearch from "@/services/profile-search";
-import type { ProfileSearchResult } from "@/services/profile-search";
-import type { EmojiSearchResult } from "@/services/emoji-search";
 import { makeRosterProfileSearch } from "@/lib/chat/roster-search";
 import { useEmojiSearch } from "@/hooks/useEmojiSearch";
 import { useCopy } from "@/hooks/useCopy";
@@ -111,22 +98,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "./ui/tooltip";
-import { useBlossomUpload } from "@/hooks/useBlossomUpload";
 import {
   computeFirstItemIndexDelta,
   FIRST_ITEM_INDEX_BASE,
 } from "./chat/prepend-anchor";
 import { usePaintedContainer } from "./chat/use-painted-container";
 import { timelineState } from "./chat/timeline-state";
-import {
-  clearDraft,
-  draftKey,
-  draftsReady,
-  readDraft,
-  shouldRestoreDraft,
-  writeDraft,
-} from "@/services/chat-drafts";
+import { draftKey } from "@/services/chat-drafts";
 import { mentionsPubkey } from "@/lib/chat/mentions";
+import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import {
   countThreadUnread,
   foldThreads,
@@ -371,15 +351,6 @@ const OLDER_PAGE_SIZE = 50;
  */
 const ANCHOR_SETTLE_MS = 400;
 
-/**
- * How long typing must pause before the draft is written to disk.
- *
- * Only the WRITE waits — the document is mirrored in memory on every keystroke,
- * so a channel switch or a closed window saves what was typed a moment ago
- * rather than what was typed a debounce ago.
- */
-const DRAFT_SAVE_MS = 750;
-
 type ConversationResult =
   | { status: "loading" }
   | {
@@ -397,90 +368,6 @@ type ConversationResult =
       identifier: ProtocolIdentifier;
     }
   | { status: "error"; error: string };
-
-/**
- * ComposerReplyPreview - Shows who is being replied to in the composer
- */
-const ComposerReplyPreview = memo(function ComposerReplyPreview({
-  replyToId,
-  adapter,
-  conversation,
-  onClear,
-}: {
-  replyToId: string;
-  adapter: ChatProtocolAdapter;
-  conversation: Conversation;
-  onClear: () => void;
-}) {
-  const fromStore = use$(() => eventStore.event(replyToId), [replyToId]);
-  /**
-   * The adapter's own answer, for protocols whose messages never reach the
-   * shared EventStore — the same two-source resolution `ReplyPreview` already
-   * does for the in-timeline banner.
-   *
-   * Concord is the case, and it is not an edge one: its messages are decrypted
-   * rumors of a private community, deliberately kept out of the store shared
-   * with every other window. Reading only the store meant the composer could
-   * never name what it was replying to and fell back to a raw rumor id — while
-   * the timeline right above it rendered the same parent correctly.
-   */
-  const [fromAdapter, setFromAdapter] = useState<NostrEvent | null>(null);
-  const replyEvent = fromStore ?? fromAdapter ?? undefined;
-
-  useEffect(() => {
-    if (fromStore || fromAdapter) return;
-    let cancelled = false;
-    adapter
-      .loadReplyMessage(conversation, { id: replyToId })
-      .then((event) => {
-        if (!cancelled && event) setFromAdapter(event);
-      })
-      .catch((error: unknown) => {
-        console.warn("[Chat] could not resolve the reply parent:", error);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [fromStore, fromAdapter, adapter, conversation, replyToId]);
-
-  if (!replyEvent) {
-    return (
-      <div className="flex items-center gap-2 rounded bg-muted px-2 py-1 text-xs mb-1.5 overflow-hidden">
-        <span className="flex-1 min-w-0 truncate">
-          Replying to {replyToId.slice(0, 8)}...
-        </span>
-        <button
-          onClick={onClear}
-          className="ml-auto text-muted-foreground hover:text-foreground flex-shrink-0"
-        >
-          ✕
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-2 rounded bg-muted px-2 py-1 text-xs mb-1.5 overflow-hidden">
-      <span className="flex-shrink-0">↳</span>
-      <UserName
-        pubkey={replyEvent.pubkey}
-        className="font-medium flex-shrink-0"
-      />
-      <div className="flex-1 min-w-0 line-clamp-1 overflow-hidden text-muted-foreground">
-        <RichText
-          event={replyEvent}
-          options={{ showMedia: false, showEventEmbeds: false }}
-        />
-      </div>
-      <button
-        onClick={onClear}
-        className="ml-auto text-muted-foreground hover:text-foreground flex-shrink-0"
-      >
-        ✕
-      </button>
-    </div>
-  );
-});
 
 /**
  * GroupedSystemMessageItem - Renders multiple users performing the same action
@@ -1045,69 +932,6 @@ const MessageItem = memo(function MessageItem({
 });
 
 /**
- * The thread pane's own composer.
- *
- * Its own `MentionEditor` because the channel's is bound to one `editorRef` that
- * the draft restore polls and the upload dialog inserts into; a second consumer
- * of that ref would have the two boxes overwrite each other's text.
- *
- * Deliberately smaller than the channel's: mentions and emoji, no attachments,
- * no slash commands, and no draft. Everything it drops is still reachable — the
- * channel composer replies to any message, thread root included — and a reply
- * typed here and lost to a reload is a sentence, not a document.
- *
- * Every reply targets the thread ROOT, never the message above it. The timeline
- * flattens a thread to one level (`foldThreads`), so writing depth the pane
- * cannot draw would only produce replies nobody can find.
- */
-function ThreadComposer({
-  onSend,
-  searchProfiles,
-  searchEmojis,
-  disabled,
-}: {
-  onSend: (
-    content: string,
-    emojiTags: EmojiTag[],
-    blobAttachments: BlobAttachment[],
-  ) => Promise<void>;
-  searchProfiles: (query: string) => Promise<ProfileSearchResult[]>;
-  searchEmojis: (query: string) => Promise<EmojiSearchResult[]>;
-  disabled: boolean;
-}) {
-  const editorRef = useRef<MentionEditorHandle>(null);
-
-  return (
-    // `pb-0` matches the channel composer exactly — the two sit side by side and
-    // any difference reads as one of them being misaligned.
-    <div className="flex shrink-0 items-center gap-1.5 border-t px-2 py-1 pb-0">
-      <MentionEditor
-        ref={editorRef}
-        placeholder="Reply in thread..."
-        searchProfiles={searchProfiles}
-        searchEmojis={searchEmojis}
-        onSubmit={(content, emojiTags, blobAttachments) =>
-          content.trim()
-            ? onSend(content, emojiTags, blobAttachments)
-            : undefined
-        }
-        className="min-w-0 flex-1"
-      />
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        className="h-7 flex-shrink-0 px-2 text-xs"
-        disabled={disabled}
-        onClick={() => editorRef.current?.submit()}
-      >
-        {disabled ? <Loader2 className="size-3 animate-spin" /> : "Send"}
-      </Button>
-    </div>
-  );
-}
-
-/**
  * ChatViewer - Main chat interface component
  *
  * Provides protocol-agnostic chat UI that works across all Nostr messaging protocols.
@@ -1144,8 +968,14 @@ export function ChatViewer({
   // Copy chat identifier to clipboard
   const { copy: copyChatId, copied: chatIdCopied } = useCopy();
 
-  // Ref to MentionEditor for programmatic submission
-  const editorRef = useRef<MentionEditorHandle>(null);
+  /**
+   * The channel composer's focus, so "Reply" can put the cursor in it.
+   *
+   * A handle rather than the editor's own ref: there are two composers now and
+   * each owns its editor, upload dialog and draft (`ChatComposer`). This one is
+   * the channel's, which is the only one anything outside a composer aims at.
+   */
+  const channelComposer = useRef<ChatComposerHandle | null>(null);
 
   /**
    * AES-GCM params for attachments uploaded in this session, keyed by URL.
@@ -1158,86 +988,6 @@ export function ChatViewer({
   const attachmentEncryption = useRef<
     Map<string, Pick<BlobAttachmentMeta, "encryption" | "originalMime">>
   >(new Map());
-  /** The most recent prepared upload, awaiting the URL it lands on. */
-  const preparedUpload = useRef<EncryptedUpload | undefined>(undefined);
-  /**
-   * A `blob:` URL for the plaintext of that upload, for the composer badge.
-   *
-   * The uploaded URL serves ciphertext, so the badge cannot draw it. Held only
-   * until the badge is inserted, and revoked whenever it is replaced or
-   * abandoned — an object URL pins its bytes in memory until it is.
-   */
-  const preparedPreview = useRef<string | undefined>(undefined);
-  const dropPreview = useCallback(() => {
-    if (preparedPreview.current) URL.revokeObjectURL(preparedPreview.current);
-    preparedPreview.current = undefined;
-  }, []);
-
-  // Blossom upload hook for file attachments
-  const { open: openUpload, dialog: uploadDialog } = useBlossomUpload({
-    accept: "image/*,video/*,audio/*",
-    // Concord only. Every other protocol here posts to a public channel where
-    // an encrypted blob would just be an unreadable one.
-    ...(protocol === "concord"
-      ? {
-          prepareFile: async (file: File) => {
-            const prepared = await prepareAttachment(file);
-            preparedUpload.current = prepared;
-            dropPreview();
-            // Only images are ever drawn in the badge; minting a URL for a
-            // video would pin its bytes for nothing.
-            if (file.type.startsWith("image/")) {
-              preparedPreview.current = URL.createObjectURL(file);
-            }
-            return prepared.file;
-          },
-        }
-      : {}),
-    onCancel: () => {
-      // A prepared-but-unuploaded file must not outlive its dialog, or the next
-      // upload could be tagged with the previous file's key.
-      preparedUpload.current = undefined;
-      dropPreview();
-    },
-    onError: () => {
-      preparedUpload.current = undefined;
-      dropPreview();
-    },
-    onSuccess: (results) => {
-      // Captured before the ref is cleared below: the badge needs to know the
-      // server holds ciphertext, and `insertBlob` runs after that clear.
-      const wasEncrypted = preparedUpload.current !== undefined;
-      const preview = preparedPreview.current;
-      if (results.length > 0 && preparedUpload.current) {
-        // Every result is the SAME blob mirrored to several servers, so one
-        // record per URL keeps a later mirror URL readable too.
-        for (const { blob } of results) {
-          attachmentEncryption.current.set(blob.url, {
-            encryption: preparedUpload.current.encryption,
-            originalMime: preparedUpload.current.originalMime,
-          });
-        }
-        preparedUpload.current = undefined;
-      }
-      if (results.length > 0 && editorRef.current) {
-        // Insert the first successful upload as a blob attachment with metadata
-        const { blob, server } = results[0];
-        editorRef.current.insertBlob({
-          url: blob.url,
-          sha256: blob.sha256,
-          mimeType: blob.type,
-          size: blob.size,
-          server,
-          ...(preview ? { previewUrl: preview } : {}),
-          ...(wasEncrypted ? { encrypted: true } : {}),
-        });
-        // Ownership passes to the badge; revoking here would blank it.
-        preparedPreview.current = undefined;
-        editorRef.current.focus();
-      }
-    },
-  });
-
   // Get the appropriate adapter for this protocol
   const adapter = useMemo(() => getAdapter(protocol), [protocol]);
 
@@ -1663,18 +1413,13 @@ export function ChatViewer({
   }, [conversation?.id, messagesWithMarkers.length, virtuosoRef]);
 
   /**
-   * Keep what is half-typed with the channel it was typed in.
+   * Where this channel's half-typed message is kept.
    *
-   * The composer is ONE tiptap instance shared by every conversation, so
-   * without this the text follows the reader into the next channel — where it
-   * is either sent to the wrong people or lost when the window closes.
-   *
-   * The document is mirrored into a ref on every keystroke rather than read out
-   * of the editor at save time. The composer unmounts between conversations and
-   * React runs a child's cleanup before its parent's, so anything reaching for
-   * the editor in the save path would find it already destroyed. Only the
-   * WRITE is debounced; the mirror is always current, which is what makes the
-   * save-on-switch complete.
+   * The composer is one tiptap instance shared by every conversation this window
+   * shows, so without a key per channel the text follows the reader into the
+   * next one — where it is either sent to the wrong people or lost when the
+   * window closes. `ChatComposer` owns the saving; this only names the row, and
+   * the thread pane derives its own key from it.
    */
   const draftKeyFor = useMemo(
     () =>
@@ -1683,111 +1428,6 @@ export function ChatViewer({
         : undefined,
     [pubkey, protocol, conversation],
   );
-  const draftDoc = useRef<{ json: unknown; isEmpty: boolean }>({
-    json: undefined,
-    isEmpty: true,
-  });
-  const draftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
-  const savingDraftFor = useRef<string | undefined>(undefined);
-
-  // What the restore needs to check a stored reply target against, read through
-  // a ref so the restore keys on the draft KEY alone: adding the adapter and the
-  // conversation object to its deps would re-run the whole restore on every
-  // identity change of either.
-  const replyResolve = useRef({ adapter, conversation });
-  useEffect(() => {
-    replyResolve.current = { adapter, conversation };
-  });
-
-  const flushDraft = useCallback(() => {
-    clearTimeout(draftTimer.current);
-    const key = savingDraftFor.current;
-    if (!key) return;
-    const { json, isEmpty } = draftDoc.current;
-    // An emptied composer DELETES the row rather than storing an empty
-    // document, so a channel with nothing in it has nothing to restore.
-    if (isEmpty || json === undefined) clearDraft(key);
-    else writeDraft(key, json, replyToRef.current);
-  }, []);
-
-  const handleEditorChange = useCallback(
-    (state: { isEmpty: boolean; json: unknown }) => {
-      draftDoc.current = state;
-      clearTimeout(draftTimer.current);
-      draftTimer.current = setTimeout(flushDraft, DRAFT_SAVE_MS);
-    },
-    [flushDraft],
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-    savingDraftFor.current = draftKeyFor;
-    draftDoc.current = { json: undefined, isEmpty: true };
-
-    /**
-     * A restored reply target the channel can no longer answer for clears itself.
-     *
-     * A draft can outlive its parent by days — deleted, or expired under a
-     * disappearing timer — and the composer would otherwise come back reading
-     * "Replying to 1a2b3c4d…" with every Send refused for a parent that is gone.
-     * The text is kept; only the target goes.
-     *
-     * Cleared only on a definitive "no such message": a thrown lookup is a relay
-     * that could not answer, which is no evidence about the parent at all.
-     */
-    const degradeReply = async (parentId: string) => {
-      const { adapter: replyAdapter, conversation: replyIn } =
-        replyResolve.current;
-      if (!replyIn) return;
-      let parent;
-      try {
-        parent = await replyAdapter.loadReplyMessage(replyIn, { id: parentId });
-      } catch (error) {
-        console.warn("[Chat] could not check the draft's reply parent:", error);
-        return;
-      }
-      if (parent || cancelled) return;
-      // The reader may have picked a different message to reply to while the
-      // lookup was out; theirs wins.
-      if (replyToRef.current !== undefined && replyToRef.current !== parentId)
-        return;
-      setReplyTo(undefined);
-    };
-
-    if (draftKeyFor) {
-      void (async () => {
-        // Cold mount: reading before the cache is warm answers "no draft", and
-        // the empty composer would then be saved over the real one.
-        await draftsReady();
-        if (cancelled) return;
-        const draft = readDraft(draftKeyFor);
-        // Reply context belongs to the channel it was started in — carrying it
-        // across would address a message in another channel entirely.
-        setReplyTo(draft?.replyToId);
-        if (draft?.replyToId) void degradeReply(draft.replyToId);
-        if (!draft) return;
-        // The composer is mounted a beat after the conversation resolves.
-        for (let step = 0; step < 40 && !cancelled; step++) {
-          const editor = editorRef.current;
-          if (editor) {
-            if (shouldRestoreDraft(draft, editor.isEmpty())) {
-              editor.setJSON(draft.content);
-              draftDoc.current = { json: draft.content, isEmpty: false };
-            }
-            return;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 25));
-        }
-      })();
-    }
-    return () => {
-      cancelled = true;
-      flushDraft();
-      savingDraftFor.current = undefined;
-    };
-  }, [draftKeyFor, flushDraft]);
 
   // State for send in progress (prevents double-sends)
   const [isSending, setIsSending] = useState(false);
@@ -1935,7 +1575,7 @@ export function ChatViewer({
     setReplyTo(messageId);
     // Focus the editor after context menu closes (next frame)
     requestAnimationFrame(() => {
-      editorRef.current?.focus();
+      channelComposer.current?.focus();
     });
   }, []);
 
@@ -2637,78 +2277,23 @@ export function ChatViewer({
             This space carries live audio and video, not messages.
           </div>
         ) : canSign ? (
-          <div className="border-t px-2 py-1 pb-0">
-            {replyTo && (
-              <ComposerReplyPreview
-                replyToId={replyTo}
-                adapter={adapter}
-                conversation={conversation}
-                onClear={() => setReplyTo(undefined)}
-              />
-            )}
-            <div className="flex gap-1.5 items-center">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="flex-shrink-0 size-7 text-muted-foreground hover:text-foreground"
-                      onClick={() => openUpload()}
-                      disabled={isSending}
-                    >
-                      <Paperclip className="size-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    <p>Attach media</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <MentionEditor
-                ref={editorRef}
-                placeholder="Type a message..."
-                searchProfiles={searchMentions}
-                searchEmojis={searchEmojis}
-                searchCommands={searchCommands}
-                onCommandExecute={handleCommandExecute}
-                onChange={handleEditorChange}
-                onFilePaste={(files) => {
-                  // Open upload dialog with pasted files
-                  openUpload(files);
-                }}
-                onSubmit={(content, emojiTags, blobAttachments) =>
-                  content.trim()
-                    ? handleSend(
-                        content,
-                        replyToRef.current,
-                        emojiTags,
-                        blobAttachments,
-                      )
-                    : undefined
-                }
-                className="flex-1 min-w-0"
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="flex-shrink-0 h-7 px-2 text-xs"
-                disabled={isSending}
-                onClick={() => {
-                  editorRef.current?.submit();
-                }}
-              >
-                {isSending ? (
-                  <Loader2 className="size-3 animate-spin" />
-                ) : (
-                  "Send"
-                )}
-              </Button>
-            </div>
-            {uploadDialog}
-          </div>
+          <ChatComposer
+            adapter={adapter}
+            conversation={conversation}
+            protocol={protocol}
+            placeholder="Type a message..."
+            draftKey={draftKeyFor}
+            replyTo={replyTo}
+            onReplyToChange={setReplyTo}
+            onSend={handleSend}
+            isSending={isSending}
+            attachmentEncryption={attachmentEncryption}
+            searchProfiles={searchMentions}
+            searchEmojis={searchEmojis}
+            searchCommands={searchCommands}
+            onCommandExecute={handleCommandExecute}
+            handleRef={channelComposer}
+          />
         ) : (
           <div className="border-t px-2 py-1 text-center text-sm text-muted-foreground">
             <button
@@ -2755,18 +2340,30 @@ export function ChatViewer({
           ))}
           composer={
             canSign && acceptsMessages !== false ? (
-              <ThreadComposer
+              <ChatComposer
+                adapter={adapter}
+                conversation={conversation}
+                protocol={protocol}
+                placeholder="Reply in thread..."
+                // Its own draft row, so a half-typed reply and a half-typed
+                // channel message cannot overwrite each other. Nothing parses
+                // this key, and logout deletes on the account prefix, so the
+                // suffix costs nothing (`chat-drafts.ts`).
+                draftKey={
+                  draftKeyFor
+                    ? `${draftKeyFor}#thread:${threadView.root.id}`
+                    : undefined
+                }
+                // Fixed, and NOT changeable: every reply in a flattened thread
+                // targets its root, so there is no choice here to show or undo.
+                replyTo={threadView.root.id}
+                onSend={handleSend}
+                isSending={isSending}
+                attachmentEncryption={attachmentEncryption}
                 searchProfiles={searchMentions}
                 searchEmojis={searchEmojis}
-                disabled={isSending}
-                onSend={(content, emojiTags, blobAttachments) =>
-                  handleSend(
-                    content,
-                    threadView.root.id,
-                    emojiTags,
-                    blobAttachments,
-                  )
-                }
+                searchCommands={searchCommands}
+                onCommandExecute={handleCommandExecute}
               />
             ) : undefined
           }
