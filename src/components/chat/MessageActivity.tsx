@@ -21,8 +21,13 @@
  * another underneath waited for the reader. The figure on the right is the TOTAL
  * spend with a per-run breakdown in its tooltip, because one run's cost on a row
  * that speaks for three is a number that looks complete and is not. Beyond three
- * runs the dots become `+n`, and the names are the repliers' rather than the
- * agents' whenever anyone replied.
+ * runs the dots become `+n`.
+ *
+ * **Who the row names depends on what is happening.** A run that is doing
+ * something and has not answered yet gets it — "Hex thinking" is the live fact
+ * and it is about to change, while the people who replied will still be named in
+ * an hour. Once that agent has replied it is simply one of the names, and the row
+ * goes back to saying who answered.
  *
  * Clicking opens the PANE whenever there is more than one thing under the
  * message — replies, or several runs — since the pane lists every run and every
@@ -108,14 +113,6 @@ export function MessageActivity({
   );
 
   const replied = thread ? thread.repliers : [];
-  // With replies, the names are the people who wrote them. Without, the row is
-  // the run's, so it names the agent — saying "replied" of an agent that only
-  // ran would be a claim about a message that does not exist.
-  const names = replied.length > 0 ? replied : lead ? [lead.session.agent] : [];
-  if (names.length === 0) return null;
-
-  const named = names.slice(0, NAMED);
-  const rest = names.length - named.length;
   const style = lead ? statusStyle(lead.status) : undefined;
   // With several runs wanting a person at once, the count IS the message: one
   // agent's label would name one of them and quietly drop the others.
@@ -127,7 +124,33 @@ export function MessageActivity({
         ? (activity?.verb ?? style?.label ?? lead.status)
         : undefined;
 
-  const openThread = thread && onOpenThread;
+  /**
+   * An agent that is doing something and has not answered yet gets the row.
+   *
+   * "Hex thinking" is the live fact and it is about to change; the people who
+   * replied are named on a row that will still be there in an hour. So when the
+   * running agent is NOT among the repliers, it speaks and the reply count on the
+   * right carries the rest. Once it has replied it is one of the names, and the
+   * row goes back to saying who answered.
+   */
+  const speaksForRun =
+    !!verb && !!lead && !replied.includes(lead.session.agent);
+
+  // Naming the agent when nobody replied is not "replied" — that would claim a
+  // message that does not exist.
+  const names = speaksForRun
+    ? [lead.session.agent]
+    : replied.length > 0
+      ? replied
+      : lead
+        ? [lead.session.agent]
+        : [];
+  if (names.length === 0) return null;
+
+  const named = names.slice(0, NAMED);
+  const rest = names.length - named.length;
+  const saysReplied = !speaksForRun && replied.length > 0;
+
   /**
    * Where the row goes.
    *
@@ -222,12 +245,12 @@ export function MessageActivity({
           <span className="shrink-0 text-muted-foreground">+{rest}</span>
         )}
       </span>
-      {openThread && (
+      {saysReplied && (
         <span className="shrink-0 text-muted-foreground">replied</span>
       )}
       {verb && (
         <span className={cn("truncate", style?.text)}>
-          {openThread ? `· ${verb}` : verb}
+          {saysReplied ? `· ${verb}` : verb}
         </span>
       )}
       <span className="ml-auto flex shrink-0 items-center gap-2 pl-2">

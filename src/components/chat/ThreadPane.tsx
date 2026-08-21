@@ -62,18 +62,27 @@ export function ThreadPane({
   width,
   onWidthChange,
 }: ThreadPaneProps) {
+  const pane = useRef<HTMLElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const following = useRef(true);
 
-  // Escape closes it wherever the focus is. On the window rather than a
-  // container, because the reader's hands may be in the channel's composer.
+  /**
+   * Escape closes the thread — but only when nothing else has claim to it.
+   *
+   * A window listener alone closed the pane AND whatever was open on top of it:
+   * a context menu, an emoji picker, tiptap's mention dropdown. `defaultPrevented`
+   * does not catch that, because Radix closes on its own key handling without
+   * marking the event. So the test is focus. A layer that is open has taken it,
+   * and this stays out of the way; focus inside the pane, or nowhere at all —
+   * which is where it sits right after the row that opened this was clicked — is
+   * an Escape meant for the thread.
+   */
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      // A layer above already answered this Escape — a Radix dialog, tiptap's
-      // mention dropdown. One keypress must close one thing, not the pane and
-      // whatever was open on top of it.
-      if (event.defaultPrevented) return;
-      if (event.key === "Escape") onClose();
+      if (event.defaultPrevented || event.key !== "Escape") return;
+      const focused = document.activeElement;
+      const loose = !focused || focused === document.body;
+      if (loose || pane.current?.contains(focused)) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -126,6 +135,7 @@ export function ThreadPane({
 
   return (
     <aside
+      ref={pane}
       className="relative flex shrink-0 flex-col border-l"
       style={{ width: `${applied}px` }}
     >

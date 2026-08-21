@@ -19,7 +19,6 @@ import {
   PinOff,
   Reply,
   MessageSquare,
-  MessagesSquare,
   Smile,
   Trash2,
   Zap,
@@ -41,15 +40,14 @@ import type { EmojiTag } from "@/lib/emoji-helpers";
 interface ChatMessageContextMenuProps {
   event: NostrEvent;
   children: React.ReactNode;
-  onReply?: () => void;
   /**
-   * Open this message's thread and reply there instead of in the channel.
-   *
-   * Offered alongside Reply rather than in place of it: a reply from the channel
-   * composer keeps attachments and slash commands, which the thread's own
-   * composer does not carry.
+   * Reply to this message. One action — where threads are folded it opens the
+   * thread and answers there, and where they are not it is the channel composer.
+   * A second "Reply in thread" beside it was a distinction without a difference:
+   * both wrote the same tag, and the reader had to know which one put their
+   * answer where they could see it.
    */
-  onReplyInThread?: () => void;
+  onReply?: () => void;
   conversation?: Conversation;
   adapter?: ChatProtocolAdapter;
   /** Message object for protocol-specific actions like zapping */
@@ -76,7 +74,6 @@ export function ChatMessageContextMenu({
   event,
   children,
   onReply,
-  onReplyInThread,
   conversation,
   adapter,
   message,
@@ -266,20 +263,12 @@ export function ChatMessageContextMenu({
             </div>
           </ContextMenuLabel>
           <ContextMenuSeparator />
-          {(onReply || onReplyInThread) && (
+          {onReply && (
             <>
-              {onReply && (
-                <ContextMenuItem onClick={onReply}>
-                  <Reply className="size-4 mr-2" />
-                  Reply
-                </ContextMenuItem>
-              )}
-              {onReplyInThread && (
-                <ContextMenuItem onClick={onReplyInThread}>
-                  <MessagesSquare className="size-4 mr-2" />
-                  Reply in thread
-                </ContextMenuItem>
-              )}
+              <ContextMenuItem onClick={onReply}>
+                <Reply className="size-4 mr-2" />
+                Reply
+              </ContextMenuItem>
               <ContextMenuSeparator />
             </>
           )}

@@ -928,11 +928,6 @@ const MessageItem = memo(function MessageItem({
             ? () => onReply(message.id)
             : undefined
         }
-        onReplyInThread={
-          canReply && onOpenThread && !isRootMessage
-            ? () => onOpenThread(message.id)
-            : undefined
-        }
         conversation={conversation}
         adapter={adapter}
         message={message}
@@ -994,6 +989,8 @@ export function ChatViewer({
    * the channel's, which is the only one anything outside a composer aims at.
    */
   const channelComposer = useRef<ChatComposerHandle | null>(null);
+  /** The same, for the thread pane's composer — Reply focuses whichever is used. */
+  const threadComposer = useRef<ChatComposerHandle | null>(null);
 
   /**
    * AES-GCM params for attachments uploaded in this session, keyed by URL.
@@ -1612,14 +1609,35 @@ export function ChatViewer({
     [conversation, canSign, isSending, adapter, pubkey, signer],
   );
 
-  // Handle reply button click
-  const handleReply = useCallback((messageId: string) => {
-    setReplyTo(messageId);
-    // Focus the editor after context menu closes (next frame)
-    requestAnimationFrame(() => {
-      channelComposer.current?.focus();
-    });
-  }, []);
+  /**
+   * Reply to a message. One action — the thread is implicit.
+   *
+   * Where threads are folded, answering a message IS its thread, so Reply opens
+   * the pane on it and aims the pane's composer there. There was briefly a second
+   * "Reply in thread" beside this, and it was a distinction without a difference:
+   * both wrote the same tag, and the reader had to know which one put the answer
+   * where they could see it.
+   *
+   * Where threads are NOT folded — the setting off, or a conversation that IS a
+   * thread and cannot host one (`canThread`) — it stays what it always was: the
+   * channel composer, with the message quoted above it.
+   */
+  const handleReply = useCallback(
+    (messageId: string) => {
+      if (canThread && collapseThreads) {
+        showThread(messageId);
+        // The target is the thread's own root, which is the default, so nothing
+        // to set — and clearing keeps a target from a previous thread out.
+        setThreadReply({});
+        requestAnimationFrame(() => threadComposer.current?.focus());
+        return;
+      }
+      setReplyTo(messageId);
+      // Focus the editor after context menu closes (next frame)
+      requestAnimationFrame(() => channelComposer.current?.focus());
+    },
+    [canThread, collapseThreads, showThread],
+  );
 
   // Where a message sits in the RENDERED array, which is not the message array:
   // day markers, the unread divider and grouped system rows all take a slot.
@@ -2419,6 +2437,7 @@ export function ChatViewer({
                 searchEmojis={searchEmojis}
                 searchCommands={searchCommands}
                 onCommandExecute={handleCommandExecute}
+                handleRef={threadComposer}
               />
             ) : undefined
           }
