@@ -653,6 +653,7 @@ const MessageItem = memo(function MessageItem({
   thread,
   onOpenThread,
   threadActive,
+  inThreadRootId,
 }: {
   message: Message;
   adapter: ChatProtocolAdapter;
@@ -675,6 +676,15 @@ const MessageItem = memo(function MessageItem({
   onOpenThread?: (rootId: string) => void;
   /** Whether the pane is already showing this message's thread. */
   threadActive?: boolean;
+  /**
+   * The thread this row is being rendered INSIDE, if any.
+   *
+   * Suppresses the quote block: in a thread pane the parent is the row at the
+   * top of the same column, so quoting it under every reply repeats the same two
+   * lines down the whole thread. A reply to another reply still quotes, because
+   * that one is not obvious from position.
+   */
+  inThreadRootId?: string;
 }) {
   const addWindow = useAddWindow();
   // Get relays for this conversation (memoized to prevent unnecessary re-subscriptions)
@@ -714,6 +724,10 @@ const MessageItem = memo(function MessageItem({
     !replyEvent ||
     (CHAT_KINDS as readonly number[]).includes(replyEvent.kind) ||
     (conversation.protocol === "nip-10" && replyEvent.kind === 1);
+
+  // Inside a thread, the root sits at the top of the same column.
+  const quotesItsOwnThreadRoot =
+    !!inThreadRootId && replyEventId === inThreadRootId;
 
   // A message a moderator took down. Early, and BEFORE the context-menu wrap
   // below: every entry in that menu names an event, and this row's event is a
@@ -954,14 +968,16 @@ const MessageItem = memo(function MessageItem({
         <div className="break-words overflow-hidden">
           {message.event ? (
             <RichText className="text-sm leading-tight" event={message.event}>
-              {message.replyTo && isChatKindReply && (
-                <ReplyPreview
-                  replyTo={message.replyTo}
-                  adapter={adapter}
-                  conversation={conversation}
-                  onScrollToMessage={onScrollToMessage}
-                />
-              )}
+              {message.replyTo &&
+                isChatKindReply &&
+                !quotesItsOwnThreadRoot && (
+                  <ReplyPreview
+                    replyTo={message.replyTo}
+                    adapter={adapter}
+                    conversation={conversation}
+                    onScrollToMessage={onScrollToMessage}
+                  />
+                )}
             </RichText>
           ) : (
             <span className="whitespace-pre-wrap break-words">
@@ -1054,7 +1070,9 @@ function ThreadComposer({
   const editorRef = useRef<MentionEditorHandle>(null);
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5 border-t px-2 py-1">
+    // `pb-0` matches the channel composer exactly — the two sit side by side and
+    // any difference reads as one of them being misaligned.
+    <div className="flex shrink-0 items-center gap-1.5 border-t px-2 py-1 pb-0">
       <MentionEditor
         ref={editorRef}
         placeholder="Reply in thread..."
@@ -2668,6 +2686,7 @@ export function ChatViewer({
               canReply={false}
               activePubkey={pubkey}
               isFlashing={flashId === reply.id}
+              inThreadRootId={threadView.root.id}
             />
           ))}
           composer={
