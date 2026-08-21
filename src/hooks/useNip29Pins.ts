@@ -11,7 +11,7 @@
  * they should be displayed", and re-sorting would undo an admin's curation.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { use$ } from "applesauce-react/hooks";
 import { map } from "rxjs/operators";
 import { getSeenRelays } from "applesauce-core/helpers/relays";
@@ -85,23 +85,26 @@ export function useNip29Pins(
     [groupId, relayUrl, isUnmanaged, normalizedRelay],
   );
 
-  const [resolved, setResolved] = useState<Nip29Pins>(NONE);
+  /**
+   * What resolution produced, and which list it was resolving. Only the async
+   * completion writes here; the empty and loading states are derived below,
+   * because setting them from the effect body is a synchronous setState in an
+   * effect and cascades a render.
+   */
+  const [resolved, setResolved] = useState<{
+    for?: string;
+    pins: VerifiedPin[];
+  }>({ pins: [] });
+
+  const entries = useMemo(
+    () => (pinListEvent ? parsePinListEntries(pinListEvent.tags) : []),
+    [pinListEvent],
+  );
 
   useEffect(() => {
-    if (!relayUrl || !pinListEvent) {
-      setResolved(NONE);
-      return;
-    }
+    if (!relayUrl || !pinListEvent || entries.length === 0) return;
 
     let cancelled = false;
-    const entries = parsePinListEntries(pinListEvent.tags);
-
-    if (entries.length === 0) {
-      setResolved(NONE);
-      return;
-    }
-
-    setResolved((prev) => ({ pins: prev.pins, loading: true }));
 
     void (async () => {
       const pins: VerifiedPin[] = [];
@@ -135,13 +138,21 @@ export function useNip29Pins(
         // own pin verification uses for an entry that fails to open.
         if (resolvedEvent) pins.push(eventToPinFields(resolvedEvent));
       }
-      if (!cancelled) setResolved({ pins, loading: false });
+      if (!cancelled) setResolved({ for: pinListEvent.id, pins });
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [relayUrl, pinListEvent]);
+  }, [relayUrl, pinListEvent, entries]);
 
-  return resolved;
+  // A list still being resolved keeps showing the pins it had, which is what
+  // the previous `loading: true` write did without touching state.
+  return useMemo(() => {
+    if (!pinListEvent || entries.length === 0) return NONE;
+    return {
+      pins: resolved.pins,
+      loading: resolved.for !== pinListEvent.id,
+    };
+  }, [pinListEvent, entries, resolved]);
 }
