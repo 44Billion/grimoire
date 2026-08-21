@@ -89,6 +89,7 @@ export function NotifLevelMenu({
   muted,
   onToggleMute,
   onMarkRead,
+  onMarkAllRead,
   onCopyId,
   children,
 }: {
@@ -99,6 +100,9 @@ export function NotifLevelMenu({
   onToggleMute?: () => void;
   /** Only passed when there is something unread to clear. */
   onMarkRead?: () => void;
+  /** Community rows only — clears every community at once. Only passed when
+   * there is something anywhere to clear. */
+  onMarkAllRead?: () => void;
   /** Put the row's own identifier on the clipboard. */
   onCopyId?: () => void;
   children: ReactNode;
@@ -118,6 +122,7 @@ export function NotifLevelMenu({
       {...(muted !== undefined ? { muted } : {})}
       {...(onToggleMute ? { onToggleMute } : {})}
       {...(onMarkRead ? { onMarkRead } : {})}
+      {...(onMarkAllRead ? { onMarkAllRead } : {})}
       {...(onCopyId ? { onCopyId } : {})}
     >
       {children}

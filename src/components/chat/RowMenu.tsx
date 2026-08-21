@@ -27,6 +27,7 @@ export function RowMenu({
   muted,
   onToggleMute,
   onMarkRead,
+  onMarkAllRead,
   onCopyId,
   children,
 }: {
@@ -36,13 +37,23 @@ export function RowMenu({
   onToggleMute?: () => void;
   /** Only passed when there is something unread to clear. */
   onMarkRead?: () => void;
+  /** Clear every community at once, not only this row's. Communities only —
+   * a private conversation or a NIP-29 group has no sibling list this could
+   * mean. Only passed when there is something anywhere to clear. */
+  onMarkAllRead?: () => void;
   /** Put the row's own identifier on the clipboard. */
   onCopyId?: () => void;
   children: ReactNode;
 }) {
   // No menu at all where nothing can be done — an empty one that opens on
   // right-click is worse than the browser's own.
-  if (!onTogglePin && !onToggleMute && !onMarkRead && !onCopyId)
+  if (
+    !onTogglePin &&
+    !onToggleMute &&
+    !onMarkRead &&
+    !onMarkAllRead &&
+    !onCopyId
+  )
     return <>{children}</>;
   return (
     <ContextMenu>
@@ -52,6 +63,12 @@ export function RowMenu({
           <ContextMenuItem onSelect={onMarkRead}>
             <CheckCheck className="size-4 mr-2" />
             Mark as read
+          </ContextMenuItem>
+        )}
+        {onMarkAllRead && (
+          <ContextMenuItem onSelect={onMarkAllRead}>
+            <CheckCheck className="size-4 mr-2" />
+            Mark all as read
           </ContextMenuItem>
         )}
         {onTogglePin && (

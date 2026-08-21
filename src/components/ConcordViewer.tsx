@@ -1007,6 +1007,9 @@ export function ConcordViewer({
         openness={openness}
         opennessDetail={opennessDetail}
         onMarkRead={(idHex) => void markCommunityAllRead(idHex)}
+        {...(concordUnreadCount > 0
+          ? { onMarkAllRead: () => void markAllCommunitiesAsRead() }
+          : {})}
         onSelect={(idHex) => {
           setSelectedDm(undefined);
           setDmSectionOpen(false);
@@ -1091,21 +1094,9 @@ export function ConcordViewer({
         {openness && communities.length <= 1 && (
           <OpennessBadge openness={openness} detail={opennessDetail} />
         )}
-        {/* Only while something is waiting, so the control appears exactly
-            when it means anything and takes no width the rest of the time —
-            the rule the DM and Groups headings below already follow. */}
-        {concordUnreadCount > 0 && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6"
-            title="Mark all as read"
-            onClick={() => void markAllCommunitiesAsRead()}
-          >
-            <CheckCheck className="size-3" />
-            <span className="sr-only">Mark all as read</span>
-          </Button>
-        )}
+        {/* Moved into the community row's own right-click menu — "Mark all
+            as read" there, reachable from any row, not only from a badge
+            standing alone above the search box. */}
         <Button
           variant="ghost"
           size="icon"
@@ -1546,6 +1537,7 @@ function CommunityRow({
   opennessDetail,
   onSelect,
   onMarkRead,
+  onMarkAllRead,
 }: {
   community: {
     idHex: string;
@@ -1560,6 +1552,10 @@ function CommunityRow({
   onSelect: (idHex: string) => void;
   /** Clear every channel of this community at once. */
   onMarkRead?: (idHex: string) => void;
+  /** Clear every channel of every community at once. Offered from every row —
+   * not only unread ones — because the community you right-click need not be
+   * the one holding the messages you want gone. */
+  onMarkAllRead?: () => void;
 }) {
   const icon = useConcordImage(community.icon);
   const label = community.name || community.idHex.slice(0, 8);
@@ -1572,6 +1568,7 @@ function CommunityRow({
       {...(onMarkRead && hasUnread
         ? { onMarkRead: () => onMarkRead(community.idHex) }
         : {})}
+      {...(onMarkAllRead ? { onMarkAllRead } : {})}
       onCopyId={copyId}
     >
       <button
@@ -1629,6 +1626,7 @@ function CommunityPicker({
   opennessDetail,
   onSelect,
   onMarkRead,
+  onMarkAllRead,
   children,
 }: {
   communities: Array<{
@@ -1646,6 +1644,9 @@ function CommunityPicker({
   onSelect: (idHex: string) => void;
   /** Clear every channel of one community at once. */
   onMarkRead?: (idHex: string) => void;
+  /** Clear every channel of every community at once. Only passed when there
+   * is something anywhere to clear — the row menu's twin of that rule. */
+  onMarkAllRead?: () => void;
   children: ReactNode;
 }) {
   // Every community gets a row, including the only one. It used to be hidden as
@@ -1673,6 +1674,7 @@ function CommunityPicker({
               : {})}
             onSelect={onSelect}
             {...(onMarkRead ? { onMarkRead } : {})}
+            {...(onMarkAllRead ? { onMarkAllRead } : {})}
           />
           {c.idHex === selected && <div className="pl-2">{children}</div>}
         </div>
