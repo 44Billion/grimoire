@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { cacheRate } from "./usage";
+import { cacheRate, latestTurnUsage } from "./usage";
 
 describe("cacheRate", () => {
   it("divides by input, because cacheRead is part of it", () => {
@@ -24,5 +24,43 @@ describe("cacheRate", () => {
     expect(
       cacheRate({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }),
     ).toBeUndefined();
+  });
+});
+
+describe("latestTurnUsage", () => {
+  it("reads the LAST turn's usage, not a sum of every turn", () => {
+    /**
+     * The bug this guards against: the head's `usage` tag is a running total
+     * across the whole session, so a context-window percentage built from it
+     * grows every turn and blows past 100% long before the window is actually
+     * full. The window is only ever as full as the last request made it.
+     */
+    const turns = [
+      { usage: { input: 1000, output: 100, cacheRead: 0, cacheWrite: 0 } },
+      { usage: { input: 4000, output: 200, cacheRead: 3000, cacheWrite: 0 } },
+    ];
+    expect(latestTurnUsage(turns)).toEqual({
+      input: 4000,
+      output: 200,
+      cacheRead: 3000,
+      cacheWrite: 0,
+    });
+  });
+
+  it("skips turns with no usage — a tool turn, say — to find the last one that has one", () => {
+    const turns = [
+      { usage: { input: 4000, output: 200, cacheRead: 0, cacheWrite: 0 } },
+      {},
+    ];
+    expect(latestTurnUsage(turns)).toEqual({
+      input: 4000,
+      output: 200,
+      cacheRead: 0,
+      cacheWrite: 0,
+    });
+  });
+
+  it("has nothing to report for an empty transcript", () => {
+    expect(latestTurnUsage([])).toBeUndefined();
   });
 });

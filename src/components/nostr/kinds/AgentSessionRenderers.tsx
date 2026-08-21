@@ -3,7 +3,12 @@ import { Bot, Hash, MessageSquare, Users } from "lucide-react";
 
 import type { NostrEvent } from "@/types/nostr";
 import { parseAgentEvent } from "@/lib/agent-session/decode";
-import type { DecodedDefinition, DecodedHead } from "@/lib/agent-session/types";
+import type {
+  DecodedDefinition,
+  DecodedHead,
+  DecodedTurn,
+} from "@/lib/agent-session/types";
+import { latestTurnUsage } from "@/lib/agent-session/usage";
 import { Label } from "@/components/ui/label";
 import { SessionTitle } from "@/components/agent/SessionTitle";
 import { NIPBadge } from "@/components/NIPBadge";
@@ -29,6 +34,14 @@ export function AgentSessionHeadBody({
    */
   definition,
   /**
+   * The turns read so far, oldest first — the one place "what did the last
+   * request actually send" can be answered from. The head's own `usage` is a
+   * RUNNING total across the whole session (see `latestTurnUsage`), so it
+   * cannot say how full the window is right now; a caller with no turns on
+   * hand gets no context tile rather than one built from that wrong number.
+   */
+  turns = [],
+  /**
    * Drop the title row, for a caller that already renders one.
    *
    * The session viewer puts the title and status in its pane heading, where
@@ -39,8 +52,11 @@ export function AgentSessionHeadBody({
 }: {
   head: DecodedHead;
   definition?: DecodedDefinition;
+  turns?: DecodedTurn[];
   titled?: boolean;
 }) {
+  const contextUsage = useMemo(() => latestTurnUsage(turns), [turns]);
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
@@ -92,7 +108,7 @@ export function AgentSessionHeadBody({
       <StatStrip
         stats={{ ...summariseHeads([head]), count: head.turns ?? 0 }}
         context={
-          definition?.model?.contextWindow
+          definition?.model?.contextWindow && contextUsage
             ? {
                 /*
                  * What is IN the window right now, which is the input of the
@@ -101,7 +117,7 @@ export function AgentSessionHeadBody({
                  * not overflowed it; it has been fed the same prefix eighty
                  * times, which is what the cache figure beside it measures.
                  */
-                usedTokens: head.usage?.input ?? 0,
+                usedTokens: contextUsage.input,
                 maxTokens: definition.model.contextWindow,
                 modelId: definition.model.id,
               }

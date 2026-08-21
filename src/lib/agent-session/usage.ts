@@ -38,3 +38,26 @@ export function cacheRate(usage: Usage | undefined): number | undefined {
   if (!usage || usage.input <= 0 || usage.cacheRead <= 0) return undefined;
   return usage.cacheRead / usage.input;
 }
+
+/**
+ * What the model actually saw on its most recent call.
+ *
+ * The head's own `usage` is a RUNNING total — the spec says so plainly, "the
+ * head carries running usage and cost" — summed across every turn the session
+ * has published, which makes it the right figure for "what did this run cost"
+ * and the wrong one for "how full is the window". Dividing that sum by the
+ * model's context window overflows on the session's second or third turn, not
+ * its two-hundredth, because turn six's running total is turns one through
+ * five added on top of it. What is actually IN the window right now is what
+ * the last request sent, and that is a single turn's own `usage` tag — so this
+ * walks backward from the end (turns arrive oldest first) and returns the
+ * first one that carries a usage figure, skipping tool turns and any other
+ * turn a runtime chose not to report one for.
+ */
+export function latestTurnUsage(turns: { usage?: Usage }[]): Usage | undefined {
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const usage = turns[i].usage;
+    if (usage) return usage;
+  }
+  return undefined;
+}

@@ -314,6 +314,7 @@ export function AgentSessionViewer({
                   <AgentSessionHeadBody
                     head={view.head}
                     definition={view.definition ?? undefined}
+                    turns={view.turns}
                     titled={false}
                   />
                   {view.definition && (
