@@ -67,6 +67,25 @@ export const SAVED_MESSAGES_TITLE = "Saved messages";
 /** Rows per page, matching the Concord adapter's window. */
 const PAGE_ROWS = 200;
 
+/**
+ * How long a conversation with nothing stored waits for the inbox before it
+ * says so.
+ *
+ * The top-up decrypts two pages of gift wraps, which on a first backfill — or
+ * behind a bunker — is minutes, and a conversation that has genuinely never had
+ * a message would spin for all of it. So the wait is bounded and the store gets
+ * the last word; the doorbell repaints if the sync turns anything up, which is
+ * what makes declaring it empty safe rather than merely fast.
+ *
+ * Deliberately short. This is not a relay deadline — nothing here is waiting on
+ * an EOSE — it is how long "Loading messages" is honest for.
+ */
+export const EMPTY_TIMELINE_DEADLINE_MS = 3_000;
+
+/** A promise that settles on its own, for racing something slower. */
+const settleAfter = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 /** Whatever kind 0 the store already holds. Never fetched — this is a title. */
 function cachedProfile(pubkey: string) {
   const event = eventStore.getReplaceable(0, pubkey, "");
@@ -351,9 +370,18 @@ export class Nip17Adapter extends ChatProtocolAdapter {
         // read, not three, and it reuses the relay set the standing
         // subscription is already on. The doorbell repaints as rumors land, so
         // this needs no callback of its own.
-        await topUpDmInbox(this.self(), this.signer());
+        const syncing = topUpDmInbox(this.self(), this.signer());
 
-        // After the sync an empty answer IS the answer.
+        // Bounded, because an empty conversation must not hold the spinner for
+        // as long as the whole inbox takes. Whichever comes first, the store
+        // gets the last word — and the sync keeps running behind the answer.
+        await Promise.race([syncing, settleAfter(EMPTY_TIMELINE_DEADLINE_MS)]);
+        this.publish(id, emitter, await this.read(id, options));
+
+        // One more read when the sync really finishes: a wrap that landed for
+        // ANOTHER conversation rings no doorbell here, and a message that
+        // arrived after the deadline would otherwise wait for the next one.
+        await syncing;
         this.publish(id, emitter, await this.read(id, options));
       } catch (error) {
         console.warn("[dm] could not load the conversation:", error);

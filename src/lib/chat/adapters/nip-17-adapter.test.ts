@@ -6,8 +6,9 @@ import {
   WrappedMessageFactory,
 } from "applesauce-common/factories";
 import db from "@/services/db";
+import { _resetDmBusForTests } from "@/services/dm-bus";
 import { sendDirectReaction } from "@/lib/dm/send";
-import { Nip17Adapter } from "./nip-17-adapter";
+import { EMPTY_TIMELINE_DEADLINE_MS, Nip17Adapter } from "./nip-17-adapter";
 import type { Conversation } from "@/types/chat";
 
 /**
@@ -31,6 +32,8 @@ let BOB = "";
 const mocks = vi.hoisted(() => ({
   account: undefined as { pubkey: string; signer: unknown } | undefined,
   publishGiftWrap: vi.fn(),
+  /** Resolves at once unless a test replaces it with something slower. */
+  topUpDmInbox: vi.fn(async () => {}),
 }));
 
 vi.mock("@/services/accounts", () => ({
@@ -42,6 +45,10 @@ vi.mock("@/services/accounts", () => ({
 }));
 vi.mock("@/lib/dm/publish", () => ({
   publishGiftWrap: mocks.publishGiftWrap,
+}));
+vi.mock("@/services/dm-pipeline", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/services/dm-pipeline")>()),
+  topUpDmInbox: mocks.topUpDmInbox,
 }));
 vi.mock("@/lib/dm/relays", () => ({
   warmDmRelays: () => ({ unsubscribe() {} }),
@@ -71,6 +78,10 @@ beforeEach(async () => {
   BOB = await bob.getPublicKey();
   mocks.account = { pubkey: ALICE, signer: alice };
   vi.clearAllMocks();
+  // Reset, not clear: a queued one-off return outlives `clearAllMocks`, and an
+  // adapter whose load is still in flight from the last test would eat it.
+  mocks.topUpDmInbox.mockReset();
+  mocks.topUpDmInbox.mockResolvedValue(undefined);
   publishGiftWrap.mockImplementation(async (_wrap, relays: string[]) =>
     relays.map((relay) => ({ relay, ok: true, authRequired: false })),
   );
@@ -79,6 +90,9 @@ beforeEach(async () => {
   await db.dmSeenWraps.clear();
   await db.dmKv.clear();
   await db.chatReads.clear();
+  // The bus batches, so a write from the last test can ring THIS test's
+  // doorbell and repaint a timeline nobody asked about.
+  _resetDmBusForTests();
 });
 
 /** Put a real message from bob into alice's store and return the adapter. */
@@ -195,6 +209,34 @@ describe("loadMessages", () => {
     // A rumor id exists on no relay; asking about it announces the conversation.
     expect(messages[0].metadata).toHaveProperty("reactions");
   });
+  it(
+    "stops waiting on the inbox and says the conversation is empty",
+    { timeout: EMPTY_TIMELINE_DEADLINE_MS + 5_000 },
+    async () => {
+      // A first backfill decrypts thousands of wraps, and a conversation that
+      // has never had a message would hold the spinner for all of it. Bounded, so
+      // "Loading messages" stops being said once it stops being true.
+      mocks.topUpDmInbox.mockReturnValue(new Promise<void>(() => {}));
+      const adapter = new Nip17Adapter();
+      const c = await conversation(adapter);
+
+      const emitted = new Promise<unknown[]>((resolve) => {
+        const sub = adapter.loadMessages(c).subscribe((next) => {
+          sub.unsubscribe();
+          resolve(next);
+        });
+      });
+
+      // Really waits it out: fake timers here drive Dexie's own, and a leaked
+      // clock breaks every test after this one.
+      const started = Date.now();
+
+      expect(await emitted).toEqual([]);
+      expect(Date.now() - started).toBeGreaterThanOrEqual(
+        EMPTY_TIMELINE_DEADLINE_MS - 100,
+      );
+    },
+  );
 });
 
 describe("reactions", () => {
