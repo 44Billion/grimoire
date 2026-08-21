@@ -6,6 +6,11 @@
  * because collapsing is the default and a bare count does not. Names are the
  * part that answers it, so up to three are spelled out.
  *
+ * A count, some names, and — when there is one — an unread badge. Nothing else:
+ * every row in a chat already carries a time, so the thread's own "6h ago" was a
+ * fourth thing to read on a line that exists to be glanced at, and the pane says
+ * it anyway.
+ *
  * Deliberately NOT `UserName`, which is otherwise the rule for rendering a
  * pubkey: it opens a profile on click, and inside a button that both nests an
  * interactive element in another and fires two actions from one click. The row
@@ -16,7 +21,6 @@
 import { MessageSquare } from "lucide-react";
 import { useProfile } from "@/hooks/useProfile";
 import { getDisplayName } from "@/lib/nostr-utils";
-import { formatTimestamp } from "@/hooks/useLocale";
 import type { ThreadSummary } from "@/lib/chat/threads";
 
 /** How many repliers are named before the rest become a count. */
@@ -77,11 +81,6 @@ export function ThreadSummaryButton({
           </span>
         ))}
         {rest > 0 && <span className="shrink-0">+{rest}</span>}
-      </span>
-      {/* Last, and only when there is room: the count and the names are what
-          the reader is deciding on. */}
-      <span className="ml-auto hidden shrink-0 pl-1 text-muted-foreground/70 sm:inline">
-        {formatTimestamp(thread.latest, "relative")}
       </span>
     </button>
   );
