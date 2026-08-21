@@ -56,6 +56,15 @@ export interface DmConversationSummary extends DmConversationRow {
   /** The other side, or the first stranger in a group. */
   peer: string;
   /**
+   * Everyone but the viewer — one pubkey for a 1:1, the whole set for a group,
+   * the viewer alone for Saved messages.
+   *
+   * A row is named and opened from this, not from `peer`: a group's messages
+   * are filed under the whole participant set, so opening one by its first
+   * member opens a conversation that has never had a message in it.
+   */
+  others: string[];
+  /**
    * A conversation with nobody but yourself.
    *
    * NIP-17 makes this fall out for free — a message p-tagged to your own key
@@ -163,8 +172,8 @@ export function useDirectMessages(
       const conversations = await Promise.all(
         rows.map(async (row) => {
           const lastRead = await readDmLastRead(pubkey, row.conversationId);
-          const peer =
-            row.participants.find((p) => p !== pubkey) ?? row.participants[0];
+          const others = row.participants.filter((p) => p !== pubkey);
+          const peer = others[0] ?? row.participants[0];
           // Your own notes are never unread to you, so Saved messages does not
           // pay for the count either.
           const isSelf = peer === pubkey;
@@ -178,6 +187,7 @@ export function useDirectMessages(
           return {
             ...row,
             peer,
+            others: others.length > 0 ? others : [pubkey],
             isSelf,
             lastRead,
             unreadCount,
@@ -197,6 +207,7 @@ export function useDirectMessages(
           participants: [pubkey],
           lastAt: 0,
           peer: pubkey,
+          others: [pubkey],
           isSelf: true,
           lastRead: 0,
           unreadCount: 0,

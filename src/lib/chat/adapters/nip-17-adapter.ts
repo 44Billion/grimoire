@@ -58,6 +58,7 @@ import { pageDmInboxBefore, topUpDmInbox } from "@/services/dm-pipeline";
 import { resolveDmRelays, warmDmRelays } from "@/lib/dm/relays";
 import { sendDirectMessage, sendDirectReaction } from "@/lib/dm/send";
 import { timelineSignature } from "@/lib/chat/timeline-signature";
+import { dmConversationIdFor, dmOthersIn } from "@/lib/dm/conversation-id";
 import { markDmRead, readDmLastRead } from "@/services/dm-reads";
 
 /** What a conversation with yourself is called. */
@@ -75,32 +76,6 @@ function cachedProfile(pubkey: string) {
   } catch {
     return undefined;
   }
-}
-
-/**
- * A conversation id: the participants, sorted and colon-joined.
- *
- * Takes either one pubkey or an already-joined id, because both arrive — a 1:1
- * is opened by naming someone, a group by its id from the sidebar — and both
- * have to normalise to the same string or the two would be different
- * conversations.
- */
-function conversationIdFor(self: string, peerOrId: string): string {
-  return Array.from(new Set([self, ...peerOrId.split(":").filter(Boolean)]))
-    .sort()
-    .join(":");
-}
-
-/**
- * Everyone in a conversation except the viewer.
- *
- * Empty for a note to yourself, one for a 1:1, more for a group — and the
- * whole list matters: the `p` tags ARE the conversation's identity, so sending
- * to a subset files the message under a different conversation than the one on
- * screen.
- */
-function othersIn(conversationId: string, self: string): string[] {
-  return conversationId.split(":").filter((p) => p && p !== self);
 }
 
 /**
@@ -232,7 +207,7 @@ export class Nip17Adapter extends ChatProtocolAdapter {
     // A group arrives as its conversation id — the participants, sorted and
     // colon-joined — because that is what the sidebar holds and what a window
     // reloads with. A 1:1 arrives as a single pubkey.
-    const participants = conversationIdFor(self, identifier.value)
+    const participants = dmConversationIdFor(self, identifier.value)
       .split(":")
       .filter(Boolean);
     const id = participants.join(":");
@@ -437,7 +412,7 @@ export class Nip17Adapter extends ChatProtocolAdapter {
     options?: SendMessageOptions,
   ): Promise<void> {
     const self = this.self();
-    const peers = othersIn(conversation.id, self);
+    const peers = dmOthersIn(conversation.id, self);
 
     let replyTo;
     if (options?.replyTo) {
@@ -500,7 +475,7 @@ export class Nip17Adapter extends ChatProtocolAdapter {
     await sendDirectReaction({
       viewer: self,
       signer: this.signer(),
-      peers: othersIn(conversation.id, self),
+      peers: dmOthersIn(conversation.id, self),
       targetId: messageId,
       emoji,
       ...(customEmoji ? { customEmoji } : {}),

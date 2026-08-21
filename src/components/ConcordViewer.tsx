@@ -99,6 +99,7 @@ import {
   setWindowCursor,
 } from "@/components/concord/window-cursor";
 import { useAccount } from "@/hooks/useAccount";
+import { dmConversationIdFor } from "@/lib/dm/conversation-id";
 import { useAtomValue } from "jotai";
 import { useAddWindow } from "@/core/state";
 import { banVerdictPostdatesMembership } from "@/lib/concord/call-sync";
@@ -121,7 +122,10 @@ interface ConcordViewerProps {
   communityId?: string;
   /** Channel to open on mount, if the caller already knows one. */
   channelId?: string;
-  /** A private conversation to open instead of a channel, by peer pubkey. */
+  /**
+   * A private conversation to open instead of a channel: one peer pubkey for a
+   * 1:1, or the conversation id — the participants, colon-joined — for a group.
+   */
   dmPeer?: string;
   /** A NIP-29 group to open instead. Both halves: an id alone names no room. */
   groupId?: string;
@@ -848,6 +852,18 @@ export function ConcordViewer({
     [selectedGroup],
   );
 
+  /**
+   * The open conversation as the sidebar names it: the whole participant set.
+   *
+   * `selectedDm` can be either form — a window reopened from `dmPeer` carries
+   * one pubkey, a row click carries the id — and only the canonical id matches
+   * a row, so a group conversation would otherwise highlight nothing.
+   */
+  const selectedDmId =
+    viewerPubkey && selectedDm
+      ? dmConversationIdFor(viewerPubkey, selectedDm)
+      : undefined;
+
   const dmIdentifier: DMIdentifier | undefined = useMemo(
     () =>
       selectedDm ? { type: "chat-partner", value: selectedDm } : undefined,
@@ -1205,7 +1221,7 @@ export function ConcordViewer({
                       conversation.lastAt,
                     )
                   }
-                  {...(selectedDm ? { selected: selectedDm } : {})}
+                  {...(selectedDmId ? { selected: selectedDmId } : {})}
                   {...(dms.backfill ? { backfill: dms.backfill } : {})}
                 />
               ) : (

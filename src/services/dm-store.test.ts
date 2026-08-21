@@ -172,6 +172,37 @@ describe("writeDmRumors", () => {
   });
 });
 
+describe("a group conversation", () => {
+  it("files its rows under every participant, not under one of them", async () => {
+    // Exactly what shipped: an inbound message p-tagging the viewer AND
+    // someone else. The sidebar row showed one name and an unread count, and
+    // opening it asked for the 1:1 with that name — a conversation with no
+    // rows in it, whose read stamp could never clear the badge.
+    const group = rumor({
+      pubkey: PEER,
+      tags: [
+        ["p", ME],
+        ["p", STRANGER],
+      ],
+    });
+    await writeDmRumors(ME, [group]);
+
+    const [conversation] = await listDmConversations(ME);
+    expect(conversation.participants).toHaveLength(3);
+    expect(await countUnreadDms(ME, conversation.conversationId, 0)).toBe(1);
+
+    const opened = await queryConversation(ME, conversation.conversationId, {
+      limit: 50,
+    });
+    expect(opened).toHaveLength(1);
+
+    // The id a row that collapsed the group to its first peer would open.
+    const collapsed = [ME, PEER].sort().join(":");
+    expect(collapsed).not.toBe(conversation.conversationId);
+    expect(await queryConversation(ME, collapsed, { limit: 50 })).toEqual([]);
+  });
+});
+
 describe("queryConversation and foldDmMessages", () => {
   async function conversationId() {
     const [conversation] = await listDmConversations(ME);

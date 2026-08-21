@@ -32,9 +32,9 @@ export function DirectMessageList({
   backfill,
 }: {
   conversations: DmConversationSummary[];
-  /** The open conversation's peer pubkey, if a DM is what is on screen. */
+  /** The open conversation's id, if a DM is what is on screen. */
   selected?: string;
-  onSelect: (peer: string) => void;
+  onSelect: (conversationId: string) => void;
   /** Open the dialog that starts one. */
   onCompose: () => void;
   /** Clear one conversation's count without opening it. */
@@ -77,7 +77,7 @@ export function DirectMessageList({
         <DirectMessageRow
           key={conversation.conversationId}
           conversation={conversation}
-          selected={conversation.peer === selected}
+          selected={conversation.conversationId === selected}
           onSelect={onSelect}
           {...(onMarkRead ? { onMarkRead } : {})}
         />
@@ -96,7 +96,7 @@ export function DirectMessageList({
           <DirectMessageRow
             key={conversation.conversationId}
             conversation={conversation}
-            selected={conversation.peer === selected}
+            selected={conversation.conversationId === selected}
             onSelect={onSelect}
             {...(onMarkRead ? { onMarkRead } : {})}
           />
@@ -126,7 +126,7 @@ function DirectMessageRow({
 }: {
   conversation: DmConversationSummary;
   selected: boolean;
-  onSelect: (peer: string) => void;
+  onSelect: (conversationId: string) => void;
   onMarkRead?: (conversation: DmConversationSummary) => void;
 }) {
   const Icon = conversation.isSelf ? Bookmark : AtSign;
@@ -152,7 +152,7 @@ function DirectMessageRow({
     >
       <button
         type="button"
-        onClick={() => onSelect(conversation.peer)}
+        onClick={() => onSelect(conversation.conversationId)}
         className={cn(
           "flex w-full cursor-crosshair items-center gap-1.5 px-2 py-0.5 text-left text-sm hover:bg-muted/50",
           selected && "bg-muted/70 font-medium",
@@ -162,23 +162,29 @@ function DirectMessageRow({
       >
         <Icon className="size-3 flex-shrink-0 text-muted-foreground" />
         <span className="truncate">
-          {conversation.isSelf ? (
-            "Saved messages"
-          ) : (
-            // `UserName` and nothing hand-rolled: it is what every other pubkey
-            // in the app renders as, badges and click-through included. Not
-            // clickable here — the row owns the click, and a name that opened a
-            // profile instead of the conversation would be a trap.
-            //
-            // `plain`, because in a sidebar the name IS the row: colour is what
-            // the row uses to say unread, and every name arriving pre-accented
-            // highlights nothing.
-            <UserName
-              pubkey={conversation.peer}
-              plain
-              className="pointer-events-none"
-            />
-          )}
+          {conversation.isSelf
+            ? "Saved messages"
+            : // `UserName` and nothing hand-rolled: it is what every other pubkey
+              // in the app renders as, badges and click-through included. Not
+              // clickable here — the row owns the click, and a name that opened a
+              // profile instead of the conversation would be a trap.
+              //
+              // `plain`, because in a sidebar the name IS the row: colour is what
+              // the row uses to say unread, and every name arriving pre-accented
+              // highlights nothing.
+              // A group has no name of its own, so it is named after its
+              // members — the same answer the conversation header gives, and the
+              // reason a three-way conversation must not read as one person.
+              conversation.others.map((pubkey, index) => (
+                <span key={pubkey}>
+                  {index > 0 && ", "}
+                  <UserName
+                    pubkey={pubkey}
+                    plain
+                    className="pointer-events-none"
+                  />
+                </span>
+              ))}
         </span>
         {/* ONE `ml-auto`, on the group — the same shape the channel row uses,
             and for the same reason: two auto margins split the free space and
