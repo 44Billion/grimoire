@@ -6,16 +6,21 @@
  * context menu — already lives in `ChatViewer`, and reaching back for it from
  * here would either duplicate that wiring or import a cycle.
  *
- * **Always a column, never a takeover.** Two shapes were tried and both were
- * wrong. A Radix `Sheet` portals to `<body>`, so in a tiling layout it covers the
- * whole workspace — including the windows the reader opened to compare against —
- * and its overlay swallows pointer events document-wide. Replacing the
- * conversation when the window is narrow is worse in a subtler way: the
- * conversation disappears, so closing the thread reads as the tab having been
- * replaced and restored. So the column stays a column, and it gives way on WIDTH
- * instead: the caller passes the window's own measured width and the column is
- * clamped to a share of it, because these windows are tiled and a viewport media
- * query would call a 300px tile a desktop.
+ * **A column when there is room for one; the whole window when there is not.**
+ * Two shapes stay rejected outright. A Radix `Sheet` portals to `<body>`, so in
+ * a tiling layout it covers the whole workspace — including the windows the
+ * reader opened to compare against — and its overlay swallows pointer events
+ * document-wide. And a viewport media query is the wrong instrument for "is
+ * there room": these windows are tiled, so one can be 300px wide on a large
+ * display and `matchMedia` would still call it a desktop. So this reads the
+ * window's own measured width, never the viewport's — see `thread-pane-layout.ts`
+ * for what it does with that width, and for the floor-vs-floor bug it fixes.
+ *
+ * Below the width a column needs, there is no honest column to draw, so the
+ * pane takes the window's full width and a back arrow replaces the resize
+ * handle nobody could grab anyway. It still only takes ITS OWN window, never
+ * the workspace, and the conversation underneath is hidden rather than
+ * unmounted, so back returns to it exactly as it was.
  *
  * Not virtualized, deliberately. A thread is tens of rows, and a second
  * `Virtuoso` would need its own painted-container gate and its own bottom anchor
@@ -23,13 +28,13 @@
  */
 
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
-import { X } from "lucide-react";
+import { ChevronLeft, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { layoutThreadPane } from "./thread-pane-layout";
 
-/** Column width bounds. The ceiling is a share of the window, not a constant. */
-const MIN_WIDTH = 220;
+/** The default width a double-click on the resize handle restores. */
 const DEFAULT_WIDTH = 352;
-const MAX_SHARE = 0.6;
 
 /** How close to the bottom still counts as "following along", in pixels. */
 const FOLLOW_SLACK = 80;
@@ -103,12 +108,10 @@ export function ThreadPane({
     if (box && following.current) box.scrollTop = box.scrollHeight;
   }, [count]);
 
-  // Clamped on every render, not only while dragging: a mosaic divider dragged
-  // inwards shrinks the window under a column that was legal a moment ago.
-  const ceiling = windowWidth
-    ? Math.max(MIN_WIDTH, windowWidth * MAX_SHARE)
-    : width;
-  const applied = Math.min(Math.max(width, MIN_WIDTH), ceiling);
+  // Recomputed on every render, not only while dragging: a mosaic divider
+  // dragged inwards shrinks the window under a column that was legal a moment
+  // ago, and a phone stays collapsed until it is turned.
+  const { width: applied, collapsed } = layoutThreadPane(windowWidth, width);
 
   // Pointer capture, not a document listener: it follows the pointer outside the
   // handle, ends on release wherever that happens, and needs no cleanup if the
@@ -136,36 +139,60 @@ export function ThreadPane({
   return (
     <aside
       ref={pane}
-      className="relative flex shrink-0 flex-col border-l"
+      className={cn(
+        "relative flex shrink-0 flex-col",
+        // Collapsed, the pane IS the window's content — a border on its own
+        // left edge would just double the window's, and there is nothing left
+        // of it to drag a divider against.
+        !collapsed && "border-l",
+      )}
       style={{ width: `${applied}px` }}
     >
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize thread"
-        onPointerDown={onHandleDown}
-        onDoubleClick={() => onWidthChange(DEFAULT_WIDTH)}
-        className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize"
-      />
+      {!collapsed && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize thread"
+          onPointerDown={onHandleDown}
+          onDoubleClick={() => onWidthChange(DEFAULT_WIDTH)}
+          className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize"
+        />
+      )}
       <div className="flex h-8 shrink-0 items-center gap-2 border-b px-2">
+        {collapsed && (
+          // Left, mobile-nav style — this window is nothing but the thread
+          // right now, so "back" reads truer than a corner "x".
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="-ml-1 size-6 shrink-0 text-muted-foreground hover:text-foreground"
+            onClick={onClose}
+            title="Back to conversation"
+          >
+            <ChevronLeft className="size-3.5" />
+          </Button>
+        )}
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Thread
         </span>
         <span className="text-xs text-muted-foreground/70">
           {count} {count === 1 ? "reply" : "replies"}
         </span>
-        {/* Right, where the window's own close is — this one closes the thread
-            and nothing else. */}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="ml-auto size-6 text-muted-foreground hover:text-foreground"
-          onClick={onClose}
-          title="Close thread (Esc)"
-        >
-          <X className="size-3.5" />
-        </Button>
+        {!collapsed && (
+          // Right, where the window's own close is — this one closes the
+          // thread and nothing else.
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="ml-auto size-6 text-muted-foreground hover:text-foreground"
+            onClick={onClose}
+            title="Close thread (Esc)"
+          >
+            <X className="size-3.5" />
+          </Button>
+        )}
       </div>
       <div
         ref={scroller}

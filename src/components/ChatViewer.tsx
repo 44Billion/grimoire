@@ -113,6 +113,7 @@ import {
   type ThreadSummary,
 } from "@/lib/chat/threads";
 import { ThreadPane, THREAD_PANE_DEFAULT_WIDTH } from "./chat/ThreadPane";
+import { layoutThreadPane } from "./chat/thread-pane-layout";
 import { MessageActivity } from "./chat/MessageActivity";
 import { useSettings } from "@/hooks/useSettings";
 import { cn } from "@/lib/utils";
@@ -1985,11 +1986,25 @@ export function ChatViewer({
     return null; // Should never happen, but satisfies TypeScript
   }
 
+  // Same clamp `ThreadPane` draws from, so the conversation hides on exactly
+  // the width where the pane stops being a column beside it and becomes the
+  // window's only content — never on a separate guess that could disagree.
+  const threadCollapsed =
+    !!threadView && layoutThreadPane(windowWidth, threadWidth).collapsed;
+
   return (
     <div ref={windowBox} className="flex h-full min-w-0">
       {/* The conversation. `min-w-0` so the pane beside it takes its width from
-          its own style rather than from whatever the longest message is. */}
-      <div className="flex h-full min-w-0 flex-1 flex-col">
+          its own style rather than from whatever the longest message is.
+          Hidden, not unmounted, when the thread has taken over a too-narrow
+          window — back returns to it exactly as it was left, draft and scroll
+          position included. */}
+      <div
+        className={cn(
+          "flex h-full min-w-0 flex-1 flex-col",
+          threadCollapsed && "hidden",
+        )}
+      >
         {/* Header with conversation info and controls */}
         {/* `h-8` to sit level with the sidebar's search heading beside it. The
           old `py-0.5` made the height depend on whichever control inside was
