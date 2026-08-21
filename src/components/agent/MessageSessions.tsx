@@ -20,8 +20,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Coins, Database, DollarSign, Gauge } from "lucide-react";
 
 import { useAccount } from "@/hooks/useAccount";
-import { onDmScopes } from "@/services/dm-bus";
-import { listSessionsForEvent } from "@/services/agent-store";
+import { listSessionsForEvent, onAgentEvents } from "@/services/agent-store";
 import type { SessionForEvent } from "@/services/agent-store";
 import type { DecodedHead } from "@/lib/agent-session/types";
 import { useAddWindow } from "@/core/state";
@@ -185,7 +184,7 @@ export function MessageSessions({ messageId }: { messageId: string }) {
     void read();
     // A rumor is written to Dexie before the doorbell rings, so re-reading on any
     // ring is enough: a missed ring costs a stale row, never a lost session.
-    const off = onDmScopes(() => void read());
+    const off = onAgentEvents(() => void read());
     return () => {
       live = false;
       off();

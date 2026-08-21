@@ -8,13 +8,23 @@
  * them out of `DM_ROW_KINDS`, so no agent event can appear in, bump, or badge a
  * conversation. This module is the other end of that arrangement.
  *
+ * A session can also arrive the other way: an agent working in a Concord
+ * channel carries its transcript on that channel's stream, sealed under the key
+ * every member already holds. Those rumors land in `concordRumors` through the
+ * wire, not in `dmRumors`, and reading only the inbox meant a run the whole room
+ * could decrypt was visible to nobody — the channel showed a pointer to a
+ * session the viewer had every key for and no query that would find it. So both
+ * stores are read, and a rumor is a rumor once it is out of its envelope.
+ *
  * Tag filtering happens in JS. A session is a few hundred events; a compound
  * index for it would be a schema change to save a scan that costs nothing.
  */
 
 import Dexie from "dexie";
 
-import db, { type DmRumorRow } from "./db";
+import db, { type DmRumorRow, type ConcordRumorRow } from "./db";
+import { onDmScopes } from "./dm-bus";
+import { onWireScopes } from "@/lib/concord/wire-bus";
 import {
   KIND_AGENT_DEFINITION,
   KIND_SESSION_HEAD,
@@ -37,7 +47,7 @@ const STORED_KINDS = new Set([
   KIND_AGENT_DEFINITION,
 ]);
 
-function toRumor(row: DmRumorRow): Rumor {
+function toRumor(row: DmRumorRow | ConcordRumorRow): Rumor {
   return {
     id: row.id,
     pubkey: row.pubkey,
@@ -48,16 +58,58 @@ function toRumor(row: DmRumorRow): Rumor {
   };
 }
 
-function decode(row: DmRumorRow): AgentSessionEvent | null {
-  return parseAgentEvent(toRumor(row));
+function decode(rumor: Rumor): AgentSessionEvent | null {
+  return parseAgentEvent(rumor);
 }
 
-async function scan(viewer: string, kinds: Set<number>): Promise<DmRumorRow[]> {
-  const rows = await db.dmRumors
-    .where("[viewer+created_at]")
-    .between([viewer, Dexie.minKey], [viewer, Dexie.maxKey])
+/**
+ * The same events off the Concord side, one community at a time.
+ *
+ * `communityId` is in every index of that store and MUST be in every query — it
+ * is what keeps one community's traffic out of another's — so this walks the
+ * viewer's communities rather than reaching for a bare `kind` index that does
+ * not exist and should not.
+ *
+ * Deduped against the inbox by rumor id at the caller: a member who is also a
+ * transcript recipient holds the same event twice, and the two copies ARE one
+ * event — the agent binds its rumor before wrapping precisely so the ids match.
+ * Counting it twice would report a fork at every `seq`.
+ */
+async function scanConcord(
+  viewer: string,
+  kinds: Set<number>,
+): Promise<ConcordRumorRow[]> {
+  const communities = await db.concordCommunities
+    .where("pubkey")
+    .equals(viewer)
     .toArray();
-  return rows.filter((row) => kinds.has(row.kind));
+  if (communities.length === 0) return [];
+  const wanted = [...kinds];
+  const rows = await db.concordRumors
+    .where("[communityId+kind]")
+    .anyOf(
+      communities.flatMap((community) =>
+        wanted.map((kind) => [community.idHex, kind] as [string, number]),
+      ),
+    )
+    .toArray();
+  return rows;
+}
+
+async function scan(viewer: string, kinds: Set<number>): Promise<Rumor[]> {
+  const [inbox, channels] = await Promise.all([
+    db.dmRumors
+      .where("[viewer+created_at]")
+      .between([viewer, Dexie.minKey], [viewer, Dexie.maxKey])
+      .toArray(),
+    scanConcord(viewer, kinds),
+  ]);
+
+  const byId = new Map<string, Rumor>();
+  for (const row of inbox)
+    if (kinds.has(row.kind)) byId.set(row.id, toRumor(row));
+  for (const row of channels) byId.set(row.id, toRumor(row));
+  return [...byId.values()];
 }
 
 /** Every session this account can see, newest head per session, newest first. */
@@ -233,4 +285,23 @@ export async function listSessionsForEvent(
       : undefined;
 
   return found.map((head) => ({ head, contextWindow: windowFor(head) }));
+}
+
+/**
+ * The doorbell for everything above, both stores at once.
+ *
+ * There are two buses because there are two ingests, and a view that listened
+ * to only one re-read on half the writes: a session carried on a Concord
+ * channel rings the wire bus and nothing else, so the pane sat on a stale read
+ * until an unrelated DM happened to arrive. Which bus rang is not a question
+ * any caller here can answer anything with — every read in this module is a
+ * full re-scan — so the two are folded into one subscription.
+ */
+export function onAgentEvents(listener: () => void): () => void {
+  const offDm = onDmScopes(() => listener());
+  const offWire = onWireScopes(() => listener());
+  return () => {
+    offDm();
+    offWire();
+  };
 }

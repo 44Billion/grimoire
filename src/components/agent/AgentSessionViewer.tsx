@@ -13,9 +13,9 @@ import {
 } from "lucide-react";
 
 import { useAccount } from "@/hooks/useAccount";
-import { onDmScopes } from "@/services/dm-bus";
 import {
   listAgentSessions,
+  onAgentEvents,
   readAgentSession,
   type AgentSessionView,
 } from "@/services/agent-store";
@@ -159,7 +159,7 @@ export function AgentSessionViewer({
     // A rumor is written to Dexie first and the doorbell rung second, so a
     // re-read on any ring is enough: a missed ring costs a stale render, never
     // a lost turn.
-    const off = onDmScopes(() => void read());
+    const off = onAgentEvents(() => void read());
     return () => {
       live = false;
       off();
@@ -184,7 +184,7 @@ export function AgentSessionViewer({
       if (live) setView(next);
     };
     void read();
-    const off = onDmScopes(() => void read());
+    const off = onAgentEvents(() => void read());
     return () => {
       live = false;
       off();
