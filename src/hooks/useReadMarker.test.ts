@@ -95,7 +95,7 @@ describe("useReadMarker", () => {
         ME,
       ),
     );
-    await waitFor(() => expect(result.current).toBe("b"));
+    await waitFor(() => expect(result.current.dividerId).toBe("b"));
   });
 
   it("keeps the divider after the stamp has been moved past it", async () => {
@@ -107,7 +107,7 @@ describe("useReadMarker", () => {
     );
     await waitFor(() => expect(marks.length).toBeGreaterThan(0));
     expect(marks[0].at).toBe(30);
-    expect(result.current).toBe("b");
+    expect(result.current.dividerId).toBe("b");
   });
 
   it("still finds a divider when the first emission had no candidate", async () => {
@@ -120,10 +120,10 @@ describe("useReadMarker", () => {
       { initialProps: { messages: [message("a", 10)] } },
     );
     await waitFor(() => expect(adapter.getLastRead).toHaveBeenCalled());
-    expect(result.current).toBe(undefined);
+    expect(result.current.dividerId).toBe(undefined);
 
     rerender({ messages: [message("a", 10), message("b", 30)] });
-    await waitFor(() => expect(result.current).toBe("b"));
+    await waitFor(() => expect(result.current.dividerId).toBe("b"));
   });
 
   it("does not wear one conversation's divider over another's messages", async () => {
@@ -133,14 +133,14 @@ describe("useReadMarker", () => {
         useReadMarker(adapter, conversation(id), messages, ME),
       { initialProps: { id: "first", messages: [message("b", 30)] } },
     );
-    await waitFor(() => expect(result.current).toBe("b"));
+    await waitFor(() => expect(result.current.dividerId).toBe("b"));
 
     // The second channel has never been read, so it gets no divider at all —
     // and must not inherit the first one's while its own stamp is in flight.
     rerender({ id: "second", messages: [message("z", 30)] });
-    expect(result.current).toBe(undefined);
+    expect(result.current.dividerId).toBe(undefined);
     await waitFor(() => expect(adapter.getLastRead).toHaveBeenCalledTimes(2));
-    expect(result.current).toBe(undefined);
+    expect(result.current.dividerId).toBe(undefined);
   });
 
   it("does not mark a channel read in a hidden window", async () => {
@@ -167,12 +167,28 @@ describe("useReadMarker", () => {
     await waitFor(() => expect(calls).toContain("mark"));
   });
 
+  it("stamps over every message but places the line on a rendered row", async () => {
+    // Threads are collapsed: the newest thing is a reply with no row of its own.
+    // The stamp has to cover it or the badge can never clear, and the divider has
+    // to name something the reader can see or it does not appear at all.
+    const { adapter, marks } = stub({ c: 20 });
+    const all = [message("a", 30), message("reply", 40)];
+    const { result } = renderHook(() =>
+      useReadMarker(adapter, conversation("c"), all, ME, [all[0]]),
+    );
+
+    await waitFor(() => expect(marks.length).toBeGreaterThan(0));
+    expect(marks[0].at).toBe(40);
+    expect(result.current.dividerId).toBe("a");
+    expect(result.current.lastRead).toBe(20);
+  });
+
   it("does nothing for an adapter with no read state", async () => {
     const bare = {} as ChatProtocolAdapter;
     const { result } = renderHook(() =>
       useReadMarker(bare, conversation("c"), [message("a", 30)], ME),
     );
     await new Promise((r) => setTimeout(r, 20));
-    expect(result.current).toBe(undefined);
+    expect(result.current.dividerId).toBe(undefined);
   });
 });

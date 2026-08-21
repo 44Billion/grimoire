@@ -127,8 +127,12 @@ import {
   writeDraft,
 } from "@/services/chat-drafts";
 import { mentionsPubkey } from "@/lib/chat/mentions";
-import { foldThreads, type ThreadSummary } from "@/lib/chat/threads";
-import { ThreadPane } from "./chat/ThreadPane";
+import {
+  countThreadUnread,
+  foldThreads,
+  type ThreadSummary,
+} from "@/lib/chat/threads";
+import { ThreadPane, THREAD_PANE_DEFAULT_WIDTH } from "./chat/ThreadPane";
 import { ThreadSummaryButton } from "./chat/ThreadSummaryButton";
 import { useSettings } from "@/hooks/useSettings";
 import { cn } from "@/lib/utils";
@@ -651,6 +655,7 @@ const MessageItem = memo(function MessageItem({
   canManagePins,
   onTogglePin,
   thread,
+  threadUnread,
   onOpenThread,
   threadActive,
   inThreadRootId,
@@ -673,6 +678,8 @@ const MessageItem = memo(function MessageItem({
   onTogglePin?: (messageId: string) => void;
   /** The replies folded under this message, when it has any. */
   thread?: ThreadSummary;
+  /** How many of those replies the reader has not seen. */
+  threadUnread?: number;
   onOpenThread?: (rootId: string) => void;
   /** Whether the pane is already showing this message's thread. */
   threadActive?: boolean;
@@ -996,6 +1003,7 @@ const MessageItem = memo(function MessageItem({
             <ThreadSummaryButton
               thread={thread}
               active={threadActive}
+              unread={threadUnread}
               onOpen={() => onOpenThread(thread.rootId)}
             />
           )}
@@ -1330,25 +1338,15 @@ export function ChatViewer({
     [adapter, conversation],
   );
 
-  // Where the "New messages" line goes, and — once the pre-visit stamp has been
-  // captured — moving that stamp forward as the reader sits here. Inert for any
-  // protocol whose adapter keeps no read state.
-  const dividerMessageId = useReadMarker(
-    adapter,
-    conversation ?? undefined,
-    messages,
-    pubkey,
-  );
-
   const { settings } = useSettings();
   const collapseThreads = settings?.appearance?.collapseThreads ?? true;
 
   /**
    * Replies folded out of the timeline and into threads.
    *
-   * Outside the row-building memo below because three other things read it: the
-   * unread divider (whose id was chosen over the UNFOLDED list), a jump (whose
-   * target may no longer have a row), and the pane itself.
+   * Before the read marker, because the divider has to be placed over the rows
+   * that will actually be RENDERED. Three other things read it too: the jump (a
+   * target may no longer have a row), the summary rows, and the pane.
    *
    * `conversationRootId` is what keeps a conversation that IS a thread flat —
    * NIP-10 and NIP-22 timelines are entirely replies to one event, and folding
@@ -1357,13 +1355,63 @@ export function ChatViewer({
   const conversationRootId =
     conversation?.metadata?.rootEventId ??
     conversation?.metadata?.commentRootEventId;
+
+  /**
+   * Whether a thread can form under a message here at all.
+   *
+   * An event-rooted conversation cannot host one, and the reason is in the
+   * adapters rather than here: NIP-10 stamps every reply's `threadRoot` as the
+   * conversation root (`nip-10-adapter.ts`), and NIP-22's `CommentFactory`
+   * inherits the parent's root scope verbatim, so a reply to a reply names the
+   * article. `foldThreads` then correctly refuses to fold it — the conversation IS
+   * the thread — and a reply typed into a pane would land in the channel while the
+   * pane went on reading "0 replies".
+   *
+   * So the affordance is not offered. A NIP-22 view on an addressable or external
+   * root has no event root, threads there DO form, and it keeps them.
+   */
+  const canThread = conversationRootId === undefined;
+
   const folded = useMemo(
     () =>
       foldThreads(messages ?? [], {
         conversationRootId,
-        collapse: collapseThreads,
+        collapse: collapseThreads && canThread,
       }),
-    [messages, conversationRootId, collapseThreads],
+    [messages, conversationRootId, collapseThreads, canThread],
+  );
+
+  // Where the "New messages" line goes, and — once the pre-visit stamp has been
+  // captured — moving that stamp forward as the reader sits here. Inert for any
+  // protocol whose adapter keeps no read state.
+  //
+  // Both arrays matter and they are not the same one: the stamp is taken over
+  // every message, including replies with no row of their own, because a stamp
+  // that could not cover them would leave a badge nothing can clear. The line
+  // itself is placed over the rendered rows, because a divider pointing at a
+  // folded reply simply does not appear.
+  const { dividerId: dividerMessageId, lastRead } = useReadMarker(
+    adapter,
+    conversation ?? undefined,
+    messages,
+    pubkey,
+    folded.rows,
+  );
+
+  /**
+   * Unread replies per thread — what the channel divider can no longer say.
+   *
+   * A reply inside a collapsed thread still moves the channel's badge, and the
+   * divider is measured over rows that reply is not among, so without this the
+   * badge names something the reader has no way to find. Measured against the
+   * SAME frozen stamp the divider uses, so the two cannot disagree.
+   */
+  const threadUnread = useMemo(
+    () =>
+      lastRead === undefined || !messages
+        ? undefined
+        : countThreadUnread(folded.threads, messages, lastRead, pubkey),
+    [folded, messages, lastRead, pubkey],
   );
 
   // Process messages to include day markers and group system messages
@@ -1384,16 +1432,6 @@ export function ChatViewer({
 
     // First, group consecutive system messages
     const groupedMessages = groupSystemMessages(orderedMessages);
-
-    // The divider was chosen over the UNFOLDED timeline, so the first unread
-    // message may be a reply with no row of its own any more. Folded away, the
-    // `=== dividerMessageId` test below never matches and the line silently
-    // vanishes — the same failure `docs/chat-system.md` warns about for read
-    // order. Moved to the root it now lives under, it still says "everything
-    // below here is new".
-    const dividerRowId = dividerMessageId
-      ? (folded.replyToRoot.get(dividerMessageId) ?? dividerMessageId)
-      : undefined;
 
     const items: Array<
       | { type: "message"; data: Message }
@@ -1442,7 +1480,7 @@ export function ChatViewer({
         // The "New messages" line sits directly ABOVE the first unread message,
         // and below its day marker: the reader is looking for where they left
         // off, not for a second date heading.
-        if (dividerRowId && item.id === dividerRowId) {
+        if (dividerMessageId && item.id === dividerMessageId) {
           items.push({ type: "unread-divider" });
         }
         items.push({ type: "message", data: item });
@@ -1520,6 +1558,28 @@ export function ChatViewer({
     conversationId?: string;
     rootId?: string;
   }>({});
+  const [threadWidth, setThreadWidth] = useState(THREAD_PANE_DEFAULT_WIDTH);
+
+  /**
+   * This chat WINDOW's width, so the pane can decide between a column and taking
+   * the whole window.
+   *
+   * A viewport media query is the wrong instrument here: these windows are tiled,
+   * so one can be 300px wide on a large display and `matchMedia` would still
+   * report a desktop. Observed rather than measured once — a mosaic split resizes
+   * its tiles continuously as the divider is dragged.
+   */
+  const windowBox = useRef<HTMLDivElement>(null);
+  const [windowWidth, setWindowWidth] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const box = windowBox.current;
+    if (!box) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setWindowWidth(entry.contentRect.width);
+    });
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, []);
   const threadRootId =
     openThread.conversationId === conversation?.id
       ? openThread.rootId
@@ -2226,9 +2286,9 @@ export function ChatViewer({
   }
 
   return (
-    <div className="flex h-full min-w-0">
+    <div ref={windowBox} className="flex h-full min-w-0">
       {/* The conversation. `min-w-0` so the pane beside it takes its width from
-          its own class rather than from whatever the longest message is. */}
+          its own style rather than from whatever the longest message is. */}
       <div className="flex h-full min-w-0 flex-1 flex-col">
         {/* Header with conversation info and controls */}
         {/* `h-8` to sit level with the sidebar's search heading beside it. The
@@ -2548,6 +2608,7 @@ export function ChatViewer({
                       canManageGroupPins ? handleTogglePin : undefined
                     }
                     thread={folded.threads.get(item.data.id)}
+                    threadUnread={threadUnread?.get(item.data.id)}
                     onOpenThread={showThread}
                     threadActive={threadRootId === item.data.id}
                   />
@@ -2668,6 +2729,9 @@ export function ChatViewer({
         <ThreadPane
           count={threadView.replies.length}
           onClose={closeThread}
+          windowWidth={windowWidth}
+          width={threadWidth}
+          onWidthChange={setThreadWidth}
           root={
             <MessageItem
               message={threadView.root}

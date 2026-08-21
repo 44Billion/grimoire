@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { Message } from "@/types/chat";
 import type { NostrEvent } from "@/types/nostr";
-import { foldThreads } from "./threads";
+import { countThreadUnread, foldThreads } from "./threads";
 
 /**
  * Every case here is a message that could vanish. The fold removes rows from a
@@ -187,5 +187,59 @@ describe("foldThreads", () => {
     expect(ids(foldThreads(messages, { collapse: true }).rows)).toEqual([
       "self",
     ]);
+  });
+});
+
+describe("countThreadUnread", () => {
+  /** A message at an exact timestamp, so the boundary can be tested. */
+  function at(id: string, timestamp: number, author = "them"): Message {
+    return { ...msg(id), timestamp, author };
+  }
+
+  it("counts only replies newer than the stamp", () => {
+    const messages = [
+      at("root", 10),
+      { ...at("old", 20), replyTo: { id: "root" } },
+      { ...at("new", 40), replyTo: { id: "root" } },
+    ];
+    const { threads } = foldThreads(messages, { collapse: true });
+
+    expect(countThreadUnread(threads, messages, 30).get("root")).toBe(1);
+  });
+
+  it("is strictly after the stamp, like the divider", () => {
+    // The stamp is a message's own timestamp, so an inclusive test would count
+    // the last message the reader already saw.
+    const messages = [
+      at("root", 10),
+      { ...at("r", 30), replyTo: { id: "root" } },
+    ];
+    const { threads } = foldThreads(messages, { collapse: true });
+
+    expect(countThreadUnread(threads, messages, 30).size).toBe(0);
+  });
+
+  it("never counts the reader's own reply", () => {
+    const messages = [
+      at("root", 10),
+      { ...at("mine", 40, "me"), replyTo: { id: "root" } },
+      { ...at("theirs", 41), replyTo: { id: "root" } },
+    ];
+    const { threads } = foldThreads(messages, { collapse: true });
+
+    expect(countThreadUnread(threads, messages, 30, "me").get("root")).toBe(1);
+  });
+
+  it("counts nothing in a conversation nobody has opened", () => {
+    // `lastRead === 0` gets badges but no divider, and for the same reason no
+    // per-thread count: flagging the whole history of a channel someone just
+    // joined is noise.
+    const messages = [
+      at("root", 10),
+      { ...at("r", 40), replyTo: { id: "root" } },
+    ];
+    const { threads } = foldThreads(messages, { collapse: true });
+
+    expect(countThreadUnread(threads, messages, 0).size).toBe(0);
   });
 });

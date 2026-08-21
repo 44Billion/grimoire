@@ -1,33 +1,40 @@
 /**
- * One thread, beside its conversation.
+ * One thread, in a column beside its conversation.
  *
- * Layout only. The rows and the composer arrive as nodes because everything
- * that builds them — the adapter, the send path, the mention search, the
- * per-message context menu — already lives in `ChatViewer`, and reaching back
- * for it from here would either duplicate that wiring or import a cycle.
+ * Layout only. The rows and the composer arrive as nodes because everything that
+ * builds them — the adapter, the send path, the mention search, the per-message
+ * context menu — already lives in `ChatViewer`, and reaching back for it from
+ * here would either duplicate that wiring or import a cycle.
  *
- * Two shells, one body:
- *
- * - A COLUMN inside the chat window at `md` and up. Grimoire tiles its windows,
- *   so a Radix `Sheet` — which portals to `<body>` — would cover the workspace
- *   rather than the conversation, and dim every window the reader was comparing
- *   this thread against.
- * - The `Sheet` itself below `md`, where there is no room for a column and an
- *   overlay is the only honest answer.
+ * **Always a column, never a takeover.** Two shapes were tried and both were
+ * wrong. A Radix `Sheet` portals to `<body>`, so in a tiling layout it covers the
+ * whole workspace — including the windows the reader opened to compare against —
+ * and its overlay swallows pointer events document-wide. Replacing the
+ * conversation when the window is narrow is worse in a subtler way: the
+ * conversation disappears, so closing the thread reads as the tab having been
+ * replaced and restored. So the column stays a column, and it gives way on WIDTH
+ * instead: the caller passes the window's own measured width and the column is
+ * clamped to a share of it, because these windows are tiled and a viewport media
+ * query would call a 300px tile a desktop.
  *
  * Not virtualized, deliberately. A thread is tens of rows, and a second
- * `Virtuoso` would need its own painted-container gate and its own bottom
- * anchor (`use-painted-container.ts`, `prepend-anchor.ts`) to earn nothing.
+ * `Virtuoso` would need its own painted-container gate and its own bottom anchor
+ * (`use-painted-container.ts`, `prepend-anchor.ts`) to earn nothing.
  */
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import { VisuallyHidden } from "@/components/ui/visually-hidden";
-import { useIsMobile } from "@/hooks/useIsMobile";
 
-interface ThreadPaneBodyProps {
+/** Column width bounds. The ceiling is a share of the window, not a constant. */
+const MIN_WIDTH = 220;
+const DEFAULT_WIDTH = 352;
+const MAX_SHARE = 0.6;
+
+/** How close to the bottom still counts as "following along", in pixels. */
+const FOLLOW_SLACK = 80;
+
+export interface ThreadPaneProps {
   /** The message the thread hangs under, rendered as its own row. */
   root: ReactNode;
   /** The replies, oldest first. */
@@ -36,27 +43,100 @@ interface ThreadPaneBodyProps {
   count: number;
   /** The composer, or nothing when the reader cannot post here. */
   composer?: ReactNode;
+  /** Closes the THREAD. Never the window — see the note above. */
   onClose: () => void;
+  /** The chat window's own width, once it has been measured. */
+  windowWidth?: number;
+  /** Requested column width, and how to change it by dragging. */
+  width: number;
+  onWidthChange: (width: number) => void;
 }
 
-function ThreadBody({
+export function ThreadPane({
   root,
   replies,
   count,
   composer,
   onClose,
-}: ThreadPaneBodyProps) {
+  windowWidth,
+  width,
+  onWidthChange,
+}: ThreadPaneProps) {
   const scroller = useRef<HTMLDivElement>(null);
+  const following = useRef(true);
 
-  // Newest reply first in view, matching how the channel opens. Runs on every
-  // change to the reply count so a reply sent from here scrolls itself in.
+  // Escape closes it wherever the focus is. On the window rather than a
+  // container, because the reader's hands may be in the channel's composer.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      // A layer above already answered this Escape — a Radix dialog, tiptap's
+      // mention dropdown. One keypress must close one thing, not the pane and
+      // whatever was open on top of it.
+      if (event.defaultPrevented) return;
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  // Whether the reader is at the bottom is recorded as they scroll and consulted
+  // when a reply arrives, so a reply landing while they read further up a long
+  // thread does not yank them down to it.
+  const onScroll = useCallback(() => {
+    const box = scroller.current;
+    if (!box) return;
+    following.current =
+      box.scrollHeight - box.scrollTop - box.clientHeight <= FOLLOW_SLACK;
+  }, []);
+
   useEffect(() => {
     const box = scroller.current;
-    if (box) box.scrollTop = box.scrollHeight;
+    if (box && following.current) box.scrollTop = box.scrollHeight;
   }, [count]);
 
+  // Clamped on every render, not only while dragging: a mosaic divider dragged
+  // inwards shrinks the window under a column that was legal a moment ago.
+  const ceiling = windowWidth
+    ? Math.max(MIN_WIDTH, windowWidth * MAX_SHARE)
+    : width;
+  const applied = Math.min(Math.max(width, MIN_WIDTH), ceiling);
+
+  // Pointer capture, not a document listener: it follows the pointer outside the
+  // handle, ends on release wherever that happens, and needs no cleanup if the
+  // pane unmounts mid-drag.
+  const onHandleDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    const handle = event.currentTarget;
+    const startX = event.clientX;
+    const startWidth = applied;
+    handle.setPointerCapture(event.pointerId);
+
+    const onMove = (move: PointerEvent) => {
+      // Dragging left widens: the handle is on the pane's LEFT edge.
+      onWidthChange(startWidth - (move.clientX - startX));
+    };
+    const onUp = () => {
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
+  };
+
   return (
-    <>
+    <aside
+      className="relative flex shrink-0 flex-col border-l"
+      style={{ width: `${applied}px` }}
+    >
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize thread"
+        onPointerDown={onHandleDown}
+        onDoubleClick={() => onWidthChange(DEFAULT_WIDTH)}
+        className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize"
+      />
       <div className="flex h-8 shrink-0 items-center gap-2 border-b px-2">
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Thread
@@ -64,6 +144,8 @@ function ThreadBody({
         <span className="text-xs text-muted-foreground/70">
           {count} {count === 1 ? "reply" : "replies"}
         </span>
+        {/* Right, where the window's own close is — this one closes the thread
+            and nothing else. */}
         <Button
           type="button"
           variant="ghost"
@@ -75,58 +157,20 @@ function ThreadBody({
           <X className="size-3.5" />
         </Button>
       </div>
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto py-1">
+      <div
+        ref={scroller}
+        onScroll={onScroll}
+        className="min-h-0 flex-1 overflow-y-auto py-1"
+      >
         {root}
-        {/* The root is the thread's subject, not one of its replies, so the
-            line says which is which without a label. */}
+        {/* The root is the thread's subject, not one of its replies, so the line
+            says which is which without a label. */}
         <div className="my-1 border-t" />
         {replies}
       </div>
       {composer}
-    </>
-  );
-}
-
-export function ThreadPane(props: ThreadPaneBodyProps) {
-  // Escape closes it wherever it is rendered. Captured on the window rather
-  // than a container, because the focus may be in the channel's composer — the
-  // reader's hands are not necessarily inside the pane.
-  const { onClose } = props;
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  // One shell or the other, never both. `SheetContent` brings a Radix overlay
-  // that swallows pointer events for the whole document, so a `md:hidden` on the
-  // content alone would leave the desktop workspace unclickable behind an
-  // invisible sheet.
-  const isMobile = useIsMobile();
-
-  if (isMobile) {
-    return (
-      <Sheet
-        open
-        onOpenChange={(open) => {
-          if (!open) props.onClose();
-        }}
-      >
-        <SheetContent side="right" className="flex w-full flex-col gap-0 p-0">
-          <VisuallyHidden>
-            <SheetTitle>Thread</SheetTitle>
-          </VisuallyHidden>
-          <ThreadBody {...props} />
-        </SheetContent>
-      </Sheet>
-    );
-  }
-
-  return (
-    <aside className="flex w-[22rem] shrink-0 flex-col border-l">
-      <ThreadBody {...props} />
     </aside>
   );
 }
+
+export { DEFAULT_WIDTH as THREAD_PANE_DEFAULT_WIDTH };

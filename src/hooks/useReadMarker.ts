@@ -25,20 +25,41 @@ interface Visit {
   lastRead: number;
 }
 
+export interface ReadMarker {
+  /** The message the "New messages" line belongs above, or undefined for none. */
+  dividerId: string | undefined;
+  /**
+   * The stamp as it was when this visit began, or undefined until it lands.
+   *
+   * Exposed because the divider is not the only thing measured against it: a
+   * thread folded out of the timeline counts its own unread replies from the
+   * same frozen number, so the line and the counts cannot disagree.
+   */
+  lastRead: number | undefined;
+}
+
 /**
- * The message the "New messages" line belongs above, or undefined for none.
+ * Where the "New messages" line goes, and what it was measured against.
  *
  * Also marks the conversation read as newer messages land — gated on the
  * document being visible, because a window in a background tab is not being
  * read. Grimoire's tiles are tiled rather than stacked, so a mounted viewer in
  * a visible document really is on screen.
+ *
+ * `messages` and `rows` are deliberately two arguments. The STAMP must cover
+ * everything the unread count counts — the rule `docs/chat-system.md` states, and
+ * a stamp that skipped folded replies would leave a badge nothing can clear — so
+ * it is taken from `messages`. The DIVIDER must name a row that is actually
+ * rendered, so it is placed over `rows`. They differ exactly when threads are
+ * collapsed.
  */
 export function useReadMarker(
   adapter: ChatProtocolAdapter,
   conversation: Conversation | undefined,
   messages: Message[] | undefined,
   selfPubkey?: string,
-): string | undefined {
+  rows?: Message[],
+): ReadMarker {
   const conversationId = conversation?.id;
 
   // Both pieces of state carry the conversation they belong to rather than
@@ -80,12 +101,13 @@ export function useReadMarker(
   // it appears — the only thing that moves it is history arriving that is ALSO
   // unread, i.e. a first-unread deeper than the first page, and there moving up
   // is the correct answer rather than a flicker.
+  const placeOver = rows ?? messages;
   const dividerId = useMemo(
     () =>
-      captured && messages
-        ? findDividerId(messages, captured.lastRead, selfPubkey)
+      captured && placeOver
+        ? findDividerId(placeOver, captured.lastRead, selfPubkey)
         : undefined,
-    [captured, messages, selfPubkey],
+    [captured, placeOver, selfPubkey],
   );
 
   // (c) Only now may the stamp move. Re-stamps as newer messages arrive.
@@ -108,5 +130,5 @@ export function useReadMarker(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adapter, conversationId, captured, messages]);
 
-  return dividerId;
+  return { dividerId, lastRead: captured?.lastRead };
 }

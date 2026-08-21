@@ -32,11 +32,20 @@ export function ThreadSummaryButton({
   thread,
   onOpen,
   active,
+  unread,
 }: {
   thread: ThreadSummary;
   onOpen: () => void;
   /** Whether the pane is already showing this thread. */
   active?: boolean;
+  /**
+   * Replies the reader has not seen, when there are any.
+   *
+   * The channel's own "New messages" line cannot say this: it is placed over the
+   * rendered rows, and these replies have none. Without the count the channel
+   * badge names something with no way to find it.
+   */
+  unread?: number;
 }) {
   const named = thread.repliers.slice(0, NAMED_REPLIERS);
   const rest = thread.repliers.length - named.length;
@@ -55,6 +64,11 @@ export function ThreadSummaryButton({
       <span className="shrink-0 font-medium text-primary">
         {count} {count === 1 ? "reply" : "replies"}
       </span>
+      {!!unread && (
+        <span className="shrink-0 rounded-full bg-primary px-1.5 font-medium text-primary-foreground">
+          {unread} new
+        </span>
+      )}
       <span className="flex min-w-0 items-center gap-1 truncate text-muted-foreground">
         {named.map((pubkey, index) => (
           <span key={pubkey} className="truncate">

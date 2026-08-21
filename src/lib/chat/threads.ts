@@ -39,10 +39,9 @@ export interface FoldedThreads {
    * Reply id → the root row it now lives under.
    *
    * Anything that resolves a message by id against the RENDERED rows needs this,
-   * because a folded reply has no row of its own any more. Two consumers do:
-   * the unread divider, whose id is chosen over the unfolded list, and `jumpTo`,
-   * which would otherwise page history forever looking for a row that will never
-   * appear. Empty when nothing was folded.
+   * because a folded reply has no row of its own any more. `jumpTo` does — a
+   * search hit naming a folded reply would otherwise page history forever
+   * looking for a row that will never appear. Empty when nothing was folded.
    */
   replyToRoot: Map<string, string>;
 }
@@ -188,4 +187,40 @@ export function foldThreads(
     threads,
     replyToRoot,
   };
+}
+
+/**
+ * How many replies in each thread the reader has not seen.
+ *
+ * Separate from `foldThreads` because folding is structure and this is reading
+ * state: the divider's stamp cannot be captured until the rows it will be placed
+ * over exist, so the two cannot be one pass without the fold depending on a
+ * value that depends on the fold.
+ *
+ * Same rule as `findDividerId`: strictly after the stamp, and never the reader's
+ * own message. A `lastRead` of 0 means the conversation has never been opened,
+ * and counts nothing at all — flagging the whole history of a channel someone
+ * just joined is noise, which is the rule the divider already follows.
+ */
+export function countThreadUnread(
+  threads: ReadonlyMap<string, ThreadSummary>,
+  messages: readonly Message[],
+  lastRead: number,
+  selfPubkey?: string,
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  if (lastRead <= 0 || threads.size === 0) return counts;
+
+  const byId = new Map(messages.map((m) => [m.id, m]));
+  for (const [rootId, thread] of threads) {
+    let unread = 0;
+    for (const replyId of thread.replyIds) {
+      const reply = byId.get(replyId);
+      if (!reply || reply.timestamp <= lastRead) continue;
+      if (selfPubkey && reply.author === selfPubkey) continue;
+      unread++;
+    }
+    if (unread > 0) counts.set(rootId, unread);
+  }
+  return counts;
 }
