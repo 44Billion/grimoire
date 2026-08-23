@@ -45,11 +45,7 @@ function SessionRow({
   head: DecodedHead;
   onOpen: () => void;
 }) {
-  const activity = useAgentActivity(
-    head.session.agent,
-    head.session.session,
-    head.deltaRelays,
-  );
+  const activity = useAgentActivity(head.session.agent, head.session.session);
   const style = statusStyle(head.status);
 
   return (

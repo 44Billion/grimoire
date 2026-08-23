@@ -41,15 +41,12 @@ export function useAgentDeltas(
   agent: string | undefined,
   session: string | undefined,
   settled = 0,
-  /** Relays the head says its deltas go to, read alongside the reader's inbox. */
-  deltaRelays: string[] = [],
 ): LiveTurn {
   const account = use$(accountManager.active$);
   const pubkey = account?.pubkey;
   const signer = account?.signer;
 
   const key = agent && session ? `${agent}:${session}` : undefined;
-  const hintKey = deltaRelays.join(",");
   const [live, setLive] = useState<LiveTurn>(NOTHING);
 
   useEffect(() => {
@@ -62,18 +59,15 @@ export function useAgentDeltas(
       // arriving wrap, which is exactly what the prompt is about.
       if (!(await hasDecryptConsent(pubkey))) return;
       /**
-       * The reader's own inbox is not enough, and often is not it at all.
+       * Every relay the reader's own kind 10050 names, and nowhere else.
        *
-       * Deltas ride kind 21059, which a DM inbox relay may refuse — the three in
-       * one real 10050 all did — so the session head names where they actually
-       * go, and both lists are read.
+       * The head used to carry `delta-relay` tags naming a wider set, because a
+       * DM inbox relay may refuse kind 21059 and real ones do. That was a
+       * second discovery mechanism for a channel that repeats everything it
+       * says in the turn that closes it. An inbox that refuses ephemerals is
+       * now the operator's to fix, in the one place a reader already looks.
        */
-      const relays = [
-        ...new Set([
-          ...(await ownDmReadRelays(pubkey)),
-          ...hintKey.split(",").filter(Boolean),
-        ]),
-      ];
+      const relays = [...new Set(await ownDmReadRelays(pubkey))];
       if (cancelled || relays.length === 0) return;
 
       const watch = subscribeDeltas(pubkey, relays, signer, (delta) => {
@@ -102,7 +96,7 @@ export function useAgentDeltas(
       cancelled = true;
       stop?.();
     };
-  }, [pubkey, signer, key, hintKey]);
+  }, [pubkey, signer, key]);
 
   // Nothing to show once the stored turn has arrived. Computed rather than
   // cleared in an effect: the durable turn landing is a render's worth of new

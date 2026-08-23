@@ -312,12 +312,6 @@ function parseHead(rumor: UnsignedRumor & { id: string }): DecodedHead | null {
     pending: rumor.tags
       .filter((t) => t[0] === "input" && t[1])
       .map((t) => t[1]!),
-    deltaRelays: rumor.tags
-      .filter((t) => t[0] === "delta-relay" && t[1])
-      .map((t) => t[1]!)
-      // A relay URL, or nothing. An agent naming an http endpoint here is
-      // either confused or trying something, and neither gets dialled.
-      .filter((url) => url.startsWith("wss://") || url.startsWith("ws://")),
     /**
      * What the run is about, in NIP-22's own scope vocabulary.
      *

@@ -57,16 +57,11 @@ function verbFor(kind: DeltaKind, tool?: string): string {
 export function useAgentActivity(
   agent: string | undefined,
   session: string | undefined,
-  /** Relays the head says its deltas go to, read alongside the reader's inbox. */
-  deltaRelays: string[] = [],
 ): AgentActivity | null {
   const account = use$(accountManager.active$);
   const pubkey = account?.pubkey;
   const signer = account?.signer;
   const key = agent && session ? `${agent}:${session}` : undefined;
-  // Joined into a string so the effect does not re-run on a new array of the
-  // same relays, which is every render.
-  const hintKey = deltaRelays.join(",");
 
   const [activity, setActivity] = useState<AgentActivity | null>(null);
 
@@ -103,18 +98,14 @@ export function useAgentActivity(
     void (async () => {
       if (!(await hasDecryptConsent(pubkey))) return;
       /**
-       * The reader's own inbox is not enough, and often is not it at all.
+       * Every relay the reader's own kind 10050 names, and nowhere else.
        *
-       * Deltas ride kind 21059, which a DM inbox relay may refuse — the three in
-       * one real 10050 all did — so the session head names where they actually
-       * go, and both lists are read.
+       * The head used to name a wider set in `delta-relay` tags, because a DM
+       * inbox relay may refuse kind 21059 and real ones do. An inbox that
+       * refuses ephemerals is now the operator's to fix, in the one place a
+       * reader already looks.
        */
-      const relays = [
-        ...new Set([
-          ...(await ownDmReadRelays(pubkey)),
-          ...hintKey.split(",").filter(Boolean),
-        ]),
-      ];
+      const relays = [...new Set(await ownDmReadRelays(pubkey))];
       if (cancelled || relays.length === 0) return;
 
       const watch = subscribeDeltas(pubkey, relays, signer, (delta) => {
@@ -130,7 +121,7 @@ export function useAgentActivity(
       if (expiry) clearTimeout(expiry);
       stop?.();
     };
-  }, [pubkey, signer, key, hintKey]);
+  }, [pubkey, signer, key]);
 
   return activity;
 }

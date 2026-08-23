@@ -390,15 +390,6 @@ export interface DecodedHead extends DecodedBase {
   usage?: Usage;
   cost?: Cost;
   /**
-   * Where this session's ephemeral deltas are published, as the head declares.
-   *
-   * Not guessable, and not the reader's own inbox: kind 21059 is exactly what a
-   * DM inbox relay is entitled to refuse, and real ones do. A reader that only
-   * listens where its mail arrives watches a status that never moves while the
-   * run goes perfectly.
-   */
-  deltaRelays: string[];
-  /**
    * Where the run is happening: the protocol, and the room inside it.
    *
    * A transcript is read away from the conversation that produced it, so this

@@ -72,11 +72,15 @@ milliseconds later by the epilogue.
 
 ## Deltas
 
-Ephemeral `21059` wraps, subscribed separately and never written to Dexie. A DM
-inbox relay is entitled to refuse kind 21059 — real ones do — so the head names
-where they actually go in `delta-relay` tags, and the reader listens there as
-well as on its own inbox. A missed delta costs nothing: everything it carried is
-repeated in the turn that closes it.
+Ephemeral `21059` wraps, subscribed separately and never written to Dexie, on
+every relay the reader's own kind 10050 names and nowhere else.
+
+A DM inbox relay is entitled to refuse kind 21059, and real ones do. The head
+used to name a wider set in `delta-relay` tags for exactly that reason; it was a
+second discovery mechanism for a channel that repeats everything it carries in
+the turn that closes it, so an inbox that refuses ephemerals is the operator's
+to fix in the one place a reader already looks. A missed delta costs liveness
+and nothing else.
 
 ## Intents
 

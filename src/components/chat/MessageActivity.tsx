@@ -106,11 +106,7 @@ export function MessageActivity({
   const lead = leadSession(heads);
   // Safe with an absent session: the hook takes undefined and subscribes to
   // nothing. Called unconditionally, which is the rule it has to satisfy.
-  const activity = useAgentActivity(
-    lead?.session.agent,
-    lead?.session.session,
-    lead?.deltaRelays,
-  );
+  const activity = useAgentActivity(lead?.session.agent, lead?.session.session);
 
   const replied = thread ? thread.repliers : [];
   const style = lead ? statusStyle(lead.status) : undefined;
