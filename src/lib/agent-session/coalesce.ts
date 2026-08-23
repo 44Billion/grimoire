@@ -4,7 +4,7 @@
  * A model emits tokens far faster than a relay should see events. This buffers
  * them per (turn, kind) and flushes on time, size, or a boundary — a tool call,
  * the end of a turn, an error. Timers are injected so it is testable and so the
- * Node copy in `packages/hex` needs no browser globals.
+ * Node copy in the hex repository needs no browser globals.
  */
 
 import type { DeltaKind } from "./types";

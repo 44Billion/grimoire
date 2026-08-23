@@ -20,7 +20,7 @@ const ref: SessionRef = { agent: AGENT, session: SESSION };
 const AT = 1_755_500_000;
 
 /**
- * The golden vectors are the only thing keeping `packages/hex`'s copy of this
+ * The golden vectors are the only thing keeping the hex repository's copy of this
  * encoder honest — it may not import from `src/`, so the two are kept identical
  * by producing the same ids from the same inputs.
  */

@@ -35,9 +35,13 @@ filter can see any of it.
 | The window | `src/components/agent/AgentSessionViewer.tsx` |
 | Sessions nested under a chat message | `src/components/agent/MessageSessions.tsx` |
 
-The publisher is a different package entirely: `packages/hex`, which may not
-import from `src/`. The encoder is duplicated there deliberately and kept honest
-by shared golden vectors.
+The publisher is a different repository entirely — hex, linked above. The
+encoder is duplicated there deliberately, because a client and a daemon that
+share a module share a release, and kept honest by golden vectors that are
+byte-identical in both trees (`__fixtures__/agent-vectors.json` here,
+`src/nostr/__fixtures__/agent-vectors.json` there). Nothing under
+`src/lib/agent-session/` may import from the rest of `src/`: the other copy runs
+under Node with no browser globals and no repo around it.
 
 ## The four things worth knowing before changing any of it
 

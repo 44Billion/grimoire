@@ -1,7 +1,7 @@
 /**
  * Agent-session types (NIP-xx: Agent Sessions).
  *
- * Deliberately free of repo imports: `packages/hex` may not import from `src/`,
+ * Deliberately free of repo imports: the hex repository's copy has no `src/`,
  * so this file and its siblings are copied there verbatim and kept honest by
  * shared golden vectors. Nothing here may reach for `@/types/ai` — the shapes
  * are structurally compatible with it, and that is the whole contract.
