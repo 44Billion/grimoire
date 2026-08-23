@@ -51,30 +51,16 @@ export const KIND_DELTA = 21777;
  * recycled, so a reader that once saw one never mistakes a later kind for it.
  */
 
-/** Every kind this NIP defines. */
-export const AGENT_SESSION_KINDS = [
-  KIND_AGENT_DEFINITION,
-  KIND_SESSION_HEAD,
-  KIND_TURN,
-  KIND_DELTA,
-] as const;
-
-/**
- * The kind that carries stream sequence: the turn, and only the turn.
+/*
+ * There were four lists here — every kind, the sequenced ones, the stored ones,
+ * and a predicate over the first — and nothing imported any of them. The real
+ * answers live where they are used and are not the same question: the DM
+ * pipeline keeps `DM_AGENT_KINDS` (`src/services/dm-store.ts`), the store keeps
+ * `STORED_KINDS` (`src/services/agent-store.ts`), and only turns carry `seq`,
+ * which `order.ts` knows because it only ever reads turns.
  *
- * A delta evaporates at the relay and a head is replaced on it, so neither may
- * burn a sequence number — a number whose event the protocol itself removes is a
- * hole no reader can ever fill, on a stream that tells them to try.
+ * Two of the four also disagreed with hex's copies — they omitted `1779`, so
+ * `isAgentSessionKind` denied that a control event was part of the protocol it
+ * defines. An unused list that is wrong is worse than no list: the next caller
+ * to reach for one inherits the mistake.
  */
-export const SEQUENCED_KINDS = [KIND_TURN] as const;
-
-/** Kinds a private stream stores (and therefore hands to the DM pipeline). */
-export const STORED_AGENT_KINDS = [
-  KIND_AGENT_DEFINITION,
-  KIND_SESSION_HEAD,
-  KIND_TURN,
-] as const;
-
-export function isAgentSessionKind(kind: number): boolean {
-  return (AGENT_SESSION_KINDS as readonly number[]).includes(kind);
-}
