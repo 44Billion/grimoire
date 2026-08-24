@@ -275,11 +275,18 @@ export async function readAgentSession(
  * Newest head per session, so a run that has published six heads appears once,
  * in whatever state it last reported.
  */
-/** A run under the message that started it, with what it takes to size it. */
+/**
+ * A run under the message that started it.
+ *
+ * A `contextWindow` used to ride along, read off the run's definition snapshot,
+ * so the row could gauge how full the model's window was. It divided
+ * `head.usage.input` — the session's RUNNING total — by that window, so a
+ * five-turn run read as overflowing a window it never came close to filling.
+ * The honest figure is the latest turn's own usage, which only the session
+ * viewer holds; this row holds heads. See `AgentSessionHeadBody`'s `turns`.
+ */
 export interface SessionForEvent {
   head: DecodedHead;
-  /** From the run's own definition snapshot; absent when we do not hold one. */
-  contextWindow?: number;
 }
 
 export async function listSessionsForEvent(
@@ -294,30 +301,7 @@ export async function listSessionsForEvent(
         event?.type === "head" && event.trigger?.id === eventId,
     );
   const found = newestHeads(heads).sort((a, b) => a.started - b.started);
-  if (found.length === 0) return [];
-
-  /**
-   * The window the run had, which only its definition knows.
-   *
-   * Read AFTER the heads and only when there were any: this runs once per
-   * message in a conversation, and almost every message started nothing. A
-   * second scan on all of them would double the cost of rendering a chat log to
-   * answer a question about a row that is not there.
-   */
-  const definitions = (await scan(viewer, new Set([KIND_AGENT_DEFINITION])))
-    .map(decode)
-    .filter((event): event is DecodedDefinition => event?.type === "definition")
-    .sort((a, b) => b.created_at - a.created_at);
-  const windowFor = (head: DecodedHead) =>
-    head.definition
-      ? definitions.find(
-          (definition) =>
-            `${KIND_AGENT_DEFINITION}:${definition.pubkey}:${definition.slug}` ===
-            head.definition,
-        )?.model?.contextWindow
-      : undefined;
-
-  return found.map((head) => ({ head, contextWindow: windowFor(head) }));
+  return found.map((head) => ({ head }));
 }
 
 /**
