@@ -17,7 +17,7 @@ import {
   type ChatModeration,
   type OpenedChat,
 } from "@/lib/concord/chat";
-import { KIND_MESSAGE, KIND_ZAP } from "@/lib/concord/kinds";
+import { KIND_MESSAGE, KIND_ONCHAIN_ZAP, KIND_ZAP } from "@/lib/concord/kinds";
 import { MOCK_PREIMAGE, mockInvoice, paymentHashOf } from "@/test/bolt11-mock";
 
 vi.mock("applesauce-common/helpers/bolt11", async (importOriginal) => {
@@ -201,5 +201,165 @@ describe("foldTimeline — private zaps", () => {
     const unseen = "f".repeat(64);
     const timeline = foldTimeline([zapOf(BOB, unseen, 21)]);
     expect(timeline.zaps.get(unseen)?.map((z) => z.sats)).toEqual([21]);
+  });
+});
+
+const TXID = "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b";
+
+/** An on-chain zap rumor claiming `sats` on `targetId`. */
+function onchainZapOf(
+  author: string,
+  targetId: string,
+  sats: number,
+  over: {
+    txid?: string;
+    recipients?: string[];
+    comment?: string;
+    at?: number;
+    tags?: string[][];
+  } = {},
+): OpenedChat {
+  return opened({
+    author,
+    kind: KIND_ONCHAIN_ZAP,
+    content: over.comment ?? "",
+    tags: over.tags ?? [
+      ["i", `bitcoin:tx:${over.txid ?? TXID}`],
+      ["e", targetId],
+      ...(over.recipients ?? [ALICE]).map((pk) => ["p", pk]),
+      ["amount", String(sats)],
+      ["alt", `Onchain zap: ${sats} sats`],
+    ],
+    ...(over.at !== undefined ? { createdAt: over.at } : {}),
+  });
+}
+
+/**
+ * The fold's on-chain-zap pass (kind 8333, Ditto's `NIP.md`).
+ *
+ * The invariant these guard is the one that keeps the fold honest while the
+ * proof lives elsewhere: an on-chain claim goes into `onchainZaps` and NEVER
+ * into `zaps`, because `ZapEntry.sats` means "verified" and nothing here has
+ * been. The last case in this block is the regression test for a future
+ * refactor that "helpfully" copies the claimed figure into a displayable slot.
+ */
+describe("foldTimeline — on-chain zaps", () => {
+  it("folds a well-formed claim under its target", () => {
+    const msg = opened({ author: ALICE, content: "hi" });
+    const timeline = foldTimeline([
+      msg,
+      onchainZapOf(BOB, msg.rumorId, 25000, { comment: "nice" }),
+    ]);
+
+    expect(timeline.onchainZaps.get(msg.rumorId)).toEqual([
+      expect.objectContaining({
+        txid: TXID,
+        senderPubkey: BOB,
+        recipientPubkeys: [ALICE],
+        claimedSats: 25000,
+        comment: "nice",
+      }),
+    ]);
+  });
+
+  it("never puts an on-chain claim in `zaps`", () => {
+    // `zaps` is the VERIFIED collection. A claim landing there would be a
+    // number the fold could not check, presented as one it had.
+    const msg = opened({ author: ALICE, content: "hi" });
+    const timeline = foldTimeline([msg, onchainZapOf(BOB, msg.rumorId, 25000)]);
+
+    expect(timeline.zaps.size).toBe(0);
+  });
+
+  it("carries no displayable amount field at all", () => {
+    const msg = opened({ author: ALICE, content: "hi" });
+    const timeline = foldTimeline([msg, onchainZapOf(BOB, msg.rumorId, 25000)]);
+    const claim = timeline.onchainZaps.get(msg.rumorId)?.[0];
+
+    // The only amount on the object is named for what it is. If a refactor
+    // ever adds `sats`, this fails — which is the point.
+    expect(claim).not.toHaveProperty("sats");
+    expect(claim).not.toHaveProperty("amountSats");
+    expect(claim?.claimedSats).toBe(25000);
+  });
+
+  it("never renders an on-chain zap as a timeline message", () => {
+    const msg = opened({ author: ALICE, content: "hi" });
+    const timeline = foldTimeline([msg, onchainZapOf(BOB, msg.rumorId, 25000)]);
+
+    expect(timeline.messages.map((m) => m.rumorId)).toEqual([msg.rumorId]);
+  });
+
+  it("drops a self-zap", () => {
+    // Free to fabricate: the sender already controls the destination key.
+    const msg = opened({ author: ALICE, content: "hi" });
+    const timeline = foldTimeline([
+      msg,
+      onchainZapOf(BOB, msg.rumorId, 25000, { recipients: [ALICE, BOB] }),
+    ]);
+
+    expect(timeline.onchainZaps.size).toBe(0);
+  });
+
+  it("drops a malformed claim", () => {
+    const msg = opened({ author: ALICE, content: "hi" });
+    const timeline = foldTimeline([
+      msg,
+      // No `i` tag at all.
+      onchainZapOf(BOB, msg.rumorId, 25000, {
+        tags: [
+          ["e", msg.rumorId],
+          ["p", ALICE],
+          ["amount", "25000"],
+        ],
+      }),
+      // Uppercase txid, which the spec pins to lowercase.
+      onchainZapOf(CAROL, msg.rumorId, 25000, { txid: TXID.toUpperCase() }),
+    ]);
+
+    expect(timeline.onchainZaps.size).toBe(0);
+  });
+
+  it("counts one transaction once per target, earliest claim winning", () => {
+    // A transaction is public, so anyone can publish an 8333 pointing at
+    // someone else's. Without the dedupe one payment becomes many rows.
+    const msg = opened({ author: ALICE, content: "hi" });
+    const timeline = foldTimeline([
+      msg,
+      onchainZapOf(CAROL, msg.rumorId, 25000, { at: 2_000 }),
+      onchainZapOf(BOB, msg.rumorId, 25000, { at: 1_000 }),
+    ]);
+
+    const claims = timeline.onchainZaps.get(msg.rumorId);
+    expect(claims).toHaveLength(1);
+    expect(claims?.[0].senderPubkey).toBe(BOB);
+  });
+
+  it("keeps two different transactions on one target", () => {
+    const msg = opened({ author: ALICE, content: "hi" });
+    const timeline = foldTimeline([
+      msg,
+      onchainZapOf(BOB, msg.rumorId, 25000),
+      onchainZapOf(CAROL, msg.rumorId, 5000, { txid: "b".repeat(64) }),
+    ]);
+
+    expect(timeline.onchainZaps.get(msg.rumorId)).toHaveLength(2);
+  });
+
+  it("drops a claim from a banned author", () => {
+    const msg = opened({ author: ALICE, content: "hi" });
+    const timeline = foldTimeline(
+      [msg, onchainZapOf(BANNED, msg.rumorId, 25000)],
+      moderation([BANNED]),
+    );
+
+    expect(timeline.onchainZaps.size).toBe(0);
+  });
+
+  it("holds a claim whose target has not arrived yet", () => {
+    const unseen = "f".repeat(64);
+    const timeline = foldTimeline([onchainZapOf(BOB, unseen, 25000)]);
+
+    expect(timeline.onchainZaps.get(unseen)).toHaveLength(1);
   });
 });

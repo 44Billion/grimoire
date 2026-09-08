@@ -54,6 +54,7 @@
     "@radix-ui/react-tooltip": "^1.2.16",
     "@radix-ui/react-use-controllable-state": "^1.2.6",
     "@sapphi-red/web-noise-suppressor": "^0.4.0",
+    "@scure/btc-signer": "^2.4.1",
     "@streamdown/cjk": "^1.0.3",
     "@streamdown/math": "^1.0.2",
     "@tiptap/core": "^3.30.1",

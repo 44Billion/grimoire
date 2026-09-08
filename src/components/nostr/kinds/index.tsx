@@ -24,6 +24,10 @@ import { PatchDetailRenderer } from "./PatchDetailRenderer";
 import { PullRequestRenderer } from "./PullRequestRenderer";
 import { PullRequestDetailRenderer } from "./PullRequestDetailRenderer";
 import { Kind9735Renderer } from "./ZapReceiptRenderer";
+import {
+  OnchainZapRenderer,
+  OnchainZapDetailRenderer,
+} from "./OnchainZapRenderer";
 import { Kind9802Renderer } from "./HighlightRenderer";
 import { Kind9802DetailRenderer } from "./HighlightDetailRenderer";
 import { Kind10002Renderer } from "./RelayListRenderer";
@@ -269,6 +273,7 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   1984: ReportRenderer, // Report (NIP-56)
   9041: GoalRenderer, // Zap Goal (NIP-75)
   9735: Kind9735Renderer, // Zap Receipt
+  8333: OnchainZapRenderer, // On-chain Zap (Ditto NIP.md)
   9802: Kind9802Renderer, // Highlight
   8000: AddUserRenderer, // Add User (NIP-43)
   8001: RemoveUserRenderer, // Remove User (NIP-43)
@@ -431,6 +436,7 @@ const detailRenderers: Record<
   1984: ReportDetailRenderer, // Report Detail (NIP-56)
   9041: GoalDetailRenderer, // Zap Goal Detail (NIP-75)
   9802: Kind9802DetailRenderer, // Highlight Detail
+  8333: OnchainZapDetailRenderer, // On-chain Zap Detail (Ditto NIP.md)
   8000: AddUserDetailRenderer, // Add User Detail (NIP-43)
   8001: RemoveUserDetailRenderer, // Remove User Detail (NIP-43)
   10000: MuteListDetailRenderer, // Mute List Detail (NIP-51)
@@ -560,6 +566,11 @@ export { Kind22Renderer } from "./ShortVideoRenderer";
 export { VoiceMessageRenderer } from "./VoiceMessageRenderer";
 export { Kind1063Renderer } from "./FileMetadataRenderer";
 export { Kind9735Renderer } from "./ZapReceiptRenderer";
+export {
+  OnchainZapRenderer,
+  OnchainZapDetailRenderer,
+  OnchainZapAmount,
+} from "./OnchainZapRenderer";
 export { PublicationIndexRenderer } from "./PublicationIndexRenderer";
 export { PublicationIndexDetailRenderer } from "./PublicationIndexDetailRenderer";
 export { PublicationSectionRenderer } from "./PublicationSectionRenderer";

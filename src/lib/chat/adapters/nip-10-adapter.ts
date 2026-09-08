@@ -33,6 +33,10 @@ import { FALLBACK_RELAYS } from "@/services/loaders";
 import { mergeRelaySets } from "applesauce-core/helpers";
 import { getOutboxes } from "applesauce-core/helpers/mailboxes";
 import { getEventPointerFromETag } from "applesauce-core/helpers/pointers";
+import {
+  dropReplayedOnchainZaps,
+  onchainZapToMessage,
+} from "@/lib/chat/onchain-zap-message";
 import { NoteFactory, ReactionFactory } from "applesauce-common/factories";
 import { getNip10References } from "applesauce-common/helpers";
 import {
@@ -225,9 +229,11 @@ export class Nip10Adapter extends ChatProtocolAdapter {
         "#e": [rootEventId],
         limit: 100,
       },
-      // Zaps: kind 9735 receipts with e-tag pointing to root or replies
+      // Zaps: kind 9735 Lightning receipts and kind 8333 on-chain zaps,
+      // e-tagging the root or a reply. Both draw as a zap row; only the
+      // on-chain one has to check a blockchain before it shows a number.
       {
-        kinds: [9735],
+        kinds: [9735, 8333],
         "#e": [rootEventId],
         limit: 100,
       },
@@ -261,7 +267,7 @@ export class Nip10Adapter extends ChatProtocolAdapter {
     // Combine root event with replies
     const rootEvent$ = eventStore.event(rootEventId);
     const replies$ = eventStore.timeline({
-      kinds: [1, 6, 7, 16, 9735],
+      kinds: [1, 6, 7, 16, 9735, 8333],
       "#e": [rootEventId],
     });
 
@@ -281,8 +287,10 @@ export class Nip10Adapter extends ChatProtocolAdapter {
           }
         }
 
-        // Convert replies to messages
-        const replyMessages = replyEvents
+        // Convert replies to messages. On-chain zaps are deduped first: an
+        // 8333 is self-attested, so a replay would otherwise render a thief
+        // as the sender of a verified zap.
+        const replyMessages = dropReplayedOnchainZaps(replyEvents)
           .map((event) =>
             this.eventToMessage(event, conversationId, rootEventId),
           )
@@ -331,7 +339,7 @@ export class Nip10Adapter extends ChatProtocolAdapter {
         limit: 50,
       },
       {
-        kinds: [9735],
+        kinds: [9735, 8333],
         "#e": [rootEventId],
         until: before,
         limit: 50,
@@ -344,7 +352,7 @@ export class Nip10Adapter extends ChatProtocolAdapter {
     const conversationId = `nip-10:${rootEventId}`;
 
     // Convert events to messages
-    const messages = events
+    const messages = dropReplayedOnchainZaps(events)
       .map((event) => this.eventToMessage(event, conversationId, rootEventId))
       .filter((msg): msg is Message => msg !== null);
 
@@ -779,6 +787,11 @@ export class Nip10Adapter extends ChatProtocolAdapter {
     // Handle zap receipts (kind 9735)
     if (event.kind === 9735) {
       return this.zapToMessage(event, conversationId);
+    }
+
+    // Handle on-chain zaps (kind 8333)
+    if (event.kind === 8333) {
+      return onchainZapToMessage(event, conversationId, "nip-10");
     }
 
     // Handle reposts (kind 6, 16) - simple system messages

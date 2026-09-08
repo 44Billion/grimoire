@@ -1,5 +1,6 @@
 import type { NostrEvent } from "./nostr";
 import type { EventPointer, AddressPointer } from "nostr-tools/nip19";
+import type { OnchainZapClaim } from "@/lib/onchain-zap";
 
 /**
  * Event kinds that are considered chat messages across all protocols
@@ -161,6 +162,18 @@ export interface MessageMetadata {
   // Zap-specific metadata (for type: "zap" messages)
   zapAmount?: number; // Amount in sats
   zapRecipient?: string; // Pubkey of zap recipient
+  /**
+   * A kind-8333 on-chain zap, as the event states it.
+   *
+   * The amount inside is `claimedSats` — the SENDER'S OWN FIGURE, since an
+   * 8333 is signed by the payer rather than by a recipient's provider. It is
+   * not verified and MUST NOT be rendered. Only `OnchainZapAmount` may turn
+   * one of these into a number, and only after summing the transaction's real
+   * outputs. That is also why `zapAmount` stays unset on an on-chain row:
+   * `ChatViewer` prints that field directly, so an on-chain claim landing
+   * there would be displayed unchecked.
+   */
+  onchainZap?: OnchainZapClaim;
   // NIP-61 nutzap-specific metadata
   nutzapUnit?: string; // Unit for nutzap amount (sat, usd, eur, etc.)
   /**

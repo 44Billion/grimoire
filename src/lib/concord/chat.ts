@@ -15,6 +15,17 @@
  * payment proof and handed over per target — but never as timeline rows: the
  * reader decides how to draw them.
  *
+ * On-chain zaps (kind 8333) are folded the same way with one difference the
+ * fold cannot paper over. A Lightning zap's proof is local arithmetic, so the
+ * fold checks it inline and a zap that fails is no zap. An on-chain zap's proof
+ * is a transaction on a chain the fold cannot reach without becoming async and
+ * impure — which it must not — so the fold does what it CAN do synchronously
+ * (transaction-id shape, at least one recipient, self-zap rejection, one row
+ * per transaction) and hands over the sender's UNVERIFIED claim, in
+ * `onchainZaps` rather than in `zaps`. That separation is the point:
+ * `ZapEntry.sats` means "proven", and nothing unproven may be typed as one.
+ * The reader completes the proof before drawing a number.
+ *
  * What is NOT narrowed, and must not be: the decode gate (encrypted seal,
  * channel binding, retired-epoch cutoff), banned-author dropping, the CORD-08
  * expiry refusal, the edit rule, and the in-batch delete pass.
@@ -38,9 +49,15 @@ import {
   KIND_REACTION,
   KIND_SEAL_ENCRYPTED,
   KIND_TIMER_NOTICE,
+  KIND_ONCHAIN_ZAP,
   KIND_ZAP,
 } from "@/lib/concord/kinds";
 import { verifyZapRumor, type ZapEntry } from "@/lib/concord/zaps";
+import {
+  dedupeOnchainZaps,
+  parseOnchainZapRumor,
+  type OnchainZapClaim,
+} from "@/lib/onchain-zap";
 import type { NostrRumor } from "@/lib/concord/rumor";
 import {
   checkChannelBinding,
@@ -317,6 +334,17 @@ export interface FoldedTimeline {
    */
   zaps: Map<string, ZapEntry[]>;
   /**
+   * target rumor id → on-chain zap CLAIMS (kind 8333), earliest first.
+   *
+   * Deliberately not `ZapEntry`: these carry no verified amount, because
+   * verifying one means fetching a Bitcoin transaction and this fold is pure
+   * and synchronous. Every claim here has passed the checks that need no
+   * network — well-formed txid, at least one recipient, not a self-zap, one
+   * claim per transaction — and nothing more. A reader MUST run it through
+   * `useOnchainZap` before displaying any amount.
+   */
+  onchainZaps: Map<string, OnchainZapClaim[]>;
+  /**
    * Authorized disappearing-messages timer notices (kind 1740, CORD-08 §4),
    * sorted by `ms` ascending. Not messages — a reader interleaves them as
    * centered notice rows.
@@ -415,6 +443,10 @@ export function foldTimeline(
     ms: number;
     entry: ZapEntry;
   }> = [];
+  // On-chain zap claims, deduped by transaction id after the loop for the same
+  // reason the Lightning ones are deduped by payment hash: a transaction is
+  // public, so anyone can publish an 8333 pointing at someone else's.
+  const onchainCandidates: OnchainZapClaim[] = [];
   const timerNotices: OpenedChat[] = [];
   // ONE clock per fold: a rumor expiring mid-loop must not split the batch.
   const nowSecs = Math.floor(Date.now() / 1000);
@@ -515,6 +547,18 @@ export function foldTimeline(
       continue;
     }
 
+    if (ev.kind === KIND_ONCHAIN_ZAP) {
+      // Every check that needs no network. What is left — did the transaction
+      // actually pay these recipients, and how much — the reader does.
+      const claim = parseOnchainZapRumor(ev);
+      // `targetId` is the `e` tag once it has been confirmed to look like a
+      // rumor id. A side event that names something else decorates nothing, so
+      // there is no row for it to attach to.
+      if (!claim?.targetId || claim.targetId !== eTargetOf(ev)) continue;
+      onchainCandidates.push(claim);
+      continue;
+    }
+
     // kind-9 messages, kind-1111 threaded replies, and the standalone-content
     // kinds grimoire does not fold specially (polls, calendar events) all land
     // in the timeline pool, where the kind registry renders them. Side events
@@ -601,10 +645,32 @@ export function foldTimeline(
     list.push(entry);
   }
 
+  // On-chain zaps: one transaction counts once per target, earliest claim
+  // winning, which is `dedupeOnchainZaps`'s rule and matches the spec's
+  // tiebreak. Grouped per target afterwards so the shape mirrors `zaps`.
+  const onchainZaps = new Map<string, OnchainZapClaim[]>();
+  for (const claim of dedupeOnchainZaps(onchainCandidates)) {
+    const target = claim.targetId;
+    if (!target) continue;
+    let list = onchainZaps.get(target);
+    if (!list) onchainZaps.set(target, (list = []));
+    list.push(claim);
+  }
+  for (const list of onchainZaps.values()) {
+    list.sort((a, b) =>
+      a.createdAt !== b.createdAt
+        ? a.createdAt - b.createdAt
+        : a.eventId < b.eventId
+          ? -1
+          : 1,
+    );
+  }
+
   return {
     messages: [...byId.values()].sort((a, b) => a.ms - b.ms),
     reactions,
     zaps,
+    onchainZaps,
     timerNotices: timerNotices.sort((a, b) => a.ms - b.ms),
     removed: removed.sort((a, b) => a.ms - b.ms),
   };

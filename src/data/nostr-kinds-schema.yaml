@@ -1030,6 +1030,30 @@ kinds:
         next:
           type: free
 
+  8333:
+    description: On-chain Zap
+    in_use: true
+    content:
+      type: free
+    tags:
+      -
+        name: i
+        next: *external
+      - *ptag-bare
+      -
+        name: amount
+        next:
+          type: free
+          required: true
+      -
+        name: alt
+        next:
+          type: free
+          required: true
+      - *etag
+      - *atag
+      - *ktag
+
   1111:
     description: Comment
     in_use: true

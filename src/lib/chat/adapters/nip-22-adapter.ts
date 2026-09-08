@@ -45,6 +45,10 @@ import {
 import { getOutboxes } from "applesauce-core/helpers/mailboxes";
 import { getEventPointerFromETag } from "applesauce-core/helpers/pointers";
 import {
+  dropReplayedOnchainZaps,
+  onchainZapToMessage,
+} from "@/lib/chat/onchain-zap-message";
+import {
   getLooseCommentRoot,
   withRootScopeTags,
 } from "@/lib/chat/comment-root-fallback";
@@ -486,7 +490,7 @@ export class Nip22Adapter extends ChatProtocolAdapter {
       const rootId = meta.commentRootEventId;
       filters.push(
         { kinds: [7], "#e": [rootId], limit: 200 },
-        { kinds: [9735], "#e": [rootId], limit: 100 },
+        { kinds: [9735, 8333], "#e": [rootId], limit: 100 },
         { kinds: [16], "#e": [rootId], limit: 100 },
       );
     } else if (rootType === "address" && meta?.commentRootAddress) {
@@ -497,7 +501,7 @@ export class Nip22Adapter extends ChatProtocolAdapter {
       );
       filters.push(
         { kinds: [7], "#a": [aTag], limit: 200 },
-        { kinds: [9735], "#a": [aTag], limit: 100 },
+        { kinds: [9735, 8333], "#a": [aTag], limit: 100 },
         { kinds: [16], "#a": [aTag], limit: 100 },
       );
     }
@@ -549,7 +553,9 @@ export class Nip22Adapter extends ChatProtocolAdapter {
             if (msg) messages.push(msg);
           }
 
-          for (const event of interactionEvents) {
+          // Deduped first: an 8333 is self-attested, so a replay would
+          // otherwise render a thief as the sender of a verified zap.
+          for (const event of dropReplayedOnchainZaps(interactionEvents)) {
             const msg = this.eventToMessage(event, conversationId, meta);
             if (msg) messages.push(msg);
           }
@@ -561,7 +567,7 @@ export class Nip22Adapter extends ChatProtocolAdapter {
 
     // External roots or address roots without event ID
     const toMessages = (events: NostrEvent[]): Message[] =>
-      events
+      dropReplayedOnchainZaps(events)
         .map((event) => this.eventToMessage(event, conversationId, meta))
         .filter((msg): msg is Message => msg !== null);
 
@@ -599,7 +605,7 @@ export class Nip22Adapter extends ChatProtocolAdapter {
 
     const events = await requestEvents(relays, [commentFilter]);
 
-    const messages = events
+    const messages = dropReplayedOnchainZaps(events)
       .map((event) => this.eventToMessage(event, conversation.id, meta))
       .filter((msg): msg is Message => msg !== null);
 
@@ -882,7 +888,7 @@ export class Nip22Adapter extends ChatProtocolAdapter {
 
     if (meta?.commentRootType === "event" && meta?.commentRootEventId) {
       return eventStore.timeline({
-        kinds: [9735, 16],
+        kinds: [9735, 8333, 16],
         "#e": [meta.commentRootEventId],
       });
     }
@@ -894,7 +900,7 @@ export class Nip22Adapter extends ChatProtocolAdapter {
         meta.commentRootAddress.identifier,
       );
       return eventStore.timeline({
-        kinds: [9735, 16],
+        kinds: [9735, 8333, 16],
         "#a": [aTag],
       });
     }
@@ -1000,6 +1006,11 @@ export class Nip22Adapter extends ChatProtocolAdapter {
     // Zap receipts
     if (event.kind === 9735) {
       return this.zapToMessage(event, conversationId);
+    }
+
+    // On-chain zaps
+    if (event.kind === 8333) {
+      return onchainZapToMessage(event, conversationId, "nip-22");
     }
 
     // Generic reposts

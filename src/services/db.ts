@@ -105,6 +105,38 @@ export interface LnurlCache {
   fetchedAt: number; // Timestamp for cache invalidation
 }
 
+/**
+ * One Bitcoin transaction, as much of it as verifying a kind-8333 on-chain
+ * zap needs.
+ *
+ * Keyed by txid and holding the RAW outputs rather than a per-event verdict.
+ * That way two 8333 events citing the same transaction — a batch zap and
+ * someone else's single-recipient claim on it — share one lookup, and the
+ * verification arithmetic re-runs locally against whichever `p` tags each
+ * event carries. A verdict-shaped cache would have to key on the recipient
+ * set and would go stale the moment an event listed a different one.
+ */
+export interface OnchainTxCache {
+  txid: string; // Primary key, 64 lowercase hex
+  /**
+   * 1 once mined. Dexie cannot index booleans.
+   *
+   * A confirmed transaction's outputs are immutable, so that row is final and
+   * never refetched. An unconfirmed one can still be evicted by RBF or a
+   * double-spend, so it carries a short TTL.
+   */
+  confirmed: number;
+  outputs: Array<{ address?: string; value: number }>;
+  /**
+   * 1 when the explorer answered 404: there is no such transaction, so the
+   * zap is discarded. Cached so a fabricated txid is not re-queried forever.
+   * A transport failure is NOT recorded here — "we could not look" must never
+   * harden into "this is fake".
+   */
+  missing: number;
+  fetchedAt: number;
+}
+
 export interface CachedNsiteMetadata {
   hash: string; // Primary key - sha256 of index.html (content-addressable, never expires)
   title?: string;
@@ -559,6 +591,7 @@ export class GrimoireDb extends Dexie {
   spells!: Table<LocalSpell>;
   spellbooks!: Table<LocalSpellbook>;
   lnurlCache!: Table<LnurlCache>;
+  onchainTxCache!: Table<OnchainTxCache>;
   nsiteMetadata!: Table<CachedNsiteMetadata>;
   grimoireZaps!: Table<GrimoireZap>;
   userEmojiLists!: Table<CachedUserEmojiList>;
@@ -1139,6 +1172,11 @@ export class GrimoireDb extends Dexie {
     // Version 29: napplets the user has run
     this.version(29).stores({
       napplets: "&coordinate, lastRunAt, pinned",
+    });
+
+    // Version 30: Bitcoin transactions behind kind-8333 on-chain zaps
+    this.version(30).stores({
+      onchainTxCache: "&txid, confirmed, fetchedAt",
     });
   }
 }

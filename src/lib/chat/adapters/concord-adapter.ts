@@ -46,7 +46,8 @@ import {
   type ReactionEntry,
 } from "@/lib/concord/chat";
 import { filterEpochCutoff } from "@/lib/concord/chat";
-import { KIND_COMMENT, KIND_ZAP } from "@/lib/concord/kinds";
+import { KIND_COMMENT, KIND_ONCHAIN_ZAP, KIND_ZAP } from "@/lib/concord/kinds";
+import { ONCHAIN_ZAP_PREFIX, type OnchainZapClaim } from "@/lib/onchain-zap";
 import { zapRumorTags, type ZapEntry } from "@/lib/concord/zaps";
 import type { BlobAttachmentMeta } from "./base-adapter";
 import type { FoldedControl } from "@/lib/concord/control";
@@ -1270,6 +1271,15 @@ export class ConcordAdapter extends ChatProtocolAdapter {
         zaps.push(zapMessage(entry, targetId, conversationId));
       }
     }
+    // On-chain zaps, as rows citing what they paid for. Unlike the Lightning
+    // ones above, these are NOT yet proven — the fold could not reach a
+    // blockchain — so the row carries the claim and `OnchainZapAmount` checks
+    // it before drawing a figure. See the note on `FoldedTimeline.onchainZaps`.
+    for (const [targetId, claims] of timeline.onchainZaps) {
+      for (const claim of claims) {
+        zaps.push(onchainZapMessage(claim, targetId, conversationId));
+      }
+    }
 
     const chat =
       tombstones.length === 0 && zaps.length === 0
@@ -1356,6 +1366,60 @@ function zapMessage(
         ...entry.emojiTags,
       ],
       createdAt: entry.createdAt,
+    }) as NostrEvent,
+  };
+}
+
+/**
+ * One on-chain zap claim as a chat row.
+ *
+ * `zapAmount` is deliberately absent. `ChatViewer` prints that field straight
+ * out, and this amount is the sender's own word about a transaction nobody has
+ * checked yet; the claim goes in `onchainZap`, where only `OnchainZapAmount`
+ * reads it. The synthesized event carries the rumor's real `i`/`p`/`amount`
+ * tags, so `RichText` and the kind renderer see the event as published.
+ *
+ * A NOTE ON WHAT THIS ROW COSTS THE READER, since this is a sealed plane and
+ * that is the whole point of it. Emitting the row means `OnchainZapAmount`
+ * will look the transaction up, which sends its txid to a block explorer. The
+ * chain is public, but the CORRELATION is not: a third party learns that
+ * somebody fetched this txid moments after it was named inside an encrypted
+ * channel. The user chose automatic verification everywhere, knowing that.
+ * Should it ever want undoing, the seam is here — hand the claim to the row
+ * without a verdict and let the reader ask for one, rather than anywhere
+ * downstream, because by the time `OnchainZapAmount` has the claim the fetch
+ * is already a foregone conclusion.
+ */
+function onchainZapMessage(
+  claim: OnchainZapClaim,
+  targetId: string,
+  conversationId: string,
+): Message {
+  return {
+    id: claim.eventId,
+    conversationId,
+    author: claim.senderPubkey,
+    content: claim.comment,
+    timestamp: claim.createdAt,
+    type: "zap" as const,
+    replyTo: { id: targetId },
+    metadata: {
+      encrypted: true,
+      onchainZap: claim,
+    },
+    protocol: "concord" as const,
+    event: toEvent({
+      rumorId: claim.eventId,
+      author: claim.senderPubkey,
+      kind: KIND_ONCHAIN_ZAP,
+      content: claim.comment,
+      tags: [
+        ["i", `${ONCHAIN_ZAP_PREFIX}${claim.txid}`],
+        ["e", targetId],
+        ...claim.recipientPubkeys.map((pk) => ["p", pk]),
+        ["amount", String(claim.claimedSats)],
+      ],
+      createdAt: claim.createdAt,
     }) as NostrEvent,
   };
 }

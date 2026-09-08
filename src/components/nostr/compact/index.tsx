@@ -97,11 +97,13 @@ import { RepostCompactPreview } from "./RepostCompactPreview";
 import { ReactionCompactPreview } from "./ReactionCompactPreview";
 import { GenericRepostCompactPreview } from "./GenericRepostCompactPreview";
 import { ZapCompactPreview } from "./ZapCompactPreview";
+import { OnchainZapCompactPreview } from "./OnchainZapCompactPreview";
 import { VoiceMessageCompactPreview } from "./VoiceMessageCompactPreview";
 
 registerCompactRenderer(6, RepostCompactPreview);
 registerCompactRenderer(7, ReactionCompactPreview);
 registerCompactRenderer(16, GenericRepostCompactPreview);
 registerCompactRenderer(9735, ZapCompactPreview);
+registerCompactRenderer(8333, OnchainZapCompactPreview);
 registerCompactRenderer(1222, VoiceMessageCompactPreview);
 registerCompactRenderer(1244, VoiceMessageCompactPreview);

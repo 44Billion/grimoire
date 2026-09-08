@@ -57,6 +57,7 @@ import {
   type GroupedSystemMessage,
 } from "@/lib/chat/group-system-messages";
 import { UserName } from "./nostr/UserName";
+import { OnchainZapAmount } from "./nostr/kinds/OnchainZapRenderer";
 import { BotMarker } from "./nostr/BotMarker";
 import { RichText } from "./nostr/RichText";
 import Timestamp from "./Timestamp";
@@ -717,7 +718,12 @@ const MessageItem = memo(function MessageItem({
 
   // Zap messages have special styling with gradient border
   if (message.type === "zap") {
-    const zapRequest = message.event ? getZapRequest(message.event) : null;
+    const onchainZap = message.metadata?.onchainZap;
+    // An on-chain zap's content is a plain comment, not a zap request, so the
+    // request parser is skipped for it — feeding it one would be meaningless,
+    // and its target is already in `message.replyTo` from the `e` tag.
+    const zapRequest =
+      !onchainZap && message.event ? getZapRequest(message.event) : null;
     // For NIP-57 zaps, reply target is in the zap request's e-tag
     // For NIP-61 nutzaps, reply target is already in message.replyTo (as EventPointer)
     // Convert zap request e-tag to EventPointer for consistent handling
@@ -766,17 +772,34 @@ const MessageItem = memo(function MessageItem({
                 pubkey={message.author}
                 className="font-semibold text-sm"
               />
-              <Zap className="size-4 fill-yellow-500 text-yellow-500" />
-              <span className="text-yellow-500 font-bold">
-                {(message.metadata?.zapAmount || 0).toLocaleString(locale, {
-                  notation: "compact",
-                })}
-              </span>
-              {message.metadata?.zapRecipient && (
+              {onchainZap ? (
+                // The amount is drawn by the one component that verifies it.
+                // `metadata.zapAmount` is deliberately unset on these rows —
+                // an 8333's figure is the sender's own word until the chain
+                // says otherwise.
+                <OnchainZapAmount claim={onchainZap} />
+              ) : (
+                <>
+                  <Zap className="size-4 fill-yellow-500 text-yellow-500" />
+                  <span className="text-yellow-500 font-bold">
+                    {(message.metadata?.zapAmount || 0).toLocaleString(locale, {
+                      notation: "compact",
+                    })}
+                  </span>
+                </>
+              )}
+              {onchainZap ? (
                 <UserName
-                  pubkey={message.metadata.zapRecipient}
+                  pubkey={onchainZap.recipientPubkeys[0]}
                   className="text-sm"
                 />
+              ) : (
+                message.metadata?.zapRecipient && (
+                  <UserName
+                    pubkey={message.metadata.zapRecipient}
+                    className="text-sm"
+                  />
+                )
               )}
               <span className="text-xs text-muted-foreground">
                 <Timestamp timestamp={message.timestamp} />

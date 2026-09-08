@@ -462,9 +462,11 @@ const CHAT_ROW_KINDS = [9, 1111, 1068, 31922, 31923, 1740];
  * A private zap (9735) is one of these on the wire even though the reader draws
  * it as its own row: it names a message with an `e` tag, it arrives after what
  * it pays for, and it must ride along unbudgeted — a zapped message displaced
- * from the page by the zaps on it would take them with it.
+ * from the page by the zaps on it would take them with it. An on-chain zap
+ * (8333) is the same shape for the same reasons, only slower to arrive: it
+ * cannot be published until its transaction has been broadcast.
  */
-const CHAT_SIDE_KINDS = [7, 5, 3302, 9735];
+const CHAT_SIDE_KINDS = [7, 5, 3302, 9735, 8333];
 
 /**
  * One channel's stored chat rumors, newest first.

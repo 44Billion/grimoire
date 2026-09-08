@@ -297,12 +297,13 @@ npm run lint && npm run test:run && npm run build
 Or `/verify`. All three must pass — don't leave a failing build or broken tests.
 
 **A green local build is not a green CI build.** `node_modules` here carries
-hoisted versions a clean install never produces — `nostr-tools` is not a
-declared dependency at all (applesauce pins `~2.19`, while this tree resolves
-2.24), so an API added after 2.19 type-checks locally and breaks CI. Same for
-any transitive package imported directly: `@noble/*` resolves only while
-something else hoists it. Before pushing a change that imports a new module or
-a new API from an undeclared one, verify against a clean install:
+hoisted versions a clean install never produces, so a package imported directly
+but never declared type-checks locally and breaks CI. `nostr-tools` used to be
+the example and is now declared (`^2.24.1`, plus an `overrides` pin); the live
+ones are `@noble/curves`, `@scure/base` and `@scure/bip32`, which resolve only
+while something else hoists them. `@noble/hashes`, `@noble/ciphers` and
+`@scure/btc-signer` ARE declared. Before pushing a change that imports a new
+module or a new API from an undeclared one, verify against a clean install:
 
 ```bash
 git ls-files -z | xargs -0 tar cf - | (mkdir -p /tmp/cleanbuild && cd /tmp/cleanbuild && tar xf -)

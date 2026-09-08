@@ -4,6 +4,7 @@ import {
   ArrowRight,
   Award,
   BarChart3,
+  Bitcoin,
   ShieldCheck,
   Bookmark,
   Bot,
@@ -109,6 +110,11 @@ export const SPELL_KIND = 777;
 export const SPELLBOOK_KIND = 30777;
 export const SCROLL_KIND = 1227;
 export const PAYMENT_TARGETS_KIND = 10133;
+/**
+ * On-chain zap (Ditto's `NIP.md`). The number pairs with NIP-57's: 9735 is
+ * Lightning's P2P port, 8333 is Bitcoin mainnet's.
+ */
+export const ONCHAIN_ZAP_KIND = 8333;
 
 // NKBIP-01 is published as a community NIP (kind 30817), not a nostr-protocol
 // NIP, so the badge resolves to that event. No relay hints: outbox resolves it.
@@ -799,6 +805,16 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     icon: Zap,
   },
   9735: { kind: 9735, name: "Zap", description: "Zap", nip: "57", icon: Zap },
+  // Specified in Ditto's own NIP.md rather than as a numbered NIP, and not
+  // published as a kind-30817 community NIP either, so there is nothing for a
+  // badge to resolve — hence `nip: ""`, the same as grimoire's own kinds.
+  [ONCHAIN_ZAP_KIND]: {
+    kind: ONCHAIN_ZAP_KIND,
+    name: "On-chain Zap",
+    description: "On-chain Bitcoin zap attribution",
+    nip: "",
+    icon: Bitcoin,
+  },
   [SPELL_KIND]: {
     kind: SPELL_KIND,
     name: "Spell",

@@ -60,7 +60,17 @@ export const KIND_TIMER_NOTICE = 1740;
  * Grimoire both sends and folds these — `@/lib/concord/zaps`.
  */
 export const KIND_ZAP = 9735;
-/** On-chain Bitcoin zap attribution. Read by nobody here yet. */
+/**
+ * On-chain Bitcoin zap attribution (Ditto's `NIP.md`) — folded and drawn as a
+ * zap row, like {@link KIND_ZAP}, but proven differently.
+ *
+ * A Lightning zap's proof is arithmetic the fold can do inline: `sha256` of the
+ * preimage against the invoice's payment hash. An on-chain zap's proof is a
+ * transaction on a chain the fold cannot reach, so the fold emits only the
+ * sender's unverified claim, and `OnchainZapAmount` refuses to draw an amount
+ * until it has summed the real outputs. Neither path can display a figure
+ * nothing backs; they differ only in WHERE the proof happens.
+ */
 export const KIND_ONCHAIN_ZAP = 8333;
 /** NIP-88 poll, sealed as a Chat Plane rumor. */
 export const KIND_POLL = 1068;

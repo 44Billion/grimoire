@@ -23,6 +23,10 @@ import type {
   ParticipantRole,
 } from "@/types/chat";
 import type { NostrEvent } from "@/types/nostr";
+import {
+  dropReplayedOnchainZaps,
+  onchainZapToMessage,
+} from "@/lib/chat/onchain-zap-message";
 import { toApplesauceEmoji, type EmojiTag } from "@/lib/emoji-helpers";
 import eventStore from "@/services/event-store";
 import {
@@ -231,9 +235,10 @@ export class Nip53Adapter extends ChatProtocolAdapter {
       throw new Error("No relays available for live chat");
     }
 
-    // Single filter for live chat messages (kind 1311) and zaps (kind 9735)
+    // Live chat messages (1311) plus both zap kinds: 9735 Lightning receipts
+    // and 8333 on-chain attributions.
     const filter: Filter = {
-      kinds: [1311, 9735],
+      kinds: [1311, 9735, 8333],
       "#a": [aTagValue],
       limit: options?.limit || 50,
     };
@@ -262,13 +267,20 @@ export class Nip53Adapter extends ChatProtocolAdapter {
     return combineLatest([eventStore.timeline(filter), eoseReceived$]).pipe(
       filterOp(([, eose]) => eose),
       map(([events]) => {
-        const messages = events
+        // On-chain zaps deduped first: an 8333 is self-attested, so a replay
+        // would otherwise render a thief as the sender of a verified zap.
+        const messages = dropReplayedOnchainZaps(events)
           .map((event) => {
             // Convert zaps (kind 9735) using zapToMessage
             if (event.kind === 9735) {
               // Only include valid zaps
               if (!isValidZap(event)) return null;
               return this.zapToMessage(event, conversation.id);
+            }
+            // On-chain zaps (kind 8333) — the helper drops a malformed one
+            // or a self-zap, so nothing unbacked reaches a row.
+            if (event.kind === 8333) {
+              return onchainZapToMessage(event, conversation.id, "nip-53");
             }
             // All other events (kind 1311) use eventToMessage
             return this.eventToMessage(event, conversation.id);
@@ -319,7 +331,7 @@ export class Nip53Adapter extends ChatProtocolAdapter {
 
     // Same filter as loadMessages but with until for pagination
     const filter: Filter = {
-      kinds: [1311, 9735],
+      kinds: [1311, 9735, 8333],
       "#a": [aTagValue],
       until: before,
       limit: 50,
@@ -329,11 +341,14 @@ export class Nip53Adapter extends ChatProtocolAdapter {
     const events = await requestEvents(relays, [filter]);
 
     // Convert events to messages
-    const messages = events
+    const messages = dropReplayedOnchainZaps(events)
       .map((event) => {
         if (event.kind === 9735) {
           if (!isValidZap(event)) return null;
           return this.zapToMessage(event, conversation.id);
+        }
+        if (event.kind === 8333) {
+          return onchainZapToMessage(event, conversation.id, "nip-53");
         }
         return this.eventToMessage(event, conversation.id);
       })
