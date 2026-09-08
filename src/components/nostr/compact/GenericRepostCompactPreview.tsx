@@ -30,8 +30,9 @@ export function GenericRepostCompactPreview({ event }: { event: NostrEvent }) {
     };
   }, [repostedEventId, repostedRelay]);
 
-  // Fetch the reposted event
-  const repostedEvent = useNostrEvent(eventPointer);
+  // Fetch the reposted event, with the repost as relay context — see
+  // `RepostCompactPreview`.
+  const repostedEvent = useNostrEvent(eventPointer, event);
 
   // Get kind name for display
   const kindInfo = originalKind ? getKindInfo(originalKind) : null;

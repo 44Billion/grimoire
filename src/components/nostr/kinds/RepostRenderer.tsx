@@ -28,6 +28,7 @@ export function RepostRenderer({ event }: BaseEventProps) {
         {repostedEventPointer && (
           <EmbeddedEvent
             eventPointer={repostedEventPointer}
+            context={event}
             onOpen={(id) => {
               addWindow(
                 "open",

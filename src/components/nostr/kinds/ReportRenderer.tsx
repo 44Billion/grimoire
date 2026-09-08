@@ -93,6 +93,7 @@ export function ReportRenderer({ event }: BaseEventProps) {
         {report.targetType === "event" && report.reportedEventId && (
           <QuotedEvent
             eventPointer={{ id: report.reportedEventId }}
+            context={event}
             depth={2}
             hidePreview
             className="mt-0"

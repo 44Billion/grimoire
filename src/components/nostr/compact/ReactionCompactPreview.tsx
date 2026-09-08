@@ -80,8 +80,10 @@ export function ReactionCompactPreview({ event }: { event: NostrEvent }) {
     return undefined;
   }, [reactedEventId, reactedRelay, addressParts]);
 
-  // Fetch the reacted event
-  const reactedEvent = useNostrEvent(eventPointer);
+  // Fetch the reacted event, with the reaction as relay context — see
+  // `Kind7Renderer`: without it a hint-less "e" tag has nothing but the
+  // fallback relays to go on.
+  const reactedEvent = useNostrEvent(eventPointer, event);
 
   // Map common reactions to icons for compact display
   const getReactionDisplay = (content: string) => {

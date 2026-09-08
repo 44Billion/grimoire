@@ -23,8 +23,10 @@ export function RepostCompactPreview({ event }: { event: NostrEvent }) {
     };
   }, [repostedEventId, repostedRelay]);
 
-  // Fetch the reposted event
-  const repostedEvent = useNostrEvent(eventPointer);
+  // Fetch the reposted event, with the repost as relay context: its "p" tag
+  // names the original author, whose outbox is the routing an unhinted "e"
+  // tag lacks.
+  const repostedEvent = useNostrEvent(eventPointer, event);
 
   return (
     <span className="flex items-center gap-1 text-sm text-muted-foreground truncate">

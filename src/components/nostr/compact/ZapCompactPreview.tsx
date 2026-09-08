@@ -25,9 +25,12 @@ export function ZapCompactPreview({ event }: { event: NostrEvent }) {
   const eventPointer = useMemo(() => getZapEventPointer(event), [event]);
   const addressPointer = useMemo(() => getZapAddressPointer(event), [event]);
 
-  // Fetch the zapped event (prefer address pointer for replaceable events)
-  const zappedByEvent = useNostrEvent(eventPointer || undefined);
-  const zappedByAddress = useNostrEvent(addressPointer || undefined);
+  // Fetch the zapped event (prefer address pointer for replaceable events).
+  // The receipt is the relay context: its "p" tag is the zap recipient, i.e.
+  // the zapped event's author, so their outbox routes the lookup. The address
+  // branch ignores context — `addressLoader` takes none.
+  const zappedByEvent = useNostrEvent(eventPointer || undefined, event);
+  const zappedByAddress = useNostrEvent(addressPointer || undefined, event);
   const zappedEvent = zappedByAddress || zappedByEvent;
 
   // If zapped event is a zap receipt (kind 9735), extract its zap request

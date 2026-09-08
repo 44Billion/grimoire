@@ -31,7 +31,7 @@ export function PollResponseRenderer({ event, depth = 0 }: BaseEventProps) {
   }, [pollEventId, relayHint]);
 
   // Fetch the poll event to resolve option labels
-  const pollEvent = useNostrEvent(pollPointer);
+  const pollEvent = useNostrEvent(pollPointer, event);
 
   // Get poll type and resolve option IDs to labels
   const pollType = pollEvent ? getPollType(pollEvent) : "singlechoice";
@@ -71,7 +71,11 @@ export function PollResponseRenderer({ event, depth = 0 }: BaseEventProps) {
 
         {/* Embedded poll using QuotedEvent */}
         {pollPointer && (
-          <QuotedEvent eventPointer={pollPointer} depth={depth + 1} />
+          <QuotedEvent
+            eventPointer={pollPointer}
+            context={event}
+            depth={depth + 1}
+          />
         )}
 
         {/* No poll reference */}

@@ -230,7 +230,7 @@ export function PullRequestDetailRenderer({ event }: { event: NostrEvent }) {
 
       {/* PR Description - Markdown */}
       {event.content ? (
-        <MarkdownContent content={event.content} />
+        <MarkdownContent content={event.content} sourceEvent={event} />
       ) : (
         <p className="text-sm text-muted-foreground italic">
           (No description provided)
@@ -258,7 +258,10 @@ export function PullRequestDetailRenderer({ event }: { event: NostrEvent }) {
           </div>
           {currentStatus.content && (
             <div className="text-sm mt-1">
-              <MarkdownContent content={currentStatus.content} />
+              <MarkdownContent
+                content={currentStatus.content}
+                sourceEvent={currentStatus}
+              />
             </div>
           )}
         </section>

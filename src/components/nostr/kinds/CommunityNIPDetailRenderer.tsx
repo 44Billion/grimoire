@@ -72,7 +72,11 @@ export function CommunityNIPDetailRenderer({ event }: { event: NostrEvent }) {
       </header>
 
       {/* NIP Content - Markdown */}
-      <MarkdownContent content={event.content} canonicalUrl={canonicalUrl} />
+      <MarkdownContent
+        content={event.content}
+        canonicalUrl={canonicalUrl}
+        sourceEvent={event}
+      />
 
       {kinds.length > 0 && (
         <div className="mt-6 pt-4 border-t border-border">

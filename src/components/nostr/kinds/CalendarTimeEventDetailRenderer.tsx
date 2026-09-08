@@ -91,7 +91,10 @@ export function CalendarTimeEventDetailRenderer({
               About this event
             </h2>
             <div className="prose prose-sm dark:prose-invert max-w-none">
-              <MarkdownContent content={parsed.description} />
+              <MarkdownContent
+                content={parsed.description}
+                sourceEvent={event}
+              />
             </div>
           </section>
         )}

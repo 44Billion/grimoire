@@ -5,7 +5,20 @@ import {
   createEventLoaderForStore,
 } from "applesauce-loaders/loaders";
 import type { EventPointer } from "nostr-tools/nip19";
-import { Observable } from "rxjs";
+import {
+  Observable,
+  EMPTY,
+  defer,
+  forkJoin,
+  from,
+  merge,
+  of,
+  catchError,
+  concatWith,
+  ignoreElements,
+  switchMap,
+  timeout,
+} from "rxjs";
 import {
   getSeenRelays,
   mergeRelaySets,
@@ -14,9 +27,10 @@ import {
 import { getOutboxes } from "applesauce-core/helpers/mailboxes";
 import {
   getEventPointerFromETag,
+  getEventPointerFromQTag,
   getAddressPointerFromATag,
+  getProfilePointerFromPTag,
 } from "applesauce-core/helpers/pointers";
-import { getTagValue } from "applesauce-core/helpers/event";
 import pool from "./relay-pool";
 import eventStore from "./event-store";
 import { relayListCache } from "./relay-list-cache";
@@ -41,16 +55,21 @@ function outboxRelaysFor(pubkey: string): string[] {
   return relayList ? getOutboxes(relayList) : [];
 }
 
+/** How many outbox relays to add per author, in both loaders. */
+const MAX_OUTBOX_RELAYS = 3;
+
 /**
  * Extract relay context from a Nostr event for comprehensive relay selection
  * Uses applesauce helpers for robust tag parsing and relay tracking
  */
 function extractRelayContext(event: NostrEvent): {
-  authorHint?: string;
+  authorHints: string[];
   seenRelays: Set<string> | undefined;
   rTags: string[];
   eTagRelays: string[];
+  qTagRelays: string[];
   aTagRelays: string[];
+  pTagRelays: string[];
 } {
   // Get relays where this event was seen (tracked by applesauce)
   const seenRelays = getSeenRelays(event);
@@ -77,6 +96,17 @@ function extractRelayContext(event: NostrEvent): {
       (url): url is string => typeof url === "string" && isSafeRelayURL(url),
     );
 
+  // Extract relay hints from all "q" tags (NIP-18 quote references).
+  // A quote's hint is often the ONLY hint an event carries for the quoted
+  // note — clients that write a `q` tag frequently omit the hint from the
+  // inline `nostr:nevent`, or write a bare `note1`.
+  const qTagRelays = event.tags
+    .filter((t) => t[0] === "q")
+    .map((tag) => getEventPointerFromQTag(tag)?.relays?.[0])
+    .filter(
+      (url): url is string => typeof url === "string" && isSafeRelayURL(url),
+    );
+
   // Extract relay hints from all "a" tags (addressable event references)
   // This includes both lowercase "a" (reply) and uppercase "A" (root) tags
   // Filter to only valid relay URLs
@@ -90,10 +120,38 @@ function extractRelayContext(event: NostrEvent): {
       (url): url is string => typeof url === "string" && isSafeRelayURL(url),
     );
 
-  // Extract first "p" tag as author hint using applesauce helper
-  const authorHint = getTagValue(event, "p");
+  // Author candidates from "p" tags — FIRST AND LAST, not just the first.
+  // NIP-25 puts the reacted event's author in the LAST "p" tag, and clients
+  // that copy the thread's participants in front of it (Damus-style) leave a
+  // stranger in the first slot. Looking up the wrong person's outbox is how a
+  // reaction ends up routed to relays that never held the note. The two
+  // collapse to one candidate on the common single-"p" event.
+  const pTags = event.tags.filter(
+    (t) => t[0] === "p" && typeof t[1] === "string" && t[1].length > 0,
+  );
+  const edgePTags =
+    pTags.length > 1 ? [pTags[0], pTags[pTags.length - 1]] : pTags;
+  const authorHints = Array.from(new Set(edgePTags.map((t) => t[1])));
 
-  return { seenRelays, authorHint, rTags, eTagRelays, aTagRelays };
+  // Relay hints carried by those same "p" tags. Only the edge tags, unlike the
+  // e/r/q hints above: a "p" hint locates a PERSON rather than the event we
+  // want, and every relay merged in becomes a socket — a note with twenty
+  // mentions would open twenty connections for no gain.
+  const pTagRelays = edgePTags
+    .map((tag) => getProfilePointerFromPTag(tag)?.relays?.[0])
+    .filter(
+      (url): url is string => typeof url === "string" && isSafeRelayURL(url),
+    );
+
+  return {
+    seenRelays,
+    authorHints,
+    rTags,
+    eTagRelays,
+    qTagRelays,
+    aTagRelays,
+    pTagRelays,
+  };
 }
 
 /**
@@ -157,16 +215,23 @@ const baseEventLoader = createEventLoader(pool, {
  * Strategy (priority order):
  * 1. Direct relay hints from EventPointer
  * 2. Seen-at relays (where reply event was received)
- * 3. Author's cached outbox relays (from NIP-65)
- * 4. "a" tag relay hints from context event (addressable references)
- * 5. "r" tags from context event (URL references)
- * 6. Other "e" tag relay hints from context event
- * 7. Fallback relays
+ * 3. Author outbox relays (NIP-65), MERGED across every author the context
+ *    names — the stored event's pubkey, the pointer's own `author`, and the
+ *    context's first and last "p" tags — not the first one that answers.
+ *    A reaction is the case that forced this: its "e" tag often carries no
+ *    hint at all, so the "p" tag's outbox is the only routing that exists,
+ *    and where a hint IS present it is a single relay with no backup.
+ * 4. "p" tag relay hints from context event (where to find the author)
+ * 5. "a" tag relay hints from context event (addressable references)
+ * 6. "q" tag relay hints from context event (quote references)
+ * 7. "r" tags from context event (URL references)
+ * 8. Other "e" tag relay hints from context event
+ * 9. Fallback relays
  *
  * @param pointer - Event ID or EventPointer with relay hints
  * @param context - Optional context for relay hints:
  *   - string: pubkey of event author (backward compatible)
- *   - NostrEvent: full reply event with r/e/p tags (comprehensive + seen-at relays)
+ *   - NostrEvent: full reply event with q/r/e/p tags (comprehensive + seen-at relays)
  *
  * Note: This is a synchronous wrapper that uses the memory cache layer only.
  * Full relay list lookup happens async in useOutboxRelays for timelines.
@@ -176,57 +241,76 @@ export function eventLoader(
   context?: string | NostrEvent,
 ): Observable<NostrEvent> {
   // Extract context information
-  let authorHint: string | undefined;
+  let authorHints: string[] = [];
   let seenRelays: Set<string> | undefined;
   let rTags: string[] = [];
   let eTagRelays: string[] = [];
+  let qTagRelays: string[] = [];
   let aTagRelays: string[] = [];
+  let pTagRelays: string[] = [];
 
   if (context) {
     if (typeof context === "string") {
       // Backward compatible: just an author pubkey
-      authorHint = context;
+      authorHints = [context];
     } else {
       // Comprehensive: extract all relay hints from reply event
       const extracted = extractRelayContext(context);
-      authorHint = extracted.authorHint;
+      authorHints = extracted.authorHints;
       seenRelays = extracted.seenRelays;
       rTags = extracted.rTags;
       eTagRelays = extracted.eTagRelays;
+      qTagRelays = extracted.qTagRelays;
       aTagRelays = extracted.aTagRelays;
+      pTagRelays = extracted.pTagRelays;
     }
   }
 
   // Get direct relay hints from EventPointer
   const directHints = (pointer as EventPointer).relays || [];
 
-  // Try to get cached outbox relays
-  let cachedOutboxRelays: string[] = [];
-
-  // Check if event already exists in store
+  // Every author the caller can name, most authoritative first: the event
+  // itself if we already hold it, then the pointer's own `author` (an `nevent`
+  // carries it; a bare `note1` does not), then the context's "p" tags.
+  //
+  // MERGED, not first-answer-wins. A source answering with SOME relays used to
+  // end the search, which quietly discarded the others — and for a reaction the
+  // "p" tag is frequently the only routing that exists, so losing it to a
+  // pointer author whose relay list happens to be cached means the note is
+  // looked for on the fallback relays alone.
   const existingEvent = eventStore.getEvent(pointer.id);
-  if (existingEvent) {
-    cachedOutboxRelays = outboxRelaysFor(existingEvent.pubkey);
-  }
 
-  // If not in store but we have author hint (from reply "p" tag)
-  if (cachedOutboxRelays.length === 0 && authorHint) {
-    cachedOutboxRelays = outboxRelaysFor(authorHint);
-  }
+  const authorCandidates = Array.from(
+    new Set(
+      [
+        existingEvent?.pubkey,
+        (pointer as EventPointer).author,
+        ...authorHints,
+      ].filter((pubkey): pubkey is string => !!pubkey),
+    ),
+  );
 
-  // Limit cached relays to top 3 to avoid too many connections
-  const topCachedRelays = cachedOutboxRelays.slice(0, 3);
+  // Capped per author, not in total: two authors are worth two relay lists,
+  // and the candidate list is four entries at the very most (stored pubkey,
+  // pointer author, first and last "p" tag) with duplicates already removed.
+  const topCachedRelays = mergeRelaySets(
+    ...authorCandidates.map((pubkey) =>
+      outboxRelaysFor(pubkey).slice(0, MAX_OUTBOX_RELAYS),
+    ),
+  );
 
   // Merge all relay sources with priority ordering
   // mergeRelaySets handles deduplication, normalization, and invalid URL filtering
   const allRelays = mergeRelaySets(
     directHints, // Priority 1: Direct hints (most specific)
     seenRelays, // Priority 2: Where reply was seen (high confidence)
-    topCachedRelays, // Priority 3: Author's outbox (NIP-65 standard)
-    aTagRelays, // Priority 4: Addressable event references (NIP-22, etc.)
-    rTags, // Priority 5: Conversation context
-    eTagRelays, // Priority 6: Other event references
-    FALLBACK_RELAYS, // Priority 7: Fallback
+    topCachedRelays, // Priority 3: Author outboxes (NIP-65 standard)
+    pTagRelays, // Priority 4: Author hints from "p" tags
+    aTagRelays, // Priority 5: Addressable event references (NIP-22, etc.)
+    qTagRelays, // Priority 6: Quote references (NIP-18)
+    rTags, // Priority 7: Conversation context
+    eTagRelays, // Priority 8: Other event references
+    FALLBACK_RELAYS, // Priority 9: Fallback
   );
 
   // Build enhanced pointer with all relay sources
@@ -240,7 +324,9 @@ export function eventLoader(
     directHints.length +
     (seenRelays?.size || 0) +
     topCachedRelays.length +
+    pTagRelays.length +
     aTagRelays.length +
+    qTagRelays.length +
     rTags.length +
     eTagRelays.length +
     FALLBACK_RELAYS.length;
@@ -250,11 +336,56 @@ export function eventLoader(
   console.debug(
     `[eventLoader] Fetching ${pointer.id.slice(0, 8)} from ${allRelays.length} relays ` +
       `(direct=${directHints.length} seen=${seenRelays?.size || 0} cached=${topCachedRelays.length} ` +
-      `a=${aTagRelays.length} r=${rTags.length} e=${eTagRelays.length} agg=${FALLBACK_RELAYS.length}, ` +
+      `p=${pTagRelays.length} a=${aTagRelays.length} q=${qTagRelays.length} ` +
+      `r=${rTags.length} e=${eTagRelays.length} ` +
+      `agg=${FALLBACK_RELAYS.length}, ` +
       `${duplicatesRemoved} duplicates removed)`,
   );
 
-  return baseEventLoader(enhancedPointer);
+  const firstPass = baseEventLoader(enhancedPointer);
+
+  // Authors whose write list we could not answer synchronously. The memory LRU
+  // and the EventStore are a CACHE, not the source of truth: a cold session
+  // knows nobody's relays, and a reaction whose "e" tag carries no hint is then
+  // routed to the fallback relays and nowhere else. So resolve the missing
+  // lists — Dexie, then the indexers — and retry on what they name.
+  const unresolvedAuthors = existingEvent
+    ? [] // We already hold the event; there is nothing left to route.
+    : authorCandidates.filter((pubkey) => outboxRelaysFor(pubkey).length === 0);
+
+  if (unresolvedAuthors.length === 0) return firstPass;
+
+  // `defer` so every gate below is evaluated at subscribe time, and re-evaluated
+  // when the outbox lookups land — by then the first pass may have won.
+  const secondPass = defer(() => {
+    if (eventStore.getEvent(pointer.id)) return EMPTY;
+
+    return forkJoin(unresolvedAuthors.map(resolveOutboxRelays)).pipe(
+      switchMap((lists) => {
+        // Won while we were looking: nothing to ask for.
+        if (eventStore.getEvent(pointer.id)) return EMPTY;
+
+        // Both sides through `mergeRelaySets` so the comparison is between
+        // normalized URLs — otherwise a trailing slash defeats the dedupe and
+        // we re-ask the same relay.
+        const discovered = mergeRelaySets(
+          ...lists.map((list) => list.slice(0, MAX_OUTBOX_RELAYS)),
+        );
+        const fresh = discovered.filter((url) => !allRelays.includes(url));
+        if (fresh.length === 0) return EMPTY;
+
+        console.debug(
+          `[eventLoader] Second pass for ${pointer.id.slice(0, 8)}: ` +
+            `${fresh.length} newly discovered relays from ` +
+            `${unresolvedAuthors.length} resolved relay list(s)`,
+        );
+
+        return baseEventLoader({ id: pointer.id, relays: fresh });
+      }),
+    );
+  });
+
+  return merge(firstPass, secondPass);
 }
 
 /**
@@ -283,9 +414,6 @@ const baseAddressLoader = createAddressLoader(pool, {
  * they go to the indexers, which is what indexers are for.
  */
 const DISCOVERY_KINDS = new Set([0, 3, 10002]);
-
-/** How many cached outbox relays to add; the same cap `eventLoader` uses. */
-const MAX_OUTBOX_RELAYS = 3;
 
 type AddressLoaderArgs = Parameters<typeof baseAddressLoader>;
 
@@ -339,6 +467,51 @@ const baseBatchedAddressLoader = createAddressLoader(pool, {
 export function batchedAddressLoader(...args: AddressLoaderArgs) {
   const [pointer, ...rest] = args;
   return baseBatchedAddressLoader(withOutboxRelays(pointer), ...rest);
+}
+
+/** How long to wait for a relay list before giving up on routing by it. */
+const OUTBOX_RESOLVE_TIMEOUT = 15_000;
+
+/**
+ * A pubkey's NIP-65 write relays, from wherever they actually are.
+ *
+ * `outboxRelaysFor` above answers from the memory LRU and the EventStore only,
+ * because every caller in `eventLoader`'s synchronous path needs an answer now.
+ * That makes the cache the de facto source of truth, and on a cold session it
+ * knows nobody — so this walks the rest of the way: Dexie (via the cache's own
+ * async accessor), then the indexers.
+ *
+ * `baseBatchedAddressLoader`, not `batchedAddressLoader`: the wrapper's outbox
+ * step is a no-op for kind 10002 (it is a `DISCOVERY_KIND`) and depending on
+ * that incidentally would be asking the relay list to route its own lookup.
+ * Batched, so a feed full of reactions from different authors costs one REQ per
+ * 200ms window rather than one per author.
+ *
+ * The loader's emissions are ignored and the store is re-read once it
+ * completes: a replaceable kind can emit an older event before a newer one, and
+ * the EventStore has already picked the winner — which also warms the LRU
+ * through `relayListCache`'s store subscription, so the next caller is a sync
+ * hit. Always emits exactly one value, `[]` when nothing could be found.
+ */
+function resolveOutboxRelays(pubkey: string): Observable<string[]> {
+  return from(relayListCache.getOutboxRelays(pubkey)).pipe(
+    catchError(() => of(null)),
+    switchMap((cached) => {
+      if (cached?.length) return of(cached);
+
+      return baseBatchedAddressLoader({ kind: 10002, pubkey }).pipe(
+        // Before `ignoreElements`, so the deadline sees real emissions and is
+        // cancelled by the loader completing on its own.
+        timeout({ first: OUTBOX_RESOLVE_TIMEOUT }),
+        catchError(() => EMPTY),
+        ignoreElements(),
+        // Runs however the lookup settled — found, empty or timed out. A silent
+        // relay is not a failure to route: another subscription may have
+        // delivered the list while we waited.
+        concatWith(defer(() => of(outboxRelaysFor(pubkey)))),
+      );
+    }),
+  );
 }
 
 // Timeline loader factory - creates loader for event feeds

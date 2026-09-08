@@ -35,9 +35,12 @@ export function Kind9735Renderer({ event }: BaseEventProps) {
   const eventPointer = useMemo(() => getZapEventPointer(event), [event]);
   const addressPointer = useMemo(() => getZapAddressPointer(event), [event]);
 
-  // Fetch both events separately
-  const zappedEvent = useNostrEvent(eventPointer || undefined);
-  const zappedAddress = useNostrEvent(addressPointer || undefined);
+  // Fetch both events separately, with the receipt as relay context: its "p"
+  // tag is the zap recipient, i.e. the zapped event's author, whose outbox
+  // routes the lookup. The address branch ignores context — `addressLoader`
+  // takes none.
+  const zappedEvent = useNostrEvent(eventPointer || undefined, event);
+  const zappedAddress = useNostrEvent(addressPointer || undefined, event);
 
   // Format amount (convert from msats to sats)
   const amountInSats = useMemo(() => {

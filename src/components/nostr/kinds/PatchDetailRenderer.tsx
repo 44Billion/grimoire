@@ -232,7 +232,10 @@ export function PatchDetailRenderer({ event }: { event: NostrEvent }) {
           </div>
           {currentStatus.content && (
             <div className="text-sm mt-1">
-              <MarkdownContent content={currentStatus.content} />
+              <MarkdownContent
+                content={currentStatus.content}
+                sourceEvent={currentStatus}
+              />
             </div>
           )}
         </section>

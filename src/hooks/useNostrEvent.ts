@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import type { Observable } from "rxjs";
 import type { EventPointer, AddressPointer } from "nostr-tools/nip19";
 import { useEventStore, use$ } from "applesauce-react/hooks";
 import {
@@ -27,15 +28,55 @@ function isAddressPointer(
 }
 
 /**
- * Unified hook for fetching Nostr events by pointer
- * Supports string ID, EventPointer, and AddressPointer
+ * A loader subscription that reports rather than throws.
+ *
+ * `subscribe()` with no error handler makes an rxjs error an unhandled
+ * exception — and a loader errors for ordinary reasons: every relay refusing
+ * the REQ, a resolve step rejecting. Events land in the EventStore, not in
+ * this callback, so there is nothing to do with a value here either way; an
+ * error and a clean completion are both simply "the load has settled".
+ */
+function subscribeQuietly(
+  loader: Observable<NostrEvent>,
+  label: string,
+  onSettled?: () => void,
+) {
+  return loader.subscribe({
+    complete: () => onSettled?.(),
+    error: (error) => {
+      console.debug(`[${label}] load failed:`, error);
+      onSettled?.();
+    },
+  });
+}
+
+/**
+ * Whether a pointer resolved, is still resolving, or came back empty.
+ *
+ * `"not-found"` is not final in the sense of "give up": the store keeps being
+ * watched, so an event that arrives later from an unrelated subscription flips
+ * it back to `"found"`. It means only that every relay this loader was willing
+ * to ask has answered, which is the difference between "still loading" and a
+ * skeleton that will never fill in.
+ */
+export type NostrEventStatus = "loading" | "found" | "not-found";
+
+/**
+ * Fetch a Nostr event by pointer, and report whether the load has settled.
+ *
+ * `useNostrEvent` below returns only the event, which is `undefined` both
+ * while a load is in flight and after it has exhausted every relay — so a
+ * caller could only ever render a spinner, and an event no relay holds spun
+ * forever. Both hooks share this one implementation rather than layering, so
+ * a caller that wants the status does not pay for a second REQ: nothing in
+ * the loaders deduplicates two concurrent requests for the same id.
+ *
  * @param pointer - string ID, EventPointer, or AddressPointer
  * @param context - Optional context for relay hints:
  *   - string: pubkey of event author (backward compatible)
- *   - NostrEvent: full reply event with r/e/p tags (comprehensive relay selection)
- * @returns Event or undefined
+ *   - NostrEvent: full event with q/r/e/p tags (comprehensive relay selection)
  */
-export function useNostrEvent(
+export function useNostrEventState(
   pointer:
     | string
     | EventPointer
@@ -43,7 +84,7 @@ export function useNostrEvent(
     | { kind: number; pubkey: string; identifier: string }
     | undefined,
   context?: string | NostrEvent,
-): NostrEvent | undefined {
+): { event: NostrEvent | undefined; status: NostrEventStatus } {
   const eventStore = useEventStore();
 
   // Watch event store for the specific event
@@ -69,6 +110,11 @@ export function useNostrEvent(
     return undefined;
   }, [pointer]);
 
+  // The pointer whose load has settled, rather than a boolean an effect would
+  // have to reset — a synchronous setState in an effect body cascades renders,
+  // so the reset is derived below instead of written.
+  const [settledPointer, setSettledPointer] = useState<string | null>(null);
+
   // Trigger event loading with appropriate loader
   // Use JSON.stringify for dependency to handle object changes
   const pointerKey = pointer
@@ -80,24 +126,57 @@ export function useNostrEvent(
   useEffect(() => {
     if (!pointer) return;
 
-    // Handle string ID
-    if (typeof pointer === "string") {
-      const subscription = eventLoader({ id: pointer }, context).subscribe();
-      return () => subscription.unsubscribe();
+    const loader =
+      typeof pointer === "string"
+        ? eventLoader({ id: pointer }, context)
+        : isEventPointer(pointer)
+          ? eventLoader(pointer, context)
+          : isAddressPointer(pointer)
+            ? addressLoader(pointer)
+            : null;
+
+    if (!loader) {
+      console.warn("[useNostrEvent] Unknown pointer type:", pointer);
+      return;
     }
 
-    if (isEventPointer(pointer)) {
-      const subscription = eventLoader(pointer, context).subscribe();
-      return () => subscription.unsubscribe();
-    } else if (isAddressPointer(pointer)) {
-      const subscription = addressLoader(pointer).subscribe();
-      return () => subscription.unsubscribe();
-    } else {
-      console.warn("[useNostrEvent] Unknown pointer type:", pointer);
-    }
+    const subscription = subscribeQuietly(loader, "useNostrEvent", () =>
+      setSettledPointer(pointerKey),
+    );
+    return () => subscription.unsubscribe();
   }, [pointer, pointerKey, context]);
 
-  return event;
+  // A settled flag from the PREVIOUS pointer must not be read as this one's
+  // answer, so the two are compared rather than reset.
+  const loaderSettled =
+    settledPointer !== null && settledPointer === pointerKey;
+
+  return {
+    event,
+    // The store wins: a late arrival from anywhere flips this back to found.
+    status: event ? "found" : loaderSettled ? "not-found" : "loading",
+  };
+}
+
+/**
+ * Unified hook for fetching Nostr events by pointer
+ * Supports string ID, EventPointer, and AddressPointer
+ * @param pointer - string ID, EventPointer, or AddressPointer
+ * @param context - Optional context for relay hints:
+ *   - string: pubkey of event author (backward compatible)
+ *   - NostrEvent: full reply event with r/e/p tags (comprehensive relay selection)
+ * @returns Event or undefined
+ */
+export function useNostrEvent(
+  pointer:
+    | string
+    | EventPointer
+    | AddressPointer
+    | { kind: number; pubkey: string; identifier: string }
+    | undefined,
+  context?: string | NostrEvent,
+): NostrEvent | undefined {
+  return useNostrEventState(pointer, context).event;
 }
 
 /**

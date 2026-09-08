@@ -10,11 +10,18 @@ import { SyntaxHighlight } from "@/components/SyntaxHighlight";
 import { CodeCopyButton } from "@/components/CodeCopyButton";
 import { useCopy } from "@/hooks/useCopy";
 import { useAddWindow } from "@/core/state";
+import type { NostrEvent } from "@/types/nostr";
 
 /**
  * Component to render nostr: mentions inline
  */
-function NostrMention({ href }: { href: string }) {
+function NostrMention({
+  href,
+  sourceEvent,
+}: {
+  href: string;
+  sourceEvent?: NostrEvent;
+}) {
   const addWindow = useAddWindow();
 
   try {
@@ -61,6 +68,7 @@ function NostrMention({ href }: { href: string }) {
         return (
           <EmbeddedEvent
             eventPointer={{ id: parsed.data }}
+            context={sourceEvent}
             onOpen={(id) => {
               addWindow(
                 "open",
@@ -75,6 +83,7 @@ function NostrMention({ href }: { href: string }) {
         return (
           <EmbeddedEvent
             eventPointer={parsed.data}
+            context={sourceEvent}
             onOpen={(id) => {
               addWindow(
                 "open",
@@ -88,6 +97,7 @@ function NostrMention({ href }: { href: string }) {
         return (
           <EmbeddedEvent
             addressPointer={parsed.data}
+            context={sourceEvent}
             onOpen={(pointer) => {
               addWindow(
                 "open",
@@ -153,6 +163,14 @@ export function CodeBlock({
 export interface MarkdownContentProps {
   content: string;
   canonicalUrl?: string | null;
+  /**
+   * The event this markdown came from, for relay selection on `nostr:`
+   * mentions. A mention in a long-form body usually carries no inline relay
+   * hint, while the event itself lists where to look in its "q"/"r"/"e"/"a"
+   * tags — see `eventLoader`. Pass the event whose content is being rendered,
+   * and only a store-stable object: it reaches the loader effect's deps.
+   */
+  sourceEvent?: NostrEvent;
 }
 
 // Stable module-level constants — never recreated between renders
@@ -170,6 +188,7 @@ function urlTransform(url: string) {
 export function MarkdownContent({
   content,
   canonicalUrl = null,
+  sourceEvent,
 }: MarkdownContentProps) {
   const addWindow = useAddWindow();
 
@@ -241,7 +260,7 @@ export function MarkdownContent({
 
         // Render nostr: mentions inline
         if (href.startsWith("nostr:")) {
-          return <NostrMention href={href} />;
+          return <NostrMention href={href} sourceEvent={sourceEvent} />;
         }
 
         // Check if it's a relative NIP link (e.g., "./01.md" or "01.md")
@@ -336,7 +355,7 @@ export function MarkdownContent({
       ),
       hr: () => <hr className="my-4" />,
     }),
-    [resolveUrl, addWindow],
+    [resolveUrl, addWindow, sourceEvent],
   );
 
   return (

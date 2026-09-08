@@ -1,11 +1,13 @@
 import { useState } from "react";
 import type { EventPointer, AddressPointer } from "nostr-tools/nip19";
-import { useNostrEvent } from "@/hooks/useNostrEvent";
+import type { NostrEvent } from "@/types/nostr";
+import { useNostrEventState } from "@/hooks/useNostrEvent";
 import { KindRenderer } from "./kinds";
 import { UserName } from "./UserName";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CompactQuoteSkeleton } from "@/components/ui/skeleton";
+import { EventNotFound } from "./EventNotFound";
 
 interface QuotedEventProps {
   /** EventPointer with optional relay hints for regular events */
@@ -20,6 +22,13 @@ interface QuotedEventProps {
   className?: string;
   /** Hide preview text when collapsed (for sensitive content) */
   hidePreview?: boolean;
+  /**
+   * The event this quote appears in, for relay selection. Its "q"/"r"/"e"/"a"
+   * tags and seen-at relays are often the only hints for the quoted event —
+   * see `eventLoader`. Must be a store-stable object: it sits in the loader
+   * effect's deps, so a fresh spread resubscribes every render.
+   */
+  context?: string | NostrEvent;
 }
 
 /**
@@ -34,6 +43,7 @@ export function QuotedEvent({
   depth = 1,
   className,
   hidePreview = false,
+  context,
 }: QuotedEventProps) {
   const [isExpanded, setIsExpanded] = useState(depth < 2);
 
@@ -41,7 +51,19 @@ export function QuotedEvent({
   const pointer = eventPointer || addressPointer;
 
   // Load the event - passes full pointer with relay hints to useNostrEvent
-  const event = useNostrEvent(pointer);
+  const { event, status } = useNostrEventState(pointer, context);
+
+  // Every relay answered and none had it: say so rather than spinning forever
+  if (status === "not-found") {
+    return (
+      <EventNotFound
+        eventPointer={eventPointer}
+        addressPointer={addressPointer}
+        onOpen={onOpen}
+        className={className}
+      />
+    );
+  }
 
   // Loading state
   if (!event) {

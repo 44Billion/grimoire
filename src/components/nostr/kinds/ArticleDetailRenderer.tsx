@@ -80,7 +80,11 @@ export function Kind30023DetailRenderer({ event }: { event: NostrEvent }) {
       </header>
 
       {/* Article Content - Markdown */}
-      <MarkdownContent content={event.content} canonicalUrl={canonicalUrl} />
+      <MarkdownContent
+        content={event.content}
+        canonicalUrl={canonicalUrl}
+        sourceEvent={event}
+      />
     </div>
   );
 }

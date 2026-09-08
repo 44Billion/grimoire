@@ -123,7 +123,7 @@ export function IssueStatusDetailRenderer({ event }: { event: NostrEvent }) {
       {event.content && (
         <section className="flex flex-col gap-2">
           <h2 className="text-lg font-semibold">Comment</h2>
-          <MarkdownContent content={event.content} />
+          <MarkdownContent content={event.content} sourceEvent={event} />
         </section>
       )}
 

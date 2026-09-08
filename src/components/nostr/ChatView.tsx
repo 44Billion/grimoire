@@ -95,8 +95,10 @@ function ChatMessage({ event }: { event: NostrEvent }) {
 
   return (
     <div className="flex flex-col gap-0.5">
-      {replyToId && <ReplyIndicator eventId={replyToId} />}
-      {quotePointer && <QuoteIndicator pointer={quotePointer} />}
+      {replyToId && <ReplyIndicator eventId={replyToId} context={event} />}
+      {quotePointer && (
+        <QuoteIndicator pointer={quotePointer} context={event} />
+      )}
       <RichText
         className="text-xs leading-tight text-foreground/90"
         event={event}
@@ -111,8 +113,14 @@ function ChatMessage({ event }: { event: NostrEvent }) {
   );
 }
 
-function ReplyIndicator({ eventId }: { eventId: string }) {
-  const replyToEvent = useNostrEvent(eventId);
+function ReplyIndicator({
+  eventId,
+  context,
+}: {
+  eventId: string;
+  context: NostrEvent;
+}) {
+  const replyToEvent = useNostrEvent(eventId, context);
 
   if (!replyToEvent) {
     return null;
@@ -132,11 +140,14 @@ function ReplyIndicator({ eventId }: { eventId: string }) {
 
 function QuoteIndicator({
   pointer,
+  context,
 }: {
   pointer: EventPointer | AddressPointer;
+  context: NostrEvent;
 }) {
-  // Pass the full pointer with relay hints to useNostrEvent
-  const quotedEvent = useNostrEvent(pointer);
+  // Pass the full pointer with relay hints to useNostrEvent, plus the
+  // containing message: a quote's only hint often lives in its "q" tag.
+  const quotedEvent = useNostrEvent(pointer, context);
 
   if (!quotedEvent) {
     return null;

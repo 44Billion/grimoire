@@ -42,7 +42,7 @@ export function IssueStatusRenderer({ event }: BaseEventProps) {
         {/* Optional comment from the status event */}
         {event.content && (
           <div className="text-xs text-muted-foreground line-clamp-2">
-            <MarkdownContent content={event.content} />
+            <MarkdownContent content={event.content} sourceEvent={event} />
           </div>
         )}
 

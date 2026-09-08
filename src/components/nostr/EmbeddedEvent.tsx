@@ -1,7 +1,9 @@
 import type { EventPointer, AddressPointer } from "nostr-tools/nip19";
-import { useNostrEvent } from "@/hooks/useNostrEvent";
+import type { NostrEvent } from "@/types/nostr";
+import { useNostrEventState } from "@/hooks/useNostrEvent";
 import { KindRenderer } from "./kinds";
 import { EventCardSkeleton } from "@/components/ui/skeleton";
+import { EventNotFound } from "./EventNotFound";
 
 interface EmbeddedEventProps {
   /** EventPointer with optional relay hints for regular events */
@@ -14,6 +16,13 @@ interface EmbeddedEventProps {
   loadingFallback?: React.ReactNode;
   /** Optional className for container */
   className?: string;
+  /**
+   * The event this embed appears in, for relay selection. Its "q"/"r"/"e"/"a"
+   * tags and seen-at relays are often the only hints for the embedded event —
+   * see `eventLoader`. Must be a store-stable object: it sits in the loader
+   * effect's deps, so a fresh spread resubscribes every render.
+   */
+  context?: string | NostrEvent;
 }
 
 /**
@@ -27,12 +36,13 @@ export function EmbeddedEvent({
   onOpen,
   loadingFallback,
   className = "my-4 border border-muted rounded overflow-hidden",
+  context,
 }: EmbeddedEventProps) {
   // Determine pointer to use - full pointer preserves relay hints
   const pointer = eventPointer || addressPointer;
 
   // Load the event - passes full pointer with relay hints to useNostrEvent
-  const event = useNostrEvent(pointer);
+  const { event, status } = useNostrEventState(pointer, context);
 
   // If event loaded, render it
   if (event) {
@@ -40,6 +50,18 @@ export function EmbeddedEvent({
       <div className={className}>
         <KindRenderer event={event} />
       </div>
+    );
+  }
+
+  // Every relay answered and none had it. Shown before `loadingFallback`,
+  // which by definition describes a load still in progress.
+  if (status === "not-found") {
+    return (
+      <EventNotFound
+        eventPointer={eventPointer}
+        addressPointer={addressPointer}
+        onOpen={onOpen}
+      />
     );
   }
 

@@ -1,10 +1,11 @@
 import { BaseEventProps, BaseEventContainer } from "./BaseEventRenderer";
 import { Heart, ThumbsUp, ThumbsDown, Flame, Smile } from "lucide-react";
-import { useNostrEvent } from "@/hooks/useNostrEvent";
+import { useNostrEventState } from "@/hooks/useNostrEvent";
 import { useMemo } from "react";
 import { NostrEvent } from "@/types/nostr";
 import { KindRenderer } from "./index";
 import { EventCardSkeleton } from "@/components/ui/skeleton";
+import { EventNotFound } from "../EventNotFound";
 import { parseReplaceableAddress } from "applesauce-core/helpers/pointers";
 import { EMOJI_SHORTCODE_REGEX } from "@/lib/emoji-helpers";
 
@@ -56,10 +57,15 @@ export function Kind7Renderer({ event }: BaseEventProps) {
   const aTag = event.tags.find((tag) => tag[0] === "a");
   const reactedAddress = aTag?.[1]; // Format: kind:pubkey:d-tag
 
-  // Parse a tag coordinate using applesauce helper (renamed in v5)
-  const addressPointer = reactedAddress
-    ? parseReplaceableAddress(reactedAddress)
-    : null;
+  // Parse a tag coordinate using applesauce helper (renamed in v5).
+  // Memoized because it feeds `eventPointer`'s deps: a fresh object every
+  // render busts that memo, and `useNostrEvent` then tears down and reopens
+  // the REQ every render — which for an "a" tag reaction means the load never
+  // reaches EOSE and the embed sits in its skeleton forever.
+  const addressPointer = useMemo(
+    () => (reactedAddress ? parseReplaceableAddress(reactedAddress) : null),
+    [reactedAddress],
+  );
 
   // Create event pointer for fetching
   const eventPointer = useMemo(() => {
@@ -80,8 +86,14 @@ export function Kind7Renderer({ event }: BaseEventProps) {
     return undefined;
   }, [reactedEventId, reactedRelay, addressPointer]);
 
-  // Fetch the reacted event
-  const reactedEvent = useNostrEvent(eventPointer);
+  // Fetch the reacted event. The reaction goes along as relay context: its "e"
+  // tag frequently carries no hint at all, and then the "p" tag author's
+  // outbox — plus the relay that served the reaction — is the only routing
+  // that exists for the note being reacted to.
+  const { event: reactedEvent, status: reactedStatus } = useNostrEventState(
+    eventPointer,
+    event,
+  );
 
   // Map common reactions to icons
   const getReactionIcon = (content: string) => {
@@ -128,8 +140,16 @@ export function Kind7Renderer({ event }: BaseEventProps) {
           </div>
         )}
 
+        {/* No relay had it — a skeleton here would never fill in */}
+        {!reactedEvent && reactedStatus === "not-found" && (
+          <EventNotFound
+            eventPointer={reactedEventId ? { id: reactedEventId } : undefined}
+            addressPointer={addressPointer ?? undefined}
+          />
+        )}
+
         {/* Loading state */}
-        {reactedEventId && !reactedEvent && (
+        {reactedEventId && !reactedEvent && reactedStatus === "loading" && (
           <div className="border border-muted p-2">
             <EventCardSkeleton variant="compact" showActions={false} />
           </div>
