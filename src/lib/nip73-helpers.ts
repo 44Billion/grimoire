@@ -12,6 +12,8 @@
  */
 
 import type { LucideIcon } from "lucide-react";
+
+import { getMempoolTxUrl, isTxid } from "@/lib/mempool";
 import {
   Globe,
   Podcast,
@@ -165,6 +167,17 @@ export function getExternalIdentifierHref(
   iValue: string,
   hint?: string,
 ): string | undefined {
+  // A Bitcoin transaction outranks its own hint. Two reasons: the hint is the
+  // publisher's third tag element, i.e. attacker-controlled text landing in an
+  // `href`, and a txid has exactly one canonical page anyway — whatever
+  // explorer a publisher preferred is not better than the one the rest of the
+  // app links to. The shape check is what keeps arbitrary tag text out of the
+  // URL, the same discipline `payto.ts` applies to itself.
+  if (iValue.startsWith("bitcoin:tx:")) {
+    const txid = iValue.slice("bitcoin:tx:".length);
+    if (isTxid(txid)) return getMempoolTxUrl(txid);
+  }
+
   if (hint) return hint;
   if (iValue.startsWith("http://") || iValue.startsWith("https://"))
     return iValue;

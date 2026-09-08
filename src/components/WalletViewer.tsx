@@ -57,6 +57,7 @@ import {
 import ConnectWalletDialog from "./ConnectWalletDialog";
 import { RelayLink } from "@/components/nostr/RelayLink";
 import { parseZapRequest, getInvoiceDescription } from "@/lib/wallet-utils";
+import { getMempoolUrl } from "@/lib/mempool";
 import { Zap } from "lucide-react";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
 import { KindRenderer } from "./nostr/kinds";
@@ -116,19 +117,6 @@ function isBitcoinTransaction(transaction: Transaction): boolean {
 function extractTxid(preimage: string): string {
   // Remove output index if present (e.g., "txid:0" -> "txid")
   return preimage.split(":")[0];
-}
-
-/**
- * Helper: Get mempool.space URL for a Bitcoin transaction
- */
-function getMempoolUrl(txid: string, network?: string): string {
-  const baseUrl =
-    network === "testnet"
-      ? "https://mempool.space/testnet"
-      : network === "signet"
-        ? "https://mempool.space/signet"
-        : "https://mempool.space";
-  return `${baseUrl}/tx/${txid}`;
 }
 
 /**
