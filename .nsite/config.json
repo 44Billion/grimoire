@@ -1,5 +1,6 @@
 {
   "id": "grimoire",
+  "bunkerPubkey": "90a600fc462329472bf34d645ddb4a41ac3b060c582e0df9ff37881ca0e6fa37",
   "relays": [
     "wss://nostr.wine",
     "wss://nos.lol",
@@ -12,13 +13,7 @@
   ],
   "title": "grimoire",
   "description": "a nostr client for magicians",
-  "publishAppHandler": true,
-  "profile": {
-    "name": "grimoire",
-    "about": "a nostr client for magicians",
-    "picture": "https://grimoire.rocks/favicon.ico",
-    "website": "https://grimoire.rocks"
-  },
+  "publishAppHandler": false,
   "appHandler": {
     "id": "grimoire",
     "kinds": [777, 10777, 30777],
