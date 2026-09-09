@@ -1,15 +1,14 @@
 {
   "id": "grimoire",
   "relays": [
-    "wss://pyramid.fiatjaf.com",
     "wss://nostr.wine",
     "wss://nos.lol",
     "wss://relay.primal.net"
   ],
   "servers": [
     "https://nostr.download",
-    "https://blossom.band",
-    "https://cdn.hzrd149.com"
+    "https://cdn.hzrd149.com",
+    "https://blossom.ditto.pub"
   ],
   "title": "grimoire",
   "description": "a nostr client for magicians",
