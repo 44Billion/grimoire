@@ -377,3 +377,61 @@ describe("groupTagStrategy", () => {
     });
   });
 });
+
+// ===========================================================================
+// Mixed 10777 list: spells ("e") and bookmarked spellbooks ("a") coexist
+// ===========================================================================
+
+describe("mixed e/a list", () => {
+  const tags = [
+    ["e", "spell-1"],
+    ["a", "30777:authorA:my-book"],
+    ["e", "spell-2", "wss://relay.example/"],
+    ["a", "30777:authorB:my-book"],
+    ["client", "grimoire"],
+  ];
+
+  it("removes one spellbook coordinate and leaves every spell", () => {
+    const key = "30777:authorA:my-book";
+    const remaining = tags.filter((t) => !aTagStrategy.matchesKey(t, key));
+
+    expect(remaining).toEqual([
+      ["e", "spell-1"],
+      ["e", "spell-2", "wss://relay.example/"],
+      ["a", "30777:authorB:my-book"],
+      ["client", "grimoire"],
+    ]);
+  });
+
+  it("does not confuse two authors sharing a d tag", () => {
+    expect(
+      aTagStrategy.matchesKey(
+        ["a", "30777:authorB:my-book"],
+        "30777:authorA:my-book",
+      ),
+    ).toBe(false);
+  });
+
+  it("removes one spell and leaves every bookmarked spellbook", () => {
+    const remaining = tags.filter(
+      (t) => !eTagStrategy.matchesKey(t, "spell-1"),
+    );
+
+    expect(remaining.filter((t) => t[0] === "a")).toHaveLength(2);
+    expect(remaining.filter((t) => t[0] === "e")).toEqual([
+      ["e", "spell-2", "wss://relay.example/"],
+    ]);
+  });
+
+  it("keys a coordinate the same whether it came from a tag or an event", () => {
+    const event = makeEvent({
+      kind: 30777,
+      pubkey: "authorA",
+      tags: [["d", "my-book"]],
+    });
+
+    expect(aTagStrategy.getItemKey(event)).toBe(
+      aTagStrategy.keyFromTag(["a", "30777:authorA:my-book"]),
+    );
+  });
+});

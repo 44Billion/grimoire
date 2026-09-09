@@ -39,7 +39,7 @@ import { UserName } from "./nostr/UserName";
 import { useAccount } from "@/hooks/useAccount";
 import { useFavoriteList } from "@/hooks/useFavoriteList";
 import { FAVORITE_LISTS } from "@/config/favorite-lists";
-import { useNostrEvent } from "@/hooks/useNostrEvent";
+import { useNostrEventState } from "@/hooks/useNostrEvent";
 import { Skeleton } from "./ui/skeleton";
 import type { AddressPointer } from "nostr-tools/nip19";
 
@@ -125,10 +125,11 @@ function BookmarkedSpellbookItem({
   selfPubkey?: string;
   isActive: (pubkey: string, slug: string) => boolean;
   onLoad: (spellbook: ParsedSpellbook) => void;
-  onRemove?: (event: SpellbookEvent) => void;
+  onRemove?: (coordinate: string) => void;
   className?: string;
 }) {
-  const event = useNostrEvent(pointer);
+  const { event, status } = useNostrEventState(pointer);
+  const coordinate = `${pointer.kind}:${pointer.pubkey}:${pointer.identifier}`;
 
   const parsed = useMemo(() => {
     if (!event) return null;
@@ -144,7 +145,7 @@ function BookmarkedSpellbookItem({
     }
   }, [event]);
 
-  if (!event) {
+  if (status === "loading") {
     return (
       <div className="flex items-center gap-2 px-3 py-2">
         <Bookmark className="size-3.5 flex-shrink-0 text-muted-foreground" />
@@ -153,7 +154,35 @@ function BookmarkedSpellbookItem({
     );
   }
 
-  if (!parsed) return null;
+  // An entry that cannot be read still has to be removable: without a row of
+  // its own, a book that was deleted — or whose author's relays are all
+  // unreachable — would sit in the list with no way to take it out.
+  if (!event || !parsed) {
+    return (
+      <div className="flex items-start gap-2 px-3 py-2">
+        <Bookmark className="size-3.5 flex-shrink-0 mt-0.5 text-muted-foreground" />
+        <div className="flex-1 min-w-0">
+          <div className="truncate text-sm text-muted-foreground italic">
+            {pointer.identifier || "Untitled Spellbook"}
+          </div>
+          <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <UserName pubkey={pointer.pubkey} />
+            <span className="opacity-50">•</span>
+            <span>{event ? "unreadable" : "not found"}</span>
+          </div>
+        </div>
+        {onRemove && (
+          <button
+            onClick={() => onRemove(coordinate)}
+            className="p-0.5 text-yellow-500 hover:text-muted-foreground transition-colors flex-shrink-0"
+            title="Remove bookmark"
+          >
+            <Bookmark className="size-3.5 fill-current" />
+          </button>
+        )}
+      </div>
+    );
+  }
 
   const active = isActive(event.pubkey, parsed.slug);
 
@@ -183,7 +212,7 @@ function BookmarkedSpellbookItem({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onRemove(event as SpellbookEvent);
+            onRemove(coordinate);
           }}
           className="p-0.5 text-yellow-500 hover:text-muted-foreground transition-colors flex-shrink-0"
           title="Remove bookmark"
@@ -242,7 +271,7 @@ export function SpellbookDropdown() {
   );
 
   // 2b. Bookmarked spellbooks (kind 10777 "a" tags — other people's books)
-  const { items: bookmarkPointers, toggleFavorite: toggleBookmark } =
+  const { items: bookmarkPointers, removeItem: removeBookmark } =
     useFavoriteList(FAVORITE_LISTS[SPELLBOOK_KIND]);
 
   // useFavoriteList types items as the e/a union; the spellbook config is an
@@ -628,7 +657,7 @@ export function SpellbookDropdown() {
                       selfPubkey={activeAccount.pubkey}
                       isActive={isActiveSpellbook}
                       onLoad={handleLoadSpellbook}
-                      onRemove={canSign ? toggleBookmark : undefined}
+                      onRemove={canSign ? removeBookmark : undefined}
                       className={itemClass}
                     />
                   ))}

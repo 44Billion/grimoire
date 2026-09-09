@@ -104,8 +104,14 @@ export function useFavoriteList(config: FavoriteListConfig) {
     [strategy, itemIds],
   );
 
-  const toggleFavorite = useCallback(
-    async (targetEvent: NostrEvent) => {
+  /**
+   * Sign and publish a new revision of the list.
+   *
+   * `rewrite` receives the current tags (deep-copied) and returns the ones to
+   * publish; returning `null` abandons the write without touching the list.
+   */
+  const publishTags = useCallback(
+    async (rewrite: (currentTags: string[][]) => string[][] | null) => {
       if (!canSign || isUpdatingRef.current) return;
 
       const account = accountManager.active;
@@ -117,19 +123,8 @@ export function useFavoriteList(config: FavoriteListConfig) {
         const currentTags = event ? event.tags.map((t) => [...t]) : [];
         const currentContent = event?.content ?? "";
 
-        const itemKey = strategy.getItemKey(targetEvent);
-        if (!itemKey) return;
-
-        const alreadyFavorited = currentTags.some((t) =>
-          strategy.matchesKey(t, itemKey),
-        );
-
-        let newTags: string[][];
-        if (alreadyFavorited) {
-          newTags = currentTags.filter((t) => !strategy.matchesKey(t, itemKey));
-        } else {
-          newTags = [...currentTags, strategy.buildTag(targetEvent)];
-        }
+        let newTags = rewrite(currentTags);
+        if (!newTags) return;
 
         if (settingsManager.getSetting("post", "includeClientTag")) {
           newTags = newTags.filter((t) => t[0] !== "client");
@@ -145,7 +140,7 @@ export function useFavoriteList(config: FavoriteListConfig) {
         await publishEvent(signed);
       } catch (err) {
         console.error(
-          `[useFavoriteList] Failed to toggle favorite (list kind ${config.listKind}):`,
+          `[useFavoriteList] Failed to update list (kind ${config.listKind}):`,
           err,
         );
       } finally {
@@ -153,7 +148,45 @@ export function useFavoriteList(config: FavoriteListConfig) {
         setIsUpdating(false);
       }
     },
-    [canSign, config, event, strategy],
+    [canSign, config, event],
+  );
+
+  const toggleFavorite = useCallback(
+    async (targetEvent: NostrEvent) => {
+      await publishTags((currentTags) => {
+        const itemKey = strategy.getItemKey(targetEvent);
+        if (!itemKey) return null;
+
+        const alreadyFavorited = currentTags.some((t) =>
+          strategy.matchesKey(t, itemKey),
+        );
+
+        return alreadyFavorited
+          ? currentTags.filter((t) => !strategy.matchesKey(t, itemKey))
+          : [...currentTags, strategy.buildTag(targetEvent)];
+      });
+    },
+    [publishTags, strategy],
+  );
+
+  /**
+   * Remove an entry by its identity key, with no event in hand.
+   *
+   * `toggleFavorite` needs the target event to derive the key, which a caller
+   * cannot supply for an entry that no longer resolves — a deleted item, or
+   * one whose author's relays are unreachable. Without this, such an entry is
+   * stuck in the list with no way to remove it from the UI.
+   */
+  const removeItem = useCallback(
+    async (itemKey: string) => {
+      if (!itemKey) return;
+      await publishTags((currentTags) => {
+        if (!currentTags.some((t) => strategy.matchesKey(t, itemKey)))
+          return null;
+        return currentTags.filter((t) => !strategy.matchesKey(t, itemKey));
+      });
+    },
+    [publishTags, strategy],
   );
 
   return {
@@ -161,6 +194,7 @@ export function useFavoriteList(config: FavoriteListConfig) {
     itemIds,
     isFavorite,
     toggleFavorite,
+    removeItem,
     isUpdating,
     event,
   };

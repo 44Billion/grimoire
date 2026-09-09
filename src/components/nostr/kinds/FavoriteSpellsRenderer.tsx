@@ -5,7 +5,7 @@ import {
   BaseEventContainer,
   ClickableEventTitle,
 } from "./BaseEventRenderer";
-import { useNostrEvent } from "@/hooks/useNostrEvent";
+import { useNostrEvent, useNostrEventState } from "@/hooks/useNostrEvent";
 import { useFavoriteList, getListPointers } from "@/hooks/useFavoriteList";
 import { FAVORITE_LISTS } from "@/config/favorite-lists";
 import { SPELL_KIND, SPELLBOOK_KIND } from "@/constants/kinds";
@@ -159,10 +159,11 @@ function SpellbookRefItem({
   canModify,
 }: {
   pointer: AddressPointer;
-  onUnbookmark?: (event: NostrEvent) => void;
+  onUnbookmark?: (coordinate: string) => void;
   canModify: boolean;
 }) {
-  const spellbookEvent = useNostrEvent(pointer);
+  const { event: spellbookEvent, status } = useNostrEventState(pointer);
+  const coordinate = `${pointer.kind}:${pointer.pubkey}:${pointer.identifier}`;
   const { loadSpellbook } = useGrimoire();
 
   const parsed = useMemo(() => {
@@ -175,7 +176,9 @@ function SpellbookRefItem({
     }
   }, [spellbookEvent]);
 
-  if (!spellbookEvent) {
+  // Only while the load is in flight. A pointer that resolved to nothing falls
+  // through to the row below, so the bookmark stays removable.
+  if (status === "loading") {
     return (
       <div className="flex items-center gap-3 p-3 border border-border/50 rounded">
         <Skeleton className="h-4 w-4 rounded" />
@@ -196,7 +199,9 @@ function SpellbookRefItem({
         </div>
         <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
           <UserName pubkey={pointer.pubkey} />
-          {!parsed && <span>· could not be read</span>}
+          {!parsed && (
+            <span>· {spellbookEvent ? "could not be read" : "not found"}</span>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-1 flex-shrink-0">
@@ -214,7 +219,7 @@ function SpellbookRefItem({
         )}
         {canModify && onUnbookmark && (
           <button
-            onClick={() => onUnbookmark(spellbookEvent)}
+            onClick={() => onUnbookmark(coordinate)}
             className="p-1.5 text-muted-foreground hover:text-yellow-500 transition-colors"
             title="Remove bookmark"
           >
@@ -232,7 +237,7 @@ function SpellbookRefItem({
 export function FavoriteSpellsDetailRenderer({ event }: { event: NostrEvent }) {
   const { canSign } = useAccount();
   const { toggleFavorite } = useFavoriteList(FAVORITE_LISTS[SPELL_KIND]);
-  const { toggleFavorite: toggleBookmark } = useFavoriteList(
+  const { removeItem: removeBookmark } = useFavoriteList(
     FAVORITE_LISTS[SPELLBOOK_KIND],
   );
 
@@ -277,7 +282,7 @@ export function FavoriteSpellsDetailRenderer({ event }: { event: NostrEvent }) {
             <SpellbookRefItem
               key={`${pointer.kind}:${pointer.pubkey}:${pointer.identifier}`}
               pointer={pointer}
-              onUnbookmark={canSign ? toggleBookmark : undefined}
+              onUnbookmark={canSign ? removeBookmark : undefined}
               canModify={canSign}
             />
           ))}
