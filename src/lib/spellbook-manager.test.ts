@@ -243,9 +243,55 @@ describe("Spellbook Manager", () => {
         "Failed to parse spellbook content",
       );
     });
+
+    // Anyone can publish a kind 30777. Content that is valid JSON but the
+    // wrong shape used to survive parseSpellbook and then throw during render.
+    it.each([
+      ["no workspaces or windows", '{"version":1}'],
+      ["empty object", "{}"],
+      ["a JSON string", '"hello"'],
+      ["a JSON number", "42"],
+      ["null", "null"],
+      ["null workspaces", '{"version":1,"workspaces":null,"windows":{}}'],
+      ["an array for windows", '{"version":1,"workspaces":{},"windows":[]}'],
+    ])("rejects content that is %s", (_label, content) => {
+      const event = {
+        kind: SPELLBOOK_KIND,
+        content,
+        tags: [],
+      } as any;
+
+      expect(() => parseSpellbook(event)).toThrow(
+        "Failed to parse spellbook content",
+      );
+    });
+
+    it("accepts content with empty but present workspaces and windows", () => {
+      const event = {
+        kind: SPELLBOOK_KIND,
+        content: '{"version":1,"workspaces":{},"windows":{}}',
+        tags: [["d", "empty"]],
+      } as any;
+
+      expect(parseSpellbook(event).slug).toBe("empty");
+    });
   });
 
   describe("loadSpellbook", () => {
+    it("does not throw on malformed content from a stale local row", () => {
+      const parsed = {
+        slug: "broken",
+        title: "Broken",
+        content: {} as any,
+        referencedSpells: [],
+      };
+
+      const newState = loadSpellbook(mockState, parsed);
+
+      expect(Object.keys(newState.workspaces)).toHaveLength(0);
+      expect(Object.keys(newState.windows)).toHaveLength(0);
+    });
+
     it("replaces all workspaces with imported ones and regenerates IDs", () => {
       const spellbookContent = {
         version: 1,

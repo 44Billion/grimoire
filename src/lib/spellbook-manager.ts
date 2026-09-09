@@ -159,6 +159,28 @@ export function createSpellbook(
   };
 }
 
+/** A plain object, not null and not an array */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Narrows untrusted parsed JSON to a SpellbookContent.
+ *
+ * Only checks the two maps that every consumer walks unconditionally
+ * (`workspaces`, `windows`) — the individual entries stay best-effort so an
+ * older or newer schema still loads.
+ */
+export function isSpellbookContent(
+  content: unknown,
+): content is SpellbookContent {
+  return (
+    isRecord(content) &&
+    isRecord(content.workspaces) &&
+    isRecord(content.windows)
+  );
+}
+
 /**
  * Parses a Spellbook event
  */
@@ -168,6 +190,15 @@ export function parseSpellbook(event: SpellbookEvent): ParsedSpellbook {
     content = JSON.parse(event.content);
   } catch (_e) {
     throw new Error("Failed to parse spellbook content: Invalid JSON");
+  }
+
+  // Anyone can publish a kind 30777, so the content shape is untrusted. Reject
+  // it here — every caller wraps parseSpellbook in a try/catch, so a book that
+  // gets past this point would instead throw during render.
+  if (!isSpellbookContent(content)) {
+    throw new Error(
+      "Failed to parse spellbook content: missing workspaces or windows",
+    );
   }
 
   // Validate version (basic check)
@@ -304,7 +335,14 @@ export function loadSpellbook(
   state: GrimoireState,
   spellbook: ParsedSpellbook,
 ): GrimoireState {
-  const { workspaces, windows } = spellbook.content;
+  // A book from a stale Dexie row never went through parseSpellbook, so its
+  // content shape is no more trustworthy than a network event's.
+  const workspaces = isRecord(spellbook.content?.workspaces)
+    ? spellbook.content.workspaces
+    : {};
+  const windows = isRecord(spellbook.content?.windows)
+    ? spellbook.content.windows
+    : {};
 
   // Maps to track old -> new IDs
   const workspaceIdMap = new Map<string, string>();

@@ -70,8 +70,12 @@ function SpellbookCard({
   const [isDeleting, setIsDeleting] = useState(false);
   const displayName = spellbook.title || "Untitled Spellbook";
 
-  const workspaceCount = Object.keys(spellbook.content.workspaces).length;
-  const windowCount = Object.keys(spellbook.content.windows).length;
+  // Defensive: a row restored from Dexie never went through parseSpellbook, so
+  // its content shape is not guaranteed.
+  const workspaceCount = Object.keys(
+    spellbook.content?.workspaces ?? {},
+  ).length;
+  const windowCount = Object.keys(spellbook.content?.windows ?? {}).length;
 
   // Get author pubkey from event if available
   const authorPubkey = spellbook.event?.pubkey;
@@ -292,7 +296,10 @@ export function SpellbooksViewer() {
     useReqTimeline(
       filterType === "discover" ? "discover-spellbooks" : "none",
       filterType === "discover" ? { kinds: [SPELLBOOK_KIND], limit: 50 } : [],
-      FALLBACK_RELAYS,
+      // Relays must go empty too when disabled — useReqTimeline only
+      // short-circuits on an empty relay list, so a non-empty one here would
+      // subscribe with zero filters on every other tab.
+      filterType === "discover" ? FALLBACK_RELAYS : [],
       { stream: true },
     );
 
@@ -441,9 +448,16 @@ export function SpellbooksViewer() {
   };
 
   const handleApply = (spellbook: ParsedSpellbook) => {
+    const workspaceCount = Object.keys(
+      spellbook.content?.workspaces ?? {},
+    ).length;
+    if (workspaceCount === 0) {
+      toast.error("This spellbook has no workspaces to load");
+      return;
+    }
     loadSpellbook(spellbook);
     toast.success("Spellbook loaded", {
-      description: `Loaded ${Object.keys(spellbook.content.workspaces).length} workspaces.`,
+      description: `Loaded ${workspaceCount} workspaces.`,
     });
   };
 
