@@ -13,6 +13,7 @@
   ],
   "title": "grimoire",
   "description": "a nostr client for magicians",
+  "fallback": "/index.html",
   "publishAppHandler": false,
   "appHandler": {
     "id": "grimoire",
