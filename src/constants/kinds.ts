@@ -1072,7 +1072,8 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
   10777: {
     kind: 10777,
     name: "Favorite Spells",
-    description: "User's favorite spells list",
+    description:
+      'User\'s favorite spells ("e" tags) and bookmarked spellbooks ("a" tags)',
     nip: "",
     icon: WandSparkles,
   },

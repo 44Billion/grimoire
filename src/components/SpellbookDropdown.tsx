@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   BookHeart,
+  Bookmark,
   Check,
   ChevronDown,
   Cloud,
@@ -35,6 +36,12 @@ import { cn } from "@/lib/utils";
 import { SaveSpellbookDialog } from "./SaveSpellbookDialog";
 import { toast } from "sonner";
 import { UserName } from "./nostr/UserName";
+import { useAccount } from "@/hooks/useAccount";
+import { useFavoriteList } from "@/hooks/useFavoriteList";
+import { FAVORITE_LISTS } from "@/config/favorite-lists";
+import { useNostrEvent } from "@/hooks/useNostrEvent";
+import { Skeleton } from "./ui/skeleton";
+import type { AddressPointer } from "nostr-tools/nip19";
 
 /**
  * Status indicator component for spellbook state
@@ -99,6 +106,95 @@ function SpellbookStatus({
   );
 }
 
+/**
+ * One bookmarked spellbook, resolved from its "a" tag coordinate.
+ *
+ * Bookmarks point at other people's books, so they cannot come from the
+ * author-scoped timeline above — each row loads its own address pointer
+ * through the address loader, which routes by the author's outbox.
+ */
+function BookmarkedSpellbookItem({
+  pointer,
+  selfPubkey,
+  isActive,
+  onLoad,
+  onRemove,
+  className,
+}: {
+  pointer: AddressPointer;
+  selfPubkey?: string;
+  isActive: (pubkey: string, slug: string) => boolean;
+  onLoad: (spellbook: ParsedSpellbook) => void;
+  onRemove?: (event: SpellbookEvent) => void;
+  className?: string;
+}) {
+  const event = useNostrEvent(pointer);
+
+  const parsed = useMemo(() => {
+    if (!event) return null;
+    try {
+      return {
+        ...parseSpellbook(event as SpellbookEvent),
+        isPublished: true,
+        source: "network" as const,
+      };
+    } catch {
+      // A malformed book stays out of the list rather than crashing it
+      return null;
+    }
+  }, [event]);
+
+  if (!event) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2">
+        <Bookmark className="size-3.5 flex-shrink-0 text-muted-foreground" />
+        <Skeleton className="h-4 flex-1" />
+      </div>
+    );
+  }
+
+  if (!parsed) return null;
+
+  const active = isActive(event.pubkey, parsed.slug);
+
+  return (
+    <DropdownMenuItem
+      disabled={active}
+      onClick={() => onLoad(parsed)}
+      className={cn(className, "flex items-start gap-2", active && "bg-muted")}
+    >
+      <Bookmark
+        className={cn(
+          "size-3.5 flex-shrink-0 mt-0.5 text-muted-foreground",
+          active && "text-foreground",
+        )}
+      />
+      <div className="flex-1 min-w-0">
+        <div className={cn("truncate text-sm", active && "font-medium")}>
+          {parsed.title}
+        </div>
+        <SpellbookStatus
+          owner={event.pubkey}
+          isOwner={event.pubkey === selfPubkey}
+          isPublished
+        />
+      </div>
+      {onRemove && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove(event as SpellbookEvent);
+          }}
+          className="p-0.5 text-yellow-500 hover:text-muted-foreground transition-colors flex-shrink-0"
+          title="Remove bookmark"
+        >
+          <Bookmark className="size-3.5 fill-current" />
+        </button>
+      )}
+    </DropdownMenuItem>
+  );
+}
+
 export function SpellbookDropdown() {
   const {
     state,
@@ -111,6 +207,7 @@ export function SpellbookDropdown() {
   } = useGrimoire();
   const location = useLocation();
   const navigate = useNavigate();
+  const { canSign } = useAccount();
   const activeAccount = state.activeAccount;
   const activeSpellbook = state.activeSpellbook;
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -142,6 +239,21 @@ export function SpellbookDropdown() {
       : [],
     activeAccount?.relays?.map((r) => r.url) || [],
     { stream: true },
+  );
+
+  // 2b. Bookmarked spellbooks (kind 10777 "a" tags — other people's books)
+  const { items: bookmarkPointers, toggleFavorite: toggleBookmark } =
+    useFavoriteList(FAVORITE_LISTS[SPELLBOOK_KIND]);
+
+  // useFavoriteList types items as the e/a union; the spellbook config is an
+  // "a" list, so narrow to the coordinates that name a spellbook.
+  const bookmarks = useMemo(
+    () =>
+      bookmarkPointers.filter(
+        (p): p is AddressPointer =>
+          "identifier" in p && p.kind === SPELLBOOK_KIND && !!p.pubkey,
+      ),
+    [bookmarkPointers],
   );
 
   // 3. Process Spellbooks
@@ -189,6 +301,22 @@ export function SpellbookDropdown() {
       a.title.localeCompare(b.title),
     );
   }, [localSpellbooks, networkEvents, activeAccount]);
+
+  /**
+   * A slug alone is not an identity: two authors can publish the same "d" tag,
+   * and bookmarks bring foreign books into this menu. Compare author + slug,
+   * treating a missing pubkey (an unpublished local book) as the active account.
+   */
+  const isActiveSpellbook = useCallback(
+    (pubkey: string | undefined, slug: string) => {
+      if (!activeSpellbook || activeSpellbook.slug !== slug) return false;
+      return (
+        (activeSpellbook.pubkey ?? activeAccount?.pubkey) ===
+        (pubkey ?? activeAccount?.pubkey)
+      );
+    },
+    [activeSpellbook, activeAccount],
+  );
 
   const owner = activeSpellbook?.pubkey;
   // Derived states for clearer UX
@@ -443,7 +571,7 @@ export function SpellbookDropdown() {
                 </div>
               ) : (
                 spellbooks.map((sb) => {
-                  const isActive = activeSpellbook?.slug === sb.slug;
+                  const isActive = isActiveSpellbook(sb.event?.pubkey, sb.slug);
                   return (
                     <DropdownMenuItem
                       key={sb.slug}
@@ -484,6 +612,27 @@ export function SpellbookDropdown() {
                     </DropdownMenuItem>
                   );
                 })
+              )}
+
+              {/* Bookmarked Spellbooks (others' books, from the 10777 list) */}
+              {bookmarks.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="flex items-center justify-between py-1 px-3 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
+                    Bookmarked
+                  </DropdownMenuLabel>
+                  {bookmarks.map((pointer) => (
+                    <BookmarkedSpellbookItem
+                      key={`${pointer.kind}:${pointer.pubkey}:${pointer.identifier}`}
+                      pointer={pointer}
+                      selfPubkey={activeAccount.pubkey}
+                      isActive={isActiveSpellbook}
+                      onLoad={handleLoadSpellbook}
+                      onRemove={canSign ? toggleBookmark : undefined}
+                      className={itemClass}
+                    />
+                  ))}
+                </>
               )}
 
               <DropdownMenuSeparator />

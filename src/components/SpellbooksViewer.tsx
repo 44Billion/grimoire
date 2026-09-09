@@ -13,6 +13,7 @@ import {
   ExternalLink,
   Globe,
   User,
+  Bookmark,
 } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import db from "@/services/db";
@@ -43,6 +44,9 @@ import { parseSpellbook } from "@/lib/spellbook-manager";
 import type { SpellbookEvent, ParsedSpellbook } from "@/types/spell";
 import { SPELLBOOK_KIND } from "@/constants/kinds";
 import { UserName } from "./nostr/UserName";
+import { useFavoriteList } from "@/hooks/useFavoriteList";
+import { FAVORITE_LISTS } from "@/config/favorite-lists";
+import { useAccount } from "@/hooks/useAccount";
 import { FALLBACK_RELAYS } from "@/services/loaders";
 import { lastValueFrom } from "rxjs";
 import { nip19 } from "nostr-tools";
@@ -55,6 +59,10 @@ interface SpellbookCardProps {
   onApply: (spellbook: ParsedSpellbook) => void;
   showAuthor?: boolean;
   isOwner?: boolean;
+  /** Undefined when the book cannot be bookmarked (local-only, or no signer) */
+  isBookmarked?: boolean;
+  onToggleBookmark?: (event: SpellbookEvent) => void;
+  bookmarkPending?: boolean;
 }
 
 function SpellbookCard({
@@ -64,6 +72,9 @@ function SpellbookCard({
   onApply,
   showAuthor = false,
   isOwner = true,
+  isBookmarked,
+  onToggleBookmark,
+  bookmarkPending = false,
 }: SpellbookCardProps) {
   const { state, addWindow } = useGrimoire();
   const [isPublishing, setIsPublishing] = useState(false);
@@ -162,22 +173,47 @@ function SpellbookCard({
               {displayName}
             </CardTitle>
           </div>
-          {spellbook.deletedAt ? (
-            <Badge variant="outline" className="text-muted-foreground">
-              <Archive className="size-3 mr-1" />
-            </Badge>
-          ) : spellbook.isPublished ? (
-            <Badge
-              variant="secondary"
-              className="bg-green-500/10 text-green-500 hover:bg-green-500/20 border-green-500/20"
-            >
-              <Cloud className="size-3 mr-1" />
-            </Badge>
-          ) : (
-            <Badge variant="secondary" className="opacity-70">
-              <Lock className="size-3 mr-1" />
-            </Badge>
-          )}
+          <div className="flex items-center gap-1">
+            {onToggleBookmark && spellbook.event && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="size-7 p-0"
+                onClick={() =>
+                  onToggleBookmark(spellbook.event as SpellbookEvent)
+                }
+                disabled={bookmarkPending}
+                title={
+                  isBookmarked ? "Remove bookmark" : "Bookmark this spellbook"
+                }
+              >
+                <Bookmark
+                  className={cn(
+                    "size-4",
+                    isBookmarked
+                      ? "fill-yellow-500 text-yellow-500"
+                      : "text-muted-foreground",
+                  )}
+                />
+              </Button>
+            )}
+            {spellbook.deletedAt ? (
+              <Badge variant="outline" className="text-muted-foreground">
+                <Archive className="size-3 mr-1" />
+              </Badge>
+            ) : spellbook.isPublished ? (
+              <Badge
+                variant="secondary"
+                className="bg-green-500/10 text-green-500 hover:bg-green-500/20 border-green-500/20"
+              >
+                <Cloud className="size-3 mr-1" />
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="opacity-70">
+                <Lock className="size-3 mr-1" />
+              </Badge>
+            )}
+          </div>
         </div>
         {spellbook.description && (
           <CardDescription className="text-sm line-clamp-2">
@@ -268,10 +304,19 @@ function SpellbookCard({
 
 export function SpellbooksViewer() {
   const { state, loadSpellbook } = useGrimoire();
+  const { canSign } = useAccount();
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<
     "all" | "local" | "published" | "discover"
   >("all");
+
+  // One subscription for the whole grid — the cards receive the result as props
+  // rather than each opening its own.
+  const {
+    isFavorite: isBookmarked,
+    toggleFavorite: toggleBookmark,
+    isUpdating: bookmarkPending,
+  } = useFavoriteList(FAVORITE_LISTS[SPELLBOOK_KIND]);
 
   // Load local spellbooks from Dexie
   const localSpellbooks = useLiveQuery(() =>
@@ -549,6 +594,9 @@ export function SpellbooksViewer() {
                   onApply={handleApply}
                   showAuthor={showAuthor}
                   isOwner={isOwner}
+                  isBookmarked={s.event ? isBookmarked(s.event) : false}
+                  onToggleBookmark={canSign ? toggleBookmark : undefined}
+                  bookmarkPending={bookmarkPending}
                 />
               );
             })}

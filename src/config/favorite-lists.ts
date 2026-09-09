@@ -1,4 +1,4 @@
-import { SPELL_KIND, SCROLL_KIND } from "@/constants/kinds";
+import { SPELL_KIND, SCROLL_KIND, SPELLBOOK_KIND } from "@/constants/kinds";
 import type { TagStrategy } from "@/lib/favorite-tag-strategies";
 import { groupTagStrategy } from "@/lib/favorite-tag-strategies";
 
@@ -25,6 +25,14 @@ export const FAVORITE_LISTS: Record<number, FavoriteListConfig> = {
     listKind: 10777,
     elementKind: SPELL_KIND,
     label: "Favorite Spells",
+  },
+  // Shares list kind 10777 with spells: spells are non-addressable ("e" tags)
+  // and spellbooks are addressable ("a" tags), so the two halves of the list
+  // never collide and useFavoriteList reads each by tag name.
+  [SPELLBOOK_KIND]: {
+    listKind: 10777,
+    elementKind: SPELLBOOK_KIND,
+    label: "Bookmarked Spellbooks",
   },
   30617: {
     listKind: 10018,
