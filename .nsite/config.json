@@ -4,7 +4,8 @@
   "relays": [
     "wss://nostr.wine",
     "wss://nos.lol",
-    "wss://relay.primal.net"
+    "wss://relay.primal.net",
+    "wss://relay.ditto.pub"
   ],
   "servers": [
     "https://nostr.download",
