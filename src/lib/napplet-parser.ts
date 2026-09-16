@@ -35,7 +35,7 @@ export interface ParsedAppCommand {
  * An nevent pointer carries an optional `kind`, so `"kind" in pointer` is not a
  * discriminant. Only an address pointer lacks an `id`.
  */
-function isAddressPointer(
+export function isAddressPointer(
   pointer: EventPointer | AddressPointer,
 ): pointer is AddressPointer {
   return !("id" in pointer);

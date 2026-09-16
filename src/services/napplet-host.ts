@@ -98,12 +98,17 @@ import relayListCache from "./relay-list-cache";
 import { FALLBACK_RELAYS } from "./loaders";
 import { getProfileContent } from "applesauce-core/helpers";
 import { selectRelaysForFilter, fetchRelayList } from "./relay-selection";
-import { requestEvent, streamWithEose } from "@/lib/relay-subscription";
+import {
+  requestEvent,
+  requestEvents,
+  streamWithEose,
+} from "@/lib/relay-subscription";
 import { normalizeRelayURL } from "@/lib/relay-url";
 import {
   buildManifestFilter,
   getPointerRelays,
   assertManifestEvent,
+  isAddressPointer,
   NappletLookupError,
 } from "@/lib/napplet-parser";
 import type { AddressPointer, EventPointer } from "@/lib/open-parser";
@@ -737,26 +742,50 @@ if (import.meta.hot) {
 /**
  * Fetch the manifest event a pointer names.
  *
- * Uses `requestEvent` (one-shot, first match wins, hard-bounded) rather than
+ * Uses `requestEvent`/`requestEvents` (one-shot, hard-bounded) rather than
  * `pool.subscription()` — v6 pool subscriptions never emit EOSE, so there is no
  * completion signal to wait on. The event lands in the shared EventStore, which
  * is where the window title and kind renderers read it from.
+ *
+ * Two pointers, two rules. An id names an immutable event, so a copy already
+ * in the store is the answer and no relay is asked. An address names a
+ * *replaceable* one — a root site (15128) or a named site (35128) — and the
+ * store's copy is only what was newest the last time anybody looked. The
+ * store is hydrated from Dexie, so returning it here served a month-old
+ * root site indefinitely to a reader whose relays all held the redeploy. So
+ * for an address the relays are asked every time, everything they hold is
+ * collected, and the newest `created_at` wins — against the store copy too,
+ * which is what a relay that has fallen behind would otherwise beat.
  */
 export async function fetchManifestEvent(
   pointer: EventPointer | AddressPointer,
 ): Promise<NostrEvent> {
   const filter = buildManifestFilter(pointer);
+  const replaceable = isAddressPointer(pointer);
 
   const inStore = defaultEventStore.getTimeline(filter)?.[0];
-  if (inStore) return assertManifestEvent(inStore, pointer);
+  if (inStore && !replaceable) return assertManifestEvent(inStore, pointer);
 
   const selection = await selectRelaysForFilter(defaultEventStore, filter);
   const relays = [
     ...new Set([...getPointerRelays(pointer), ...selection.relays]),
   ];
 
-  const event = await requestEvent(relays, filter);
-  if (event) return assertManifestEvent(event, pointer);
+  if (replaceable) {
+    // `limit: 1` in the filter is per relay; several relays answer with their
+    // own newest, and a stale one answering first must not win.
+    const candidates = await requestEvents(relays, [filter]);
+    const newest = [...candidates, ...(inStore ? [inStore] : [])].reduce<
+      NostrEvent | undefined
+    >(
+      (best, e) => (!best || e.created_at > best.created_at ? e : best),
+      undefined,
+    );
+    if (newest) return assertManifestEvent(newest, pointer);
+  } else {
+    const event = await requestEvent(relays, filter);
+    if (event) return assertManifestEvent(event, pointer);
+  }
 
   // Relays can simply not answer — slow, offline, or the event has aged out of
   // their retention. A previously verified copy is a better answer than a dead
