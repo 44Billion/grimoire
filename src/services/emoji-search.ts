@@ -2,12 +2,15 @@ import { Index } from "flexsearch";
 import type { NostrEvent } from "nostr-tools";
 import type { IEventStore } from "applesauce-core/event-store";
 import type { Subscription } from "rxjs";
-import { firstValueFrom } from "rxjs";
-import { filter, timeout } from "rxjs/operators";
 import { getEmojiTags } from "@/lib/emoji-helpers";
 import { UNICODE_EMOJIS, EMOJI_KEYWORDS } from "@/lib/unicode-emojis";
 import { emojiSetCache } from "./emoji-set-cache";
 import { getRecentEmojiKeys } from "./emoji-usage";
+import { addressLoader } from "./loaders";
+import { fetchRelayList } from "./relay-selection";
+
+/** How long to wait for a set author's relay list before asking without it. */
+const RELAY_LIST_TIMEOUT_MS = 5_000;
 
 export interface EmojiSearchResult {
   shortcode: string;
@@ -22,9 +25,11 @@ export class EmojiSearchService {
   private index: Index;
   private emojis: Map<string, EmojiSearchResult>;
 
-  // Subscription management — only one open sub (kind 10030)
+  // Subscription management: one relay-backed sub (kind 10030) and one
+  // *store* sub per referenced set — those open no socket; they are how a
+  // set that arrives late, from anywhere, still reaches the index.
   private userListSub: Subscription | null = null;
-  private trackedSetAddresses = new Set<string>();
+  private setSubs = new Map<string, Subscription>();
   private currentPubkey: string | null = null;
   private eventStore: IEventStore | null = null;
 
@@ -180,8 +185,8 @@ export class EmojiSearchService {
 
   /**
    * Subscribe to EventStore for live emoji updates.
-   * Only keeps one open subscription (kind 10030 user emoji list).
-   * Referenced emoji sets are fetched once when the list changes.
+   * One relay-backed subscription (the kind 10030 list); every set it names
+   * gets a store subscription and one outbox-aware fetch.
    */
   subscribeForUser(pubkey: string, eventStore: IEventStore): void {
     if (this.currentPubkey === pubkey) return;
@@ -200,21 +205,26 @@ export class EmojiSearchService {
         this.addUserEmojiList(event);
         emojiSetCache.setUserEmojiList(event);
 
-        // Diff "a" tags to incrementally fetch new emoji sets
-        const newAddresses = new Set(
-          event.tags
-            .filter((t) => t[0] === "a" && t[1]?.startsWith("30030:"))
-            .map((t) => t[1]),
-        );
-
-        // Fetch only newly-referenced sets (one-shot, no persistent sub)
-        for (const address of newAddresses) {
-          if (!this.trackedSetAddresses.has(address)) {
-            this.fetchEmojiSet(address);
+        // The sets the list names, with the relay hint NIP-51 lets an `a`
+        // tag carry — half of a real list has one, and it is the one relay
+        // known to hold that set.
+        const named = new Map<string, string | undefined>();
+        for (const t of event.tags) {
+          if (t[0] === "a" && t[1]?.startsWith("30030:")) {
+            named.set(t[1], t[2] || undefined);
           }
         }
 
-        this.trackedSetAddresses = newAddresses;
+        // Watch the sets newly named; stop watching the ones dropped.
+        for (const [address, hint] of named) {
+          if (!this.setSubs.has(address)) this.watchEmojiSet(address, hint);
+        }
+        for (const [address, sub] of this.setSubs) {
+          if (!named.has(address)) {
+            sub.unsubscribe();
+            this.setSubs.delete(address);
+          }
+        }
       },
       error: (error) => {
         console.error("[EmojiSearch] Failed to load user emoji list:", error);
@@ -223,35 +233,70 @@ export class EmojiSearchService {
   }
 
   /**
-   * One-shot fetch of an emoji set by address coordinate.
-   * Loads from EventStore (which triggers the address loader if missing),
-   * indexes the emojis, and caches to Dexie. No persistent subscription.
+   * Index an emoji set whenever the store has it, and ask for it once.
+   *
+   * This used to be a single `firstValueFrom` on the store with a 15s
+   * timeout, resolved through the store's own loader. Three things made that
+   * miss on a real list and then never recover: the store loader asks the
+   * indexers and the content fallback, and an emoji set lives on its
+   * author's relays — measured on a live list, zero of eight sets on the
+   * indexers; the `a` tag's relay hint was never read; and after the
+   * timeout the address stayed "tracked", so an explicit `req` that landed
+   * the set a minute later was indexed by nothing.
+   *
+   * So: the store subscription stays open — it costs no socket, and a set
+   * arriving from any later request is indexed the moment it lands — and the
+   * fetch goes through `addressLoader`, which follows the hint and the
+   * author's outbox. Where neither is known yet, the author's relay list is
+   * resolved first, bounded, so the outbox step has something to use.
    */
-  private async fetchEmojiSet(address: string): Promise<void> {
+  private watchEmojiSet(address: string, hint?: string): void {
     if (!this.eventStore) return;
 
     const parts = address.split(":");
     if (parts.length < 3) return;
+    const kind = parseInt(parts[0], 10);
+    const setPubkey = parts[1];
+    const identifier = parts.slice(2).join(":");
+    if (!kind || !setPubkey) return;
 
-    const [kind, setPubkey, identifier] = parts;
-    if (!kind || !setPubkey || identifier === undefined) return;
+    const sub = this.eventStore
+      .replaceable(kind, setPubkey, identifier)
+      .subscribe((setEvent) => {
+        if (!setEvent) return;
+        this.addEmojiSet(setEvent);
+        emojiSetCache.setEmojiSet(setEvent);
+      });
+    this.setSubs.set(address, sub);
 
-    try {
-      const setEvent = await firstValueFrom(
-        this.eventStore
-          .replaceable(parseInt(kind, 10), setPubkey, identifier)
-          .pipe(
-            filter((e): e is NostrEvent => e !== undefined),
-            timeout(15_000),
-          ),
-      );
+    void this.fetchEmojiSet(kind, setPubkey, identifier, hint);
+  }
 
-      this.addEmojiSet(setEvent);
-      emojiSetCache.setEmojiSet(setEvent);
-    } catch {
-      // Observable completed without emitting — set not found on relays
-      console.debug(`[EmojiSearch] Emoji set not found: ${address}`);
+  private async fetchEmojiSet(
+    kind: number,
+    setPubkey: string,
+    identifier: string,
+    hint?: string,
+  ): Promise<void> {
+    // Without a hint the outbox is the only route, and `addressLoader`'s
+    // outbox step is a synchronous lookup — so make sure there is a list
+    // to look up before asking.
+    if (!hint && setPubkey !== this.currentPubkey) {
+      await fetchRelayList(setPubkey, RELAY_LIST_TIMEOUT_MS);
     }
+
+    // The event lands in the store; the subscription above indexes it.
+    addressLoader({
+      kind,
+      pubkey: setPubkey,
+      identifier,
+      relays: hint ? [hint] : undefined,
+    }).subscribe({
+      error: () => {
+        // A relay that refused or timed out. The store subscription stays,
+        // so the set is still indexed the moment anything else lands it.
+      },
+    });
   }
 
   /**
@@ -263,7 +308,8 @@ export class EmojiSearchService {
       this.userListSub = null;
     }
 
-    this.trackedSetAddresses.clear();
+    for (const sub of this.setSubs.values()) sub.unsubscribe();
+    this.setSubs.clear();
     this.currentPubkey = null;
     this.eventStore = null;
 
