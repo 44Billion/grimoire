@@ -96,6 +96,11 @@ export default defineConfig({
             return "markdown";
           }
 
+          // three.js - lazy loaded by the SNO canvas, keep it out of everything else
+          if (id.includes("node_modules/three/")) {
+            return "three";
+          }
+
           // Let Vite handle everything else automatically
         },
       },

@@ -234,6 +234,8 @@ import {
 } from "./NappletDetailRenderer";
 import { ColorMomentRenderer } from "./ColorMomentRenderer";
 import { ColorMomentDetailRenderer } from "./ColorMomentDetailRenderer";
+import { SnoObjectRenderer } from "./SnoObjectRenderer";
+import { SnoObjectDetailRenderer } from "./SnoObjectDetailRenderer";
 
 /**
  * Registry of kind-specific renderers
@@ -263,6 +265,9 @@ const kindRenderers: Record<number, React.ComponentType<BaseEventProps>> = {
   1244: VoiceMessageRenderer, // Voice Message Reply (NIP-A0)
   1337: Kind1337Renderer, // Code Snippet (NIP-C0)
   3367: ColorMomentRenderer, // Color Moment
+  3330: SnoObjectRenderer, // Cyberspace Shard (DECK-0003 SNO)
+  11333: SnoObjectRenderer, // Cyberspace Avatar (DECK-0003 SNO)
+  33331: SnoObjectRenderer, // SNO Object (DECK-0003)
   1617: PatchRenderer, // Patch (NIP-34)
   1618: PullRequestRenderer, // Pull Request (NIP-34)
   1621: IssueRenderer, // Issue (NIP-34)
@@ -426,6 +431,9 @@ const detailRenderers: Record<
   1227: ScrollDetailRenderer, // Scroll Detail (NIP-5C)
   1337: Kind1337DetailRenderer, // Code Snippet Detail (NIP-C0)
   3367: ColorMomentDetailRenderer, // Color Moment Detail
+  3330: SnoObjectDetailRenderer, // Cyberspace Shard Detail (DECK-0003 SNO)
+  11333: SnoObjectDetailRenderer, // Cyberspace Avatar Detail (DECK-0003 SNO)
+  33331: SnoObjectDetailRenderer, // SNO Object Detail (DECK-0003)
   1617: PatchDetailRenderer, // Patch Detail (NIP-34)
   1618: PullRequestDetailRenderer, // Pull Request Detail (NIP-34)
   1621: IssueDetailRenderer, // Issue Detail (NIP-34)
