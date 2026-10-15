@@ -11,8 +11,7 @@ import eventStore from "@/services/event-store";
 import type { ChatProtocolAdapter } from "@/lib/chat/adapters/base-adapter";
 import type { Conversation } from "@/types/chat";
 import type { NostrEvent } from "@/types/nostr";
-import { UserName } from "@/components/nostr/UserName";
-import { RichText } from "@/components/nostr/RichText";
+import { EventPreviewLine } from "@/components/nostr/EventPreviewLine";
 
 export const ComposerReplyPreview = memo(function ComposerReplyPreview({
   replyToId,
@@ -75,16 +74,10 @@ export const ComposerReplyPreview = memo(function ComposerReplyPreview({
   return (
     <div className="flex items-center gap-2 rounded bg-muted px-2 py-1 text-xs mb-1.5 overflow-hidden">
       <span className="flex-shrink-0">↳</span>
-      <UserName
-        pubkey={replyEvent.pubkey}
-        className="font-medium flex-shrink-0"
+      <EventPreviewLine
+        event={replyEvent}
+        contentClassName="text-muted-foreground"
       />
-      <div className="flex-1 min-w-0 line-clamp-1 overflow-hidden text-muted-foreground">
-        <RichText
-          event={replyEvent}
-          options={{ showMedia: false, showEventEmbeds: false }}
-        />
-      </div>
       <button
         onClick={onClear}
         className="ml-auto text-muted-foreground hover:text-foreground flex-shrink-0"

@@ -3,6 +3,10 @@ import { MediaEmbed } from "../MediaEmbed";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
 import { useAddWindow } from "@/core/state";
 import { UserName } from "../UserName";
+import {
+  getSemanticAuthor,
+  getSemanticContentEvent,
+} from "@/lib/semantic-author";
 import { RichText } from "../RichText";
 import { InlineReplySkeleton } from "@/components/ui/skeleton";
 import { getKindName } from "@/constants/kinds";
@@ -41,14 +45,14 @@ function ParentPreview({
       className="flex items-center gap-2 text-xs cursor-crosshair hover:opacity-80 transition-opacity"
     >
       <UserName
-        pubkey={parentEvent.pubkey}
+        pubkey={getSemanticAuthor(parentEvent)}
         className="text-accent font-medium flex-shrink-0"
       />
       <span className="text-muted-foreground shrink-0">[{kindName}]</span>
       {!isVoiceMessage && (
         <div className="text-muted-foreground truncate min-w-0 flex-1">
           <RichText
-            event={parentEvent}
+            event={getSemanticContentEvent(parentEvent)}
             className="line-clamp-1 whitespace-normal"
             options={{
               showMedia: false,

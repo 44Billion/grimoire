@@ -9,6 +9,7 @@ import { getZapAmount, getZapSender } from "applesauce-common/helpers/zap";
 import { getNip10References } from "applesauce-common/helpers/threading";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
 import { getQuotePointer } from "@/lib/nostr-utils";
+import { useLocale } from "@/hooks/useLocale";
 
 interface ChatViewProps {
   events: NostrEvent[];
@@ -168,6 +169,7 @@ function QuoteIndicator({
 function ZapMessage({ event }: { event: NostrEvent }) {
   const amount = getZapAmount(event);
   const zapper = getZapSender(event);
+  const { locale } = useLocale();
 
   if (!amount || !zapper) return null;
 
@@ -182,7 +184,7 @@ function ZapMessage({ event }: { event: NostrEvent }) {
         <span className="text-xs font-bold text-yellow-500 inline-flex items-center gap-1">
           <Zap className="w-3 h-3 fill-yellow-500" />
           <span className="text-sm">
-            {(amount / 1000).toLocaleString("en", {
+            {(amount / 1000).toLocaleString(locale, {
               notation: "compact",
             })}
           </span>

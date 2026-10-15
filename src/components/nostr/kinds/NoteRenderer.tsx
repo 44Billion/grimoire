@@ -4,6 +4,10 @@ import { kinds } from "nostr-tools";
 import { getNip10References } from "applesauce-common/helpers/threading";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
 import { UserName } from "../UserName";
+import {
+  getSemanticAuthor,
+  getSemanticContentEvent,
+} from "@/lib/semantic-author";
 import { Reply } from "lucide-react";
 import { useAddWindow } from "@/core/state";
 import { InlineReplySkeleton } from "@/components/ui/skeleton";
@@ -49,7 +53,7 @@ function ParentEventCard({
       </Tooltip>
       {showKindBadge && <KindBadge kind={parentEvent.kind} variant="compact" />}
       <UserName
-        pubkey={parentEvent.pubkey}
+        pubkey={getSemanticAuthor(parentEvent)}
         className="text-accent font-semibold flex-shrink-0"
       />
       <div className="text-muted-foreground truncate line-clamp-1 min-w-0 flex-1">
@@ -58,7 +62,7 @@ function ParentEventCard({
         ) : (
           <RichText
             className="truncate line-clamp-1 whitespace-normal"
-            event={parentEvent}
+            event={getSemanticContentEvent(parentEvent)}
             options={{ showMedia: false, showEventEmbeds: false }}
           />
         )}

@@ -16,6 +16,7 @@ import { KindRenderer } from "./index";
 import { RichText } from "../RichText";
 import { EventCardSkeleton } from "@/components/ui/skeleton";
 import { UserName } from "../UserName";
+import { useLocale } from "@/hooks/useLocale";
 
 /**
  * Renderer for Kind 9735 - Zap Receipts
@@ -23,6 +24,7 @@ import { UserName } from "../UserName";
  */
 export function Kind9735Renderer({ event }: BaseEventProps) {
   // Validate zap
+  const { locale } = useLocale();
   const isValid = useMemo(() => isValidZap(event), [event]);
 
   // Get zap details using applesauce helpers
@@ -68,7 +70,7 @@ export function Kind9735Renderer({ event }: BaseEventProps) {
         <div className="flex items-center gap-2">
           <Zap className="size-5 fill-zap text-zap" />
           <span className="text-lg font-light text-zap">
-            {amountInSats.toLocaleString("en", {
+            {amountInSats.toLocaleString(locale, {
               notation: "compact",
             })}
           </span>
