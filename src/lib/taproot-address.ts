@@ -25,6 +25,7 @@ import type * as BtcSignerModule from "@scure/btc-signer";
 let btcModule: Promise<typeof BtcSignerModule> | undefined;
 
 function loadBtc(): Promise<typeof BtcSignerModule> {
+  // eslint-disable-next-line grimoire/no-inline-dynamic-import -- keeps @scure/btc-signer out of the entry bundle, as the comment above says
   btcModule ??= import("@scure/btc-signer");
   return btcModule;
 }

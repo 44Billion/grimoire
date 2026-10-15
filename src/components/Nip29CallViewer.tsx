@@ -86,6 +86,7 @@ export function Nip29CallViewer({
       // Imported here rather than at the top: this window is the only thing in
       // the app that starts a group call, and the media stack is a large chunk
       // that a reader who never joins one should not download.
+      // eslint-disable-next-line grimoire/no-inline-dynamic-import -- keeps the livekit media stack out of the group window
       const { joinGroupCall } = await import("@/services/nip29-call");
       await joinGroupCall({
         relayUrl,
@@ -103,6 +104,7 @@ export function Nip29CallViewer({
   }, [relayUrl, groupId, name, account, windowId]);
 
   const leave = useCallback(() => {
+    // eslint-disable-next-line grimoire/no-inline-dynamic-import -- same chunk as the join above; already loaded by the time a call ends
     void import("@/services/nip29-call").then((s) => s.leaveGroupCall());
   }, []);
 

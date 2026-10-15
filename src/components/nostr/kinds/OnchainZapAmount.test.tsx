@@ -4,6 +4,10 @@ import { render } from "@testing-library/react";
 
 import type { OnchainZapClaim } from "@/lib/onchain-zap";
 import type { OnchainZapResult } from "@/hooks/useOnchainZap";
+// Static rather than per-test: the renderer pulls the whole kinds registry
+// through jsdom, which can take longer than a test's 5s budget on a cold
+// run. `vi.mock` is hoisted above it either way.
+import { OnchainZapAmount } from "./OnchainZapRenderer";
 
 /**
  * The one rule this feature exists to enforce: the sender's claimed figure
@@ -37,8 +41,7 @@ const claim: OnchainZapClaim = {
   createdAt: 1_700_000_000,
 };
 
-async function renderWith(verdict: OnchainZapResult) {
-  const { OnchainZapAmount } = await import("./OnchainZapRenderer");
+function renderWith(verdict: OnchainZapResult) {
   return render(<OnchainZapAmount claim={claim} verdict={verdict} />);
 }
 

@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { finalizeEvent, generateSecretKey, kinds } from "nostr-tools";
 import type { NostrEvent } from "nostr-tools";
 import { startMockRelay, type MockRelay } from "@/test/mock-relay";
+import { PrivateKeySigner } from "applesauce-signers";
 import { requestEvents } from "@/lib/relay-subscription";
 import pool from "./relay-pool";
 import { authenticateDmRelays } from "./dm-read-auth";
@@ -61,7 +62,6 @@ describe("authenticateDmRelays", () => {
   it("answers the challenge, so a gated relay serves the inbox", async () => {
     // `nip42-gated` challenges on connect and refuses any REQ whose authors
     // are not authenticated on that socket — the shape a real DM relay has.
-    const { PrivateKeySigner } = await import("applesauce-signers");
     const pubkey = await PrivateKeySigner.fromKey(SELF).getPublicKey();
     const r = await relay({
       kind: "nip42-gated",
@@ -83,7 +83,6 @@ describe("authenticateDmRelays", () => {
   it("gets nothing from the same relay without it", async () => {
     // The control. Without this the test above proves only that the mock
     // serves events, not that authenticating is what made it.
-    const { PrivateKeySigner } = await import("applesauce-signers");
     const pubkey = await PrivateKeySigner.fromKey(SELF).getPublicKey();
     const r = await relay({
       kind: "nip42-gated",

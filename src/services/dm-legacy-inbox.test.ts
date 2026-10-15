@@ -2,16 +2,21 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   finalizeEvent,
   generateSecretKey,
+  getEventHash,
   getPublicKey,
   kinds,
 } from "nostr-tools";
+import { WrappedMessageFactory } from "applesauce-common/factories";
+import { PrivateKeySigner } from "applesauce-signers";
 import { nip04 } from "nostr-tools";
 import type { NostrEvent } from "nostr-tools";
 import db from "./db";
 import {
   listDmConversations,
   queryConversation,
+  toDmRow,
   toLegacyDmRow,
+  writeDmRumors,
 } from "./dm-store";
 import { ingestLegacyDms, legacyCounterparty } from "./dm-legacy-inbox";
 
@@ -96,7 +101,6 @@ describe("toLegacyDmRow", () => {
     // author chose — and it would take the legacy branch, skipping the id
     // recompute that every gift-wrapped rumor depends on for its identity.
     // Only the signature-verified path may claim the exemption.
-    const { toDmRow } = await import("./dm-store");
     const event = await legacyMessage(bobKey, ALICE, "hello");
 
     expect(
@@ -149,15 +153,10 @@ describe("ingestLegacyDms", () => {
   it("files it in the SAME conversation as a gift-wrapped message", async () => {
     // The point of the whole exercise: a kind-4 exchange with someone is the
     // same human conversation as the NIP-17 one, so it belongs in one thread.
-    const { WrappedMessageFactory } =
-      await import("applesauce-common/factories");
-    const { PrivateKeySigner } = await import("applesauce-signers");
     const bobSigner = PrivateKeySigner.fromKey(bobKey);
     const rumor = await WrappedMessageFactory.create([ALICE], "the new way")
       .as(bobSigner)
       .stamp();
-    const { getEventHash } = await import("nostr-tools");
-    const { writeDmRumors } = await import("./dm-store");
     await writeDmRumors(ALICE, [{ ...rumor, id: getEventHash(rumor) }]);
 
     await ingestLegacyDms(ALICE, alice, [

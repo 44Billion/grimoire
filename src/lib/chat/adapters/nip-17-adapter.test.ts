@@ -6,6 +6,7 @@ import {
   WrappedMessageFactory,
 } from "applesauce-common/factories";
 import db from "@/services/db";
+import { writeDmRows } from "@/services/dm-store";
 import { _resetDmBusForTests } from "@/services/dm-bus";
 import { sendDirectReaction } from "@/lib/dm/send";
 import { EMPTY_TIMELINE_DEADLINE_MS, Nip17Adapter } from "./nip-17-adapter";
@@ -366,7 +367,6 @@ describe("what the UI is allowed to do with a message id", () => {
 describe("legacy messages", () => {
   /** A stored legacy row, as the import would have written it. */
   async function seedLegacy(content = "from the old days") {
-    const { writeDmRows } = await import("@/services/dm-store");
     const conversationId = [ALICE, BOB].sort().join(":");
     await writeDmRows(ALICE, [
       {

@@ -48,6 +48,7 @@ export function authenticateDmRelays(relays: string[]): Subscription {
   // node-environment test of the inbox has no business paying for, and the
   // inbox is what imports this. If it cannot load, reads still run; they just
   // get whatever the unauthenticated relays will serve.
+  // eslint-disable-next-line grimoire/no-inline-dynamic-import -- keeps relay-auth's localStorage and Dexie out of a node-environment inbox test, as above
   void import("./relay-auth")
     .then(({ default: relayAuthManager }) => {
       if (subscription.closed) return;

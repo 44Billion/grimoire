@@ -37,6 +37,7 @@ export async function chooseCaptureDevice(
   else setPreferredCameraId(deviceId);
   if (!deviceId) return;
   const { activeRoom, switchCaptureDevice } =
+    // eslint-disable-next-line grimoire/no-inline-dynamic-import -- keeps livekit-client out of the settings window
     await import("@/services/call-room");
   if (!activeRoom()) return;
   await switchCaptureDevice(kind, deviceId);
@@ -45,7 +46,9 @@ export async function chooseCaptureDevice(
 /** Remember the noise-suppression choice, and apply it to a call in progress. */
 export async function setDenoise(on: boolean): Promise<void> {
   setDenoiseEnabled(on);
-  const { activeRoom, applyDenoise } = await import("@/services/call-room");
+  const { activeRoom, applyDenoise } =
+    // eslint-disable-next-line grimoire/no-inline-dynamic-import -- keeps livekit-client out of the settings window
+    await import("@/services/call-room");
   if (!activeRoom()) return;
   await applyDenoise();
 }

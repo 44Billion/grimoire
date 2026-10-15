@@ -7,7 +7,13 @@ import {
   getIntentDefaults,
   isExplicitTargetingAuthorized,
   authorizeExplicitTargeting,
+  loadIntentCatalog,
 } from "./napplet-intent";
+import * as library from "./napplet-library";
+import {
+  BUILTIN_ARCHETYPE_SLUGS,
+  builtinHandlerDTag,
+} from "./napplet-builtins";
 
 beforeEach(() => {
   localStorage.clear();
@@ -88,8 +94,6 @@ describe("intent catalog", () => {
     // are third-party input, and the resolver reloads the catalog for every
     // available/handlers/dispatch — so one bad tag in one installed napplet used
     // to disable NAP-INTENT for all of them.
-    const { loadIntentCatalog } = await import("./napplet-intent");
-    const library = await import("./napplet-library");
     const rows = [
       {
         coordinate: `35129:${"a".repeat(64)}:broken`,
@@ -116,10 +120,6 @@ describe("intent catalog", () => {
   });
 
   it("advertises grimoire's built-in roles when nothing is installed", async () => {
-    const { loadIntentCatalog } = await import("./napplet-intent");
-    const { BUILTIN_ARCHETYPE_SLUGS, builtinHandlerDTag } =
-      await import("./napplet-builtins");
-
     const entries = await loadIntentCatalog();
     expect(entries.map((entry) => entry.dTag)).toEqual(
       BUILTIN_ARCHETYPE_SLUGS.map(builtinHandlerDTag),

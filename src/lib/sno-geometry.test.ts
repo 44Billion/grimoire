@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import * as THREE from "three";
 import {
   applyMatrix,
   buildSnoBuffers,
@@ -192,8 +193,7 @@ describe("partMatrix", () => {
 });
 
 describe("cross-checks", () => {
-  it("turnMatrix agrees with three's extrinsic XYZ (Euler order ZYX)", async () => {
-    const THREE = await import("three");
+  it("turnMatrix agrees with three's extrinsic XYZ (Euler order ZYX)", () => {
     for (const turn of [
       [30, 0, 0],
       [0, 45, 0],

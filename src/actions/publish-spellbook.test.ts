@@ -4,6 +4,7 @@ import type { ActionContext } from "applesauce-actions";
 import type { GrimoireState } from "@/types/app";
 import type { NostrEvent } from "nostr-tools/core";
 import { GRIMOIRE_APP_ADDRESS } from "@/constants/app";
+import accountManager from "@/services/accounts";
 
 // Mock accountManager
 vi.mock("@/services/accounts", () => ({
@@ -92,12 +93,11 @@ async function runAction(
 }
 
 describe("PublishSpellbook action", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks();
 
     // Set up accountManager mock
-    const accountManager = await import("@/services/accounts");
-    (accountManager.default as any).active = mockAccount;
+    (accountManager as any).active = mockAccount;
   });
 
   describe("validation", () => {
@@ -120,8 +120,7 @@ describe("PublishSpellbook action", () => {
     });
 
     it("should throw error if no active account", async () => {
-      const accountManager = await import("@/services/accounts");
-      (accountManager.default as any).active = null;
+      (accountManager as any).active = null;
 
       await expect(
         runAction({
@@ -131,13 +130,12 @@ describe("PublishSpellbook action", () => {
       ).rejects.toThrow("No active account");
 
       // Restore for other tests
-      (accountManager.default as any).active = mockAccount;
+      (accountManager as any).active = mockAccount;
     });
 
     it("should throw error if no signer available", async () => {
-      const accountManager = await import("@/services/accounts");
       const accountWithoutSigner = { ...mockAccount, signer: null };
-      (accountManager.default as any).active = accountWithoutSigner;
+      (accountManager as any).active = accountWithoutSigner;
 
       await expect(
         runAction({
@@ -147,7 +145,7 @@ describe("PublishSpellbook action", () => {
       ).rejects.toThrow("No signer available");
 
       // Restore for other tests
-      (accountManager.default as any).active = mockAccount;
+      (accountManager as any).active = mockAccount;
     });
   });
 
