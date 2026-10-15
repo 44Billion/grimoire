@@ -21,6 +21,7 @@ import {
   WRAP_BACKDATE_SECS,
 } from "./dm-inbox";
 import { startMockRelay, type MockRelay } from "@/test/mock-relay";
+import * as subscription from "@/lib/relay-subscription";
 import { DM_WRAP_MAX_ATTEMPTS } from "./dm-store";
 
 /**
@@ -485,7 +486,6 @@ describe("coverage the walk must not lose", () => {
     // Driven through the real read with a stubbed request rather than a dead
     // socket: applesauce retries a refused connection, so a genuinely dead
     // relay spends the full 25s read bound and a test cannot wait for it.
-    const subscription = await import("@/lib/relay-subscription");
     const failing = vi
       .spyOn(subscription, "requestEvents")
       .mockRejectedValue(new Error("connection refused"));

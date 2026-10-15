@@ -11,8 +11,10 @@ import type { IEventStore } from "applesauce-core/event-store";
  * author's relays never showed up, and fetching it by hand afterwards did
  * nothing either. These pin the three properties that fix it.
  */
-const addressLoader = vi.fn((): Observable<NostrEvent> => EMPTY);
-const fetchRelayList = vi.fn(async () => {});
+const addressLoader = vi.fn(
+  (..._args: unknown[]): Observable<NostrEvent> => EMPTY,
+);
+const fetchRelayList = vi.fn(async (..._args: unknown[]) => {});
 
 vi.mock("./loaders", () => ({
   addressLoader: (...a: unknown[]) => addressLoader(...a),
@@ -39,24 +41,25 @@ const them = "b".repeat(64);
 function fakeStore() {
   const subjects = new Map<string, BehaviorSubject<NostrEvent | undefined>>();
   const key = (k: number, p: string, d?: string) => `${k}:${p}:${d ?? ""}`;
+  const subject = (k: string) => {
+    const s = new BehaviorSubject<NostrEvent | undefined>(undefined);
+    subjects.set(k, s);
+    return s;
+  };
   return {
     subjects,
     land(event: NostrEvent) {
       const d = event.tags.find((t) => t[0] === "d")?.[1];
       const k = key(event.kind, event.pubkey, event.kind === 10030 ? "" : d);
-      (subjects.get(k) ?? this.subject(k)).next(event);
+      (subjects.get(k) ?? subject(k)).next(event);
     },
-    subject(k: string) {
-      const s = new BehaviorSubject<NostrEvent | undefined>(undefined);
-      subjects.set(k, s);
-      return s;
-    },
+    subject,
     store: {
       replaceable(k: number, p: string, d?: string) {
         const id = key(k, p, d);
-        return subjects.get(id) ?? this.subject(id);
+        return subjects.get(id) ?? subject(id);
       },
-    } as unknown as IEventStore & { subject: (k: string) => unknown },
+    } as unknown as IEventStore,
   };
 }
 
@@ -95,7 +98,6 @@ beforeEach(() => {
 describe("emoji sets named by the kind 10030 list", () => {
   it("asks for a set through the outbox-aware loader, following the a-tag's relay hint", async () => {
     const fs = fakeStore();
-    (fs.store as { subject: unknown }).subject = fs.subject.bind(fs);
     const svc = new EmojiSearchService();
     svc.subscribeForUser(me, fs.store);
     fs.land(list([[`30030:${them}:cats`, "wss://hint.example"]]));
@@ -115,7 +117,6 @@ describe("emoji sets named by the kind 10030 list", () => {
 
   it("resolves the author's relay list first when the a-tag carries no hint", async () => {
     const fs = fakeStore();
-    (fs.store as { subject: unknown }).subject = fs.subject.bind(fs);
     const svc = new EmojiSearchService();
     svc.subscribeForUser(me, fs.store);
     fs.land(list([[`30030:${them}:dogs`]]));
@@ -134,7 +135,6 @@ describe("emoji sets named by the kind 10030 list", () => {
 
   it("indexes a set that lands in the store later, however it got there", async () => {
     const fs = fakeStore();
-    (fs.store as { subject: unknown }).subject = fs.subject.bind(fs);
     const svc = new EmojiSearchService();
     svc.subscribeForUser(me, fs.store);
     fs.land(list([[`30030:${them}:late`]]));
@@ -152,7 +152,6 @@ describe("emoji sets named by the kind 10030 list", () => {
 
   it("stops watching a set the list no longer names", async () => {
     const fs = fakeStore();
-    (fs.store as { subject: unknown }).subject = fs.subject.bind(fs);
     const svc = new EmojiSearchService();
     svc.subscribeForUser(me, fs.store);
     fs.land(list([[`30030:${them}:old`], [`30030:${them}:kept`]]));

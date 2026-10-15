@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { NostrEvent } from "@/types/nostr";
 import {
+  getAmbAudience,
   getAmbCreators,
-  getAmbRelatedResources,
-  getAmbIsAccessibleForFree,
   getAmbDescription,
+  getAmbEducationalLevel,
+  getAmbIsAccessibleForFree,
+  getAmbLearningResourceType,
+  getAmbRelatedResources,
+  getAmbSubjects,
 } from "./amb-helpers";
 
 // Mock locale-utils so we can control getBrowserLanguage without relying on navigator
@@ -34,9 +38,8 @@ describe("amb-helpers", () => {
   });
 
   describe("findPrefLabel (via getAmbLearningResourceType)", () => {
-    it("should return browser language label when available", async () => {
+    it("should return browser language label when available", () => {
       mockGetBrowserLanguage.mockReturnValue("de");
-      const { getAmbLearningResourceType } = await import("./amb-helpers.ts");
 
       const event = makeEvent([
         ["learningResourceType:id", "https://example.org/type/1"],
@@ -48,9 +51,8 @@ describe("amb-helpers", () => {
       expect(result?.label).toBe("Kurs");
     });
 
-    it("should fall back to English when browser language not available", async () => {
+    it("should fall back to English when browser language not available", () => {
       mockGetBrowserLanguage.mockReturnValue("fr");
-      const { getAmbEducationalLevel } = await import("./amb-helpers.ts");
 
       const event = makeEvent([
         ["educationalLevel:id", "https://example.org/level/1"],
@@ -62,9 +64,8 @@ describe("amb-helpers", () => {
       expect(result?.label).toBe("Primary School");
     });
 
-    it("should fall back to first available when neither browser lang nor en exists", async () => {
+    it("should fall back to first available when neither browser lang nor en exists", () => {
       mockGetBrowserLanguage.mockReturnValue("ja");
-      const { getAmbAudience } = await import("./amb-helpers.ts");
 
       const event = makeEvent([
         ["audience:id", "https://example.org/audience/1"],
@@ -76,9 +77,8 @@ describe("amb-helpers", () => {
       expect(result?.label).toBe("Lernende");
     });
 
-    it("should return undefined when no labels exist", async () => {
+    it("should return undefined when no labels exist", () => {
       mockGetBrowserLanguage.mockReturnValue("en");
-      const { getAmbLearningResourceType } = await import("./amb-helpers.ts");
 
       const event = makeEvent([
         ["learningResourceType:id", "https://example.org/type/1"],
@@ -90,9 +90,8 @@ describe("amb-helpers", () => {
   });
 
   describe("getAmbSubjects", () => {
-    it("should pair ids with labels from preferred language only", async () => {
+    it("should pair ids with labels from preferred language only", () => {
       mockGetBrowserLanguage.mockReturnValue("de");
-      const { getAmbSubjects } = await import("./amb-helpers.ts");
 
       const event = makeEvent([
         ["about:id", "https://example.org/subject/math"],
@@ -115,9 +114,8 @@ describe("amb-helpers", () => {
       });
     });
 
-    it("should fall back to English labels", async () => {
+    it("should fall back to English labels", () => {
       mockGetBrowserLanguage.mockReturnValue("ja");
-      const { getAmbSubjects } = await import("./amb-helpers.ts");
 
       const event = makeEvent([
         ["about:id", "https://example.org/subject/math"],
@@ -130,9 +128,8 @@ describe("amb-helpers", () => {
       expect(subjects[0].label).toBe("Mathematics");
     });
 
-    it("should handle single language correctly", async () => {
+    it("should handle single language correctly", () => {
       mockGetBrowserLanguage.mockReturnValue("en");
-      const { getAmbSubjects } = await import("./amb-helpers.ts");
 
       const event = makeEvent([
         ["about:id", "https://example.org/subject/art"],
@@ -144,9 +141,8 @@ describe("amb-helpers", () => {
       expect(subjects[0].label).toBe("Kunst");
     });
 
-    it("should handle no labels gracefully", async () => {
+    it("should handle no labels gracefully", () => {
       mockGetBrowserLanguage.mockReturnValue("en");
-      const { getAmbSubjects } = await import("./amb-helpers.ts");
 
       const event = makeEvent([
         ["about:id", "https://example.org/subject/math"],
@@ -161,9 +157,8 @@ describe("amb-helpers", () => {
       });
     });
 
-    it("should handle more labels than ids", async () => {
+    it("should handle more labels than ids", () => {
       mockGetBrowserLanguage.mockReturnValue("en");
-      const { getAmbSubjects } = await import("./amb-helpers.ts");
 
       const event = makeEvent([
         ["about:id", "https://example.org/subject/math"],

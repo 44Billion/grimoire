@@ -693,6 +693,30 @@ export const EVENT_KINDS: Record<number | string, EventKind> = {
     },
   },
 
+  // Cyberspace: DECK-0003 SNO (Simple Nostr Objects). Not a NIP, hence
+  // `nip: ""`. https://github.com/arkin0x/cyberspace/blob/master/decks/DECK-0003-sno.md
+  3330: {
+    kind: 3330,
+    name: "Cyberspace Shard",
+    description: "An SNO object hidden at a place in cyberspace (DECK-0003)",
+    nip: "",
+    icon: Boxes,
+  },
+  11333: {
+    kind: 11333,
+    name: "Cyberspace Avatar",
+    description: "An avatar carrying an SNO object (DECK-0003)",
+    nip: "",
+    icon: Boxes,
+  },
+  33331: {
+    kind: 33331,
+    name: "SNO Object",
+    description: "Simple Nostr Object: a small 3D mesh as JSON (DECK-0003)",
+    nip: "",
+    icon: Boxes,
+  },
+
   // Community
   4550: {
     kind: 4550,

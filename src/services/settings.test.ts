@@ -15,6 +15,7 @@ const STORAGE_KEY = "grimoire-settings-v2";
 /** A fresh module graph, so the manager loads from what is in storage now. */
 async function loadManager() {
   vi.resetModules();
+  // eslint-disable-next-line grimoire/no-inline-dynamic-import -- a fresh module graph after vi.resetModules() is the point
   return (await import("@/services/settings")).settingsManager;
 }
 

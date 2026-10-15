@@ -77,6 +77,7 @@ export async function parseAppCommand(
     const token = args[0] ?? "";
     if (!token) throw error;
     const { looksLikeArchetype, resolveArchetypeCommand } =
+      // eslint-disable-next-line grimoire/no-inline-dynamic-import -- breaks the command-parser → man.ts cycle described above
       await import("@/services/napplet-archetype");
     if (!looksLikeArchetype(token)) throw error;
     // May resolve to a built-in, which comes back with an appId override

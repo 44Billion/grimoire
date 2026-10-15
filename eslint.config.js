@@ -89,6 +89,85 @@ const blockedRelaySyntaxRules = [
   },
 ];
 
+/**
+ * An `import()` written inline, inside a function, hides a module load
+ * behind whatever that function is for. In a test it put the whole kinds
+ * registry inside one case's 5s budget and timed out on a cold run; in
+ * application code it is a code split nobody decided on. The decided forms
+ * are allowed: the body of `lazy(() => import(...))`, a `vi.mock` or
+ * `vi.hoisted` factory (which must import dynamically, being hoisted), a
+ * loader thunk whose whole body is the import (`() => import("x")`, which
+ * is how a lazy registry such as shiki's grammars is written), and the top
+ * level of a test file after its mocks. A deliberate code split anywhere
+ * else carries an eslint-disable naming its reason, the same way the
+ * guarded `pool.relay()` callers do.
+ */
+const noInlineDynamicImport = {
+  meta: {
+    type: "problem",
+    docs: { description: "disallow import() outside the sanctioned forms" },
+    messages: {
+      inline:
+        "Inline import(): use a static import, a loader thunk `() => import(...)`, or `lazy(() => import(...))` for a component. A deliberate code split needs an eslint-disable-next-line naming what it keeps out of the entry bundle, or the cycle it breaks.",
+    },
+    schema: [],
+  },
+  create(context) {
+    const isTest = /\.test\.[jt]sx?$/.test(context.filename);
+    const calleeName = (call) => {
+      const c = call.callee;
+      if (c.type === "Identifier") return c.name;
+      if (c.type === "MemberExpression" && c.property.type === "Identifier") {
+        const obj = c.object.type === "Identifier" ? c.object.name : "";
+        return `${obj}.${c.property.name}`;
+      }
+      return "";
+    };
+    const isFunction = (n) =>
+      n.type === "ArrowFunctionExpression" ||
+      n.type === "FunctionExpression" ||
+      n.type === "FunctionDeclaration";
+    return {
+      ImportExpression(node) {
+        // A thunk: the import is the arrow's whole body, or the only
+        // statement of the function is `return import(...)`.
+        const p = node.parent;
+        if (p?.type === "ArrowFunctionExpression" && p.body === node) return;
+        if (
+          p?.type === "ReturnStatement" &&
+          p.parent?.type === "BlockStatement" &&
+          p.parent.body.length === 1 &&
+          isFunction(p.parent.parent)
+        ) {
+          return;
+        }
+        let parent = node.parent;
+        let insideFunction = false;
+        while (parent) {
+          if (isFunction(parent)) {
+            const call = parent.parent;
+            if (
+              call?.type === "CallExpression" &&
+              call.arguments[0] === parent
+            ) {
+              const name = calleeName(call);
+              if (name === "lazy" || name === "React.lazy") return;
+            }
+            insideFunction = true;
+          }
+          if (parent.type === "CallExpression") {
+            const name = calleeName(parent);
+            if (/^vi\.(mock|doMock|hoisted)$/.test(name)) return;
+          }
+          parent = parent.parent;
+        }
+        if (isTest && !insideFunction) return;
+        context.report({ node, messageId: "inline" });
+      },
+    };
+  },
+};
+
 export default tseslint.config(
   // .agents holds vendored agent skills (installed via `npx skills add`);
   // .claude holds agent config and git worktrees. Neither is our source.
@@ -104,9 +183,13 @@ export default tseslint.config(
       "react-hooks": reactHooks,
       "react-refresh": reactRefresh,
       prettier: prettier,
+      grimoire: {
+        rules: { "no-inline-dynamic-import": noInlineDynamicImport },
+      },
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      "grimoire/no-inline-dynamic-import": "error",
       "react-refresh/only-export-components": [
         "warn",
         { allowConstantExport: true },

@@ -27,6 +27,10 @@ vi.mock("./accounts", () => ({
   default: { active: { pubkey: "a".repeat(64) }, active$: {} },
 }));
 
+// After the mocks and the `publish`/`selectRelaysForPublish` consts their
+// factories close over: a static import would be hoisted above those consts.
+const { publishEvent } = await import("./hub");
+
 const event = {
   id: "e",
   pubkey: "p",
@@ -51,8 +55,6 @@ beforeEach(() => {
 
 describe("publishEvent", () => {
   it("publishes to exactly the relays it was given", async () => {
-    const { publishEvent } = await import("./hub");
-
     await publishEvent(event, ["wss://peer-inbox.example/"]);
 
     expect(publish).toHaveBeenCalledWith(event, ["wss://peer-inbox.example/"]);
@@ -60,8 +62,6 @@ describe("publishEvent", () => {
   });
 
   it("falls back to outbox selection when given none", async () => {
-    const { publishEvent } = await import("./hub");
-
     await publishEvent(event);
 
     expect(selectRelaysForPublish).toHaveBeenCalled();
@@ -69,8 +69,6 @@ describe("publishEvent", () => {
   });
 
   it("treats an empty list as no list, rather than publishing nowhere", async () => {
-    const { publishEvent } = await import("./hub");
-
     await publishEvent(event, []);
 
     expect(selectRelaysForPublish).toHaveBeenCalled();
@@ -79,8 +77,6 @@ describe("publishEvent", () => {
 
 describe("the gift-wrap guard", () => {
   it("refuses to publish someone else's wrap on the authenticated pool", async () => {
-    const { publishEvent } = await import("./hub");
-
     // This pool is auto-authenticated by relayAuthManager, and applesauce turns
     // an `auth-required` refusal into a retry that WAITS for authentication —
     // so a wrap sent here does not fail, it succeeds while handing the relay
@@ -92,15 +88,12 @@ describe("the gift-wrap guard", () => {
   });
 
   it("allows the self-copy, which goes to our own relays", async () => {
-    const { publishEvent } = await import("./hub");
-
     await publishEvent(giftWrap(ME), ["wss://my-inbox.example/"]);
 
     expect(publish).toHaveBeenCalled();
   });
 
   it("refuses a wrap addressed to us AND someone else", async () => {
-    const { publishEvent } = await import("./hub");
     const both = {
       ...giftWrap(ME),
       tags: [

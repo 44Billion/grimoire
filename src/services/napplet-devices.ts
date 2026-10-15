@@ -26,7 +26,7 @@
  */
 
 import { createResourceService } from "./kehto";
-import { getBlobUrl } from "./blossom";
+import { getActiveAccountServers, getBlobUrl } from "./blossom";
 import {
   getGrantedOrigins,
   isOriginGranted,
@@ -60,7 +60,6 @@ async function fetchAllowedResource(
   const blossom = /^blossom:sha256:([0-9a-f]{64})$/i.exec(url);
   if (blossom) {
     const sha256 = blossom[1].toLowerCase();
-    const { getActiveAccountServers } = await import("./blossom");
     const servers = await getActiveAccountServers();
     for (const server of servers) {
       try {

@@ -30,6 +30,7 @@ export function VideoPlayer({ url, title, className = "" }: VideoPlayerProps) {
   useEffect(() => {
     if (!isHLS) return;
     let cancelled = false;
+    // eslint-disable-next-line grimoire/no-inline-dynamic-import -- hls.js is loaded only for an HLS source
     import("hls-video-element").then(() => {
       if (!cancelled) setHlsReady(true);
     });

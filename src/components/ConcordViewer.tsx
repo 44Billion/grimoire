@@ -415,6 +415,7 @@ export function ConcordViewer({
     // Lazily, so opening a community does not pull `livekit-client` in for a
     // reader who never makes a call — the import only resolves while one is
     // actually connected, by which point the chunk is already loaded.
+    // eslint-disable-next-line grimoire/no-inline-dynamic-import -- keeps livekit-client out of the community window
     void import("@/services/concord-call").then((service) =>
       service.syncCall({
         listLoaded: !loading,

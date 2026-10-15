@@ -255,6 +255,7 @@ export async function getHighlighter(): Promise<HighlighterCore> {
     highlighterPromise = createHighlighterCore({
       themes: [cssVarsTheme],
       langs: CORE_LANGUAGES.map((l) => LANGUAGE_LOADERS[l]()),
+      // eslint-disable-next-line grimoire/no-inline-dynamic-import -- the oniguruma wasm is 600 KB and loads only when code is highlighted
       engine: createOnigurumaEngine(import("shiki/wasm")),
     }).then((hl) => {
       highlighter = hl;

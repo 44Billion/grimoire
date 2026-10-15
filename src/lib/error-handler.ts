@@ -253,6 +253,7 @@ function showErrorToast(
   type: "error" | "warning" = "error",
 ) {
   // Dynamic import to avoid circular dependency
+  // eslint-disable-next-line grimoire/no-inline-dynamic-import -- breaks the sonner cycle described above
   import("sonner").then(({ toast }) => {
     if (type === "error") {
       toast.error(title, { description: message, duration: 5000 });

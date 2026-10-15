@@ -29,6 +29,7 @@ import { createNappletSigner } from "./napplet-signer";
 import accountManager from "./accounts";
 import defaultEventStore from "./event-store";
 import { requestSigningConsent } from "./napplet-consent";
+import { buildBuiltinWindow, openBuiltinWindow } from "./napplet-builtins";
 
 /** Short label for a pubkey in a confirmation prompt. */
 function shortPubkey(pubkey: string): string {
@@ -220,8 +221,6 @@ export function createNappletLinkService() {
           detail: `nostr:${entity}`,
         });
         if (!allowed) return { status: "denied" };
-        const { buildBuiltinWindow, openBuiltinWindow } =
-          await import("./napplet-builtins");
         try {
           openBuiltinWindow(
             await buildBuiltinWindow(

@@ -12,7 +12,8 @@ import { finalizeEvent, getPublicKey } from "nostr-tools/pure";
 
 import { bytesToHex, channelGroupKey, random32 } from "@/lib/concord/derive";
 import type { FoldedControl } from "@/lib/concord/control";
-import { KIND_MESSAGE } from "@/lib/concord/kinds";
+import { KIND_MESSAGE, KIND_ZAP } from "@/lib/concord/kinds";
+import { zapRumorTags } from "@/lib/concord/zaps";
 import type { Channel, Community } from "@/lib/concord/types";
 import { voiceKeysOf } from "@/lib/concord/channels";
 
@@ -103,7 +104,10 @@ const { writeChatRumors } = await import("@/services/concord-rumor-store");
 const { default: db, OUTBOX_NEVER } = await import("@/services/db");
 
 const { channelScope, onWireScopes } = await import("@/lib/concord/wire-bus");
-const { SEND_BURST } = await import("@/lib/concord/send-rate-limit");
+const { SEND_BURST, consumeSend, resetSendLimits } =
+  await import("@/lib/concord/send-rate-limit");
+const { _resetDissolutionForTests } =
+  await import("@/services/concord-dissolution");
 
 const NOW = 1_800_000_000;
 
@@ -130,10 +134,7 @@ beforeEach(async () => {
   published.mockClear();
   published.mockResolvedValue({ accepted: ["wss://x"], rejected: [] });
   banned.clear();
-  const { _resetDissolutionForTests } =
-    await import("@/services/concord-dissolution");
   await _resetDissolutionForTests();
-  const { resetSendLimits } = await import("@/lib/concord/send-rate-limit");
   resetSendLimits();
 });
 
@@ -233,7 +234,6 @@ describe("draining the outbox", () => {
     // The next row would be refused a millisecond later for the same reason,
     // and each refusal escalates the lockout — so a pass that kept going would
     // punish the queue for being long.
-    const { consumeSend } = await import("@/lib/concord/send-rate-limit");
     for (let i = 0; i < 10; i++) consumeSend(idHex);
 
     const first = await queue({ createdAt: NOW - 2 });
@@ -384,8 +384,6 @@ describe("a queued private zap", () => {
 
   /** A zap of 21 sats on a stored message, queued as `sendZap` leaves it. */
   async function queueZap() {
-    const { KIND_ZAP } = await import("@/lib/concord/kinds");
-    const { zapRumorTags } = await import("@/lib/concord/zaps");
     return queue({
       kind: KIND_ZAP,
       content: "nice",
@@ -401,7 +399,6 @@ describe("a queued private zap", () => {
   }
 
   it("drains into a kind-9735 rumor carrying its proof and target", async () => {
-    const { KIND_ZAP } = await import("@/lib/concord/kinds");
     await queueZap();
     await drainOutbox(NOW);
 

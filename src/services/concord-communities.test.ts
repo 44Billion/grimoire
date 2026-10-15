@@ -54,6 +54,10 @@ const {
 } = await import("./concord-communities");
 const { markChannelRead } = await import("./concord-reads");
 const { default: db } = await import("./db");
+const { draftKey, draftsReady, readDraft, writeDraft } =
+  await import("./chat-drafts");
+const { CHAT_PREFS_STORAGE_KEY, concordPrefsManager, loadPrefs } =
+  await import("./concord-prefs");
 
 const sk = generateSecretKey();
 const pubkey = getPublicKey(sk);
@@ -693,8 +697,6 @@ describe("syncCommunities", () => {
     // The rows go with the wipe above; the cache in front of them answers the
     // composer synchronously, so leaving it populated hands one account's
     // half-typed messages to whoever signs in next.
-    const { draftKey, draftsReady, readDraft, writeDraft } =
-      await import("./chat-drafts");
     const key = draftKey(pubkey, "concord", "cc:dd");
     await draftsReady();
     writeDraft(key, { type: "doc" });
@@ -708,8 +710,6 @@ describe("syncCommunities", () => {
     // Pins and folded categories live in localStorage rather than `concordKv`,
     // so the table wipe cannot reach them — and they name the communities and channels this account cared
     // enough about to arrange, which is the same disclosure the levels go for.
-    const { CHAT_PREFS_STORAGE_KEY, concordPrefsManager, loadPrefs } =
-      await import("./concord-prefs");
     concordPrefsManager.togglePin("cc".repeat(32), "dd".repeat(32));
     concordPrefsManager.toggleCategoryCollapsed("cc".repeat(32), "voice");
     expect(localStorage.getItem(CHAT_PREFS_STORAGE_KEY)).not.toBeNull();

@@ -41,6 +41,13 @@ function relayList(kind: number, pubkey: string, tags: string[][]): NostrEvent {
   return { ...signed, pubkey };
 }
 
+/**
+ * Loaded per case, not at the top: `beforeEach` resets the module registry so
+ * every test gets a fresh copy of the module under test, and a static import
+ * would be the stale one from before the reset.
+ */
+const loadRelays = () => import("./relays");
+
 beforeEach(() => {
   vi.resetModules();
   replaceable.mockReset();
@@ -59,7 +66,7 @@ describe("resolveDmRelays", () => {
         ["r", "wss://mailbox.example.com", "read"],
       ]),
     });
-    const { resolveDmRelays } = await import("./relays");
+    const { resolveDmRelays } = await loadRelays();
 
     const result = await resolveDmRelays(PEER, 50);
 
@@ -74,7 +81,7 @@ describe("resolveDmRelays", () => {
         ["r", "wss://outbox.example.com", "write"],
       ]),
     });
-    const { resolveDmRelays } = await import("./relays");
+    const { resolveDmRelays } = await loadRelays();
 
     const result = await resolveDmRelays(PEER, 50);
 
@@ -86,7 +93,7 @@ describe("resolveDmRelays", () => {
 
   it("reports none rather than inventing somewhere to send", async () => {
     serve({});
-    const { resolveDmRelays } = await import("./relays");
+    const { resolveDmRelays } = await loadRelays();
 
     const result = await resolveDmRelays(PEER, 50);
 
@@ -111,7 +118,7 @@ describe("ownDmReadRelays", () => {
         ["r", "wss://mailbox.example.com", "read"],
       ]),
     });
-    const { ownDmReadRelays } = await import("./relays");
+    const { ownDmReadRelays } = await loadRelays();
 
     const relays = await ownDmReadRelays(SELF, 50);
 
@@ -134,7 +141,7 @@ describe("hasOwnDmRelayList", () => {
         [],
       ),
     });
-    const { hasOwnDmRelayList } = await import("./relays");
+    const { hasOwnDmRelayList } = await loadRelays();
 
     expect(await hasOwnDmRelayList(SELF, 50)).toBe(false);
   });

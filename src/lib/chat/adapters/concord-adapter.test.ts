@@ -18,6 +18,7 @@ import { channelScope, emitWireScopes } from "@/lib/concord/wire-bus";
 import type { Channel, Community } from "@/lib/concord/types";
 import type { Conversation, Message } from "@/types/chat";
 import { voiceKeysOf } from "@/lib/concord/channels";
+import { mockInvoice, paymentHashOf } from "@/test/bolt11-mock";
 
 const communityId = random32();
 const idHex = bytesToHex(communityId);
@@ -65,9 +66,12 @@ vi.mock("@/services/accounts", () => ({
   },
 }));
 
-const { ConcordAdapter } = await import("./concord-adapter");
+const { ConcordAdapter, imetaTag } = await import("./concord-adapter");
 const { writeChatRumors } = await import("@/services/concord-rumor-store");
 const { default: db } = await import("@/services/db");
+const { _resetDissolutionForTests } =
+  await import("@/services/concord-dissolution");
+const { resetSendLimits } = await import("@/lib/concord/send-rate-limit");
 
 function community(): Community {
   return {
@@ -150,10 +154,7 @@ beforeEach(async () => {
   published.mockResolvedValue({ accepted: ["wss://x"], rejected: [] });
   synced.mockClear();
   banned.clear();
-  const { _resetDissolutionForTests } =
-    await import("@/services/concord-dissolution");
   await _resetDissolutionForTests();
-  const { resetSendLimits } = await import("@/lib/concord/send-rate-limit");
   resetSendLimits();
 });
 
@@ -456,7 +457,6 @@ describe("the imeta tag for an attachment", () => {
     // These are the ONLY copy: the blob on the host is ciphertext, and a
     // message that omits them is permanently unreadable by everyone including
     // its author.
-    const { imetaTag } = await import("@/lib/chat/adapters/concord-adapter");
     const tag = imetaTag({
       ...base,
       originalMime: "image/png",
@@ -478,7 +478,6 @@ describe("the imeta tag for an attachment", () => {
   });
 
   it("says nothing about encryption for a plain blob", async () => {
-    const { imetaTag } = await import("@/lib/chat/adapters/concord-adapter");
     const tag = imetaTag({ ...base, mimeType: "image/png" });
     expect(tag.some((f) => f.startsWith("decryption-"))).toBe(false);
     expect(tag).toContain("m image/png");
@@ -712,8 +711,6 @@ describe("delivery state", () => {
     );
 
     await db.concordOutbox.update("queued", { status: "failed" });
-    const { emitWireScopes, channelScope } =
-      await import("@/lib/concord/wire-bus");
     emitWireScopes([channelScope(channelIdHex)]);
     await settle();
 
@@ -896,7 +893,6 @@ describe("a verified private zap in the timeline", () => {
   }
 
   async function seedZap(): Promise<void> {
-    const { paymentHashOf, mockInvoice } = await import("@/test/bolt11-mock");
     await writeChatRumors(idHex, [
       {
         rumorId: TARGET,

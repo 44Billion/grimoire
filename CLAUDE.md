@@ -118,7 +118,14 @@ command-specific parsing and work across all commands:
 - **Path alias**: `@/` = `./src/`
 - **Types**: prefer types from `applesauce-core`; extend in `src/types/`
 - **No inline imports**: never `import("module").Type` in an annotation — use a
-  top-level `import type`
+  top-level `import type`. And no `import()` inside a function body either:
+  `grimoire/no-inline-dynamic-import` (eslint.config.js) errors on it. Lazy
+  loading for a reason is fine — `lazy(() => import(...))`, a loader thunk
+  `() => import("x")`, a `vi.mock` factory, or the top level of a test — and
+  a deliberate code split elsewhere carries an eslint-disable naming the
+  chunk it keeps out of the entry bundle or the cycle it breaks. An
+  `await import()` inside a test case once put the whole kinds registry
+  inside that case's 5s budget and timed out on a cold run.
 - **nevent encoding**: always include `kind` (and `author`/`relays` when known) in
   `nip19.neventEncode()`. Kind metadata lets adapters dispatch correctly (NIP-10
   vs NIP-22) without fetching first. Never encode a bare `{ id }` when the kind is known.

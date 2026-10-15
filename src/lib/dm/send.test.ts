@@ -31,6 +31,11 @@ vi.mock("./publish", () => ({ publishGiftWrap }));
 const publishEventToRelays = vi.fn(async () => {});
 vi.mock("@/services/hub", () => ({ publishEventToRelays }));
 
+// Loaded after the mocks above: their factories close over the plain consts
+// they sit next to, and a static import of the module under test would run
+// them before those consts are initialised.
+const { sendDirectMessage } = await import("./send");
+
 const alice = PrivateKeySigner.fromKey(
   "0000000000000000000000000000000000000000000000000000000000000001",
 );
@@ -66,8 +71,7 @@ beforeEach(async () => {
   await db.dmKv.clear();
 });
 
-async function send(content = "hi bob") {
-  const { sendDirectMessage } = await import("./send");
+function send(content = "hi bob") {
   return sendDirectMessage({
     viewer: ALICE,
     signer: alice,
@@ -160,7 +164,6 @@ describe("sendDirectMessage", () => {
     // moved the message into a three-way conversation that does not exist —
     // the echo vanished from the thread and the peer filed it the same way.
     const stranger = nip19.npubEncode("c".repeat(64));
-    const { sendDirectMessage } = await import("./send");
     await sendDirectMessage({
       viewer: ALICE,
       signer: alice,
@@ -184,7 +187,6 @@ describe("sendDirectMessage", () => {
     // There is no recipient to resolve and nobody to be anonymous from: the
     // self-copy IS the message, and it goes to our own relays where being
     // authenticated is expected.
-    const { sendDirectMessage } = await import("./send");
     await sendDirectMessage({
       viewer: ALICE,
       signer: alice,
@@ -197,7 +199,6 @@ describe("sendDirectMessage", () => {
   });
 
   it("wraps a group message once per recipient", async () => {
-    const { sendDirectMessage } = await import("./send");
     await sendDirectMessage({
       viewer: ALICE,
       signer: alice,
@@ -218,7 +219,6 @@ describe("sendDirectMessage", () => {
   });
 
   it("files a group message under a conversation naming everyone", async () => {
-    const { sendDirectMessage } = await import("./send");
     await sendDirectMessage({
       viewer: ALICE,
       signer: alice,
@@ -246,7 +246,6 @@ describe("sendDirectMessage", () => {
           },
     );
 
-    const { sendDirectMessage } = await import("./send");
     await sendDirectMessage({
       viewer: ALICE,
       signer: alice,
@@ -274,7 +273,6 @@ describe("replies", () => {
   }
 
   it("e-tags the message being replied to", async () => {
-    const { sendDirectMessage } = await import("./send");
     await sendDirectMessage({
       viewer: ALICE,
       signer: alice,
@@ -292,7 +290,6 @@ describe("replies", () => {
     // so a reply carried a different participant set than the messages around
     // it — and the participant set IS the conversation, so the reply landed in
     // a different one.
-    const { sendDirectMessage } = await import("./send");
     await sendDirectMessage({
       viewer: ALICE,
       signer: alice,
@@ -307,7 +304,6 @@ describe("replies", () => {
   });
 
   it("files a group reply in the same conversation as the parent", async () => {
-    const { sendDirectMessage } = await import("./send");
     await sendDirectMessage({
       viewer: ALICE,
       signer: alice,
@@ -331,7 +327,6 @@ describe("replies", () => {
     // The note-to-self branch resolves no recipients and returns early, and it
     // returned before the `e` tag was added — so a reply to yourself sent as an
     // ordinary message with the thread silently dropped.
-    const { sendDirectMessage } = await import("./send");
     await sendDirectMessage({
       viewer: ALICE,
       signer: alice,
@@ -348,7 +343,6 @@ describe("replies", () => {
     // The whole point of the markers. Without a root the timeline has to walk
     // the parent chain, and the walk stops at the edge of the loaded window —
     // so a reply to an old reply threads nowhere until history pages in.
-    const { sendDirectMessage } = await import("./send");
     const root = "c".repeat(64);
     await sendDirectMessage({
       viewer: ALICE,
@@ -373,7 +367,6 @@ describe("replies", () => {
     // Every reply in the conversations this shipped into carries one unmarked
     // `e`. applesauce reports it as the root, so the new reply threads there —
     // one level shallower than the truth, and visible.
-    const { sendDirectMessage } = await import("./send");
     await sendDirectMessage({
       viewer: ALICE,
       signer: alice,
@@ -396,7 +389,6 @@ describe("replies", () => {
   it("can reply to a file message", async () => {
     // `.reply()` throws on any parent that is not kind 14, so replying to a
     // kind-15 attachment failed rather than sent.
-    const { sendDirectMessage } = await import("./send");
     await expect(
       sendDirectMessage({
         viewer: ALICE,

@@ -113,6 +113,7 @@ import {
 } from "@/lib/napplet-parser";
 import type { AddressPointer, EventPointer } from "@/lib/open-parser";
 import type { NostrEvent } from "@/types/nostr";
+import { verifyEvent } from "nostr-tools/pure";
 
 export { originRegistry, injectNappletNamespacePrelude };
 export { injectCspMeta } from "@/lib/napplet-csp";
@@ -362,7 +363,6 @@ function buildAdapter(): ShellAdapter {
       defaultTimeoutMs: 15_000,
       signEvent: (template) => nappletSigner.signEvent(template),
       verifyEvent: async (event) => {
-        const { verifyEvent } = await import("nostr-tools/pure");
         return verifyEvent(event as Parameters<typeof verifyEvent>[0]);
       },
     }),
@@ -456,7 +456,6 @@ function buildAdapter(): ShellAdapter {
     workerRelay: { getWorkerRelay: () => null },
     crypto: {
       verifyEvent: async (event) => {
-        const { verifyEvent } = await import("nostr-tools/pure");
         return verifyEvent(event as Parameters<typeof verifyEvent>[0]);
       },
     },
