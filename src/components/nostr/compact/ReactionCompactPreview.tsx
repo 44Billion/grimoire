@@ -3,6 +3,10 @@ import { useMemo } from "react";
 import { Heart, ThumbsUp, ThumbsDown, Flame, Smile } from "lucide-react";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
 import { UserName } from "../UserName";
+import {
+  getSemanticAuthor,
+  getSemanticContentEvent,
+} from "@/lib/semantic-author";
 import { RichText } from "../RichText";
 import { EMOJI_SHORTCODE_REGEX } from "@/lib/emoji-helpers";
 
@@ -122,10 +126,13 @@ export function ReactionCompactPreview({ event }: { event: NostrEvent }) {
       )}
       {reactedEvent && (
         <>
-          <UserName pubkey={reactedEvent.pubkey} className="text-sm shrink-0" />
+          <UserName
+            pubkey={getSemanticAuthor(reactedEvent)}
+            className="text-sm shrink-0"
+          />
           <span className="text-muted-foreground truncate">
             <RichText
-              event={reactedEvent}
+              event={getSemanticContentEvent(reactedEvent)}
               className="inline text-sm truncate line-clamp-1 leading-none whitespace-normal"
               options={{ showMedia: false, showEventEmbeds: false }}
             />

@@ -11,12 +11,15 @@ import {
 import { useNostrEvent } from "@/hooks/useNostrEvent";
 import { UserName } from "../UserName";
 import { RichText } from "../RichText";
+import { useLocale } from "@/hooks/useLocale";
+import { getSemanticContentEvent } from "@/lib/semantic-author";
 
 /**
  * Compact preview for Kind 9735 (Zap Receipt)
  * Layout: [amount] [recipient] [zap message] [preview]
  */
 export function ZapCompactPreview({ event }: { event: NostrEvent }) {
+  const { locale } = useLocale();
   const zapAmount = useMemo(() => getZapAmount(event), [event]);
   const zapRequest = useMemo(() => getZapRequest(event), [event]);
   const zapRecipient = useMemo(() => getZapRecipient(event), [event]);
@@ -33,15 +36,10 @@ export function ZapCompactPreview({ event }: { event: NostrEvent }) {
   const zappedByAddress = useNostrEvent(addressPointer || undefined, event);
   const zappedEvent = zappedByAddress || zappedByEvent;
 
-  // If zapped event is a zap receipt (kind 9735), extract its zap request
-  // The actual content with emoji tags is in the zap request, not the receipt
-  const zappedEventForPreview = useMemo(() => {
-    if (zappedEvent?.kind === 9735) {
-      const innerZapRequest = getZapRequest(zappedEvent);
-      return innerZapRequest || zappedEvent;
-    }
-    return zappedEvent;
-  }, [zappedEvent]);
+  // A zapped zap renders its request, which holds the comment and emoji tags.
+  const zappedEventForPreview = zappedEvent
+    ? getSemanticContentEvent(zappedEvent)
+    : undefined;
 
   // Convert from msats to sats
   const amountInSats = useMemo(() => {
@@ -53,7 +51,7 @@ export function ZapCompactPreview({ event }: { event: NostrEvent }) {
     <span className="flex items-center gap-1 text-sm truncate">
       <Zap className="size-3 fill-yellow-500 text-yellow-500 shrink-0" />
       <span className="text-yellow-500 font-medium shrink-0">
-        {amountInSats.toLocaleString("en", { notation: "compact" })}
+        {amountInSats.toLocaleString(locale, { notation: "compact" })}
       </span>
       {zapRecipient && <UserName pubkey={zapRecipient} />}
       {zapRequest?.content && (

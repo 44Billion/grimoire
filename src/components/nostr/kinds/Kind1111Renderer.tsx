@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { RichText } from "../RichText";
+import { EventPreviewLine } from "../EventPreviewLine";
 import { BaseEventContainer, type BaseEventProps } from "./BaseEventRenderer";
 import {
   getCommentReplyPointer,
@@ -8,12 +9,10 @@ import {
   type CommentPointer,
 } from "applesauce-common/helpers/comment";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
-import { UserName } from "../UserName";
 import { Reply } from "lucide-react";
 import { useAddWindow } from "@/core/state";
 import { InlineReplySkeleton } from "@/components/ui/skeleton";
 import { KindBadge } from "@/components/KindBadge";
-import { getEventDisplayTitle } from "@/lib/event-title";
 import type { NostrEvent } from "@/types/nostr";
 import {
   getCommentRootScope,
@@ -112,38 +111,22 @@ function ScopeRow({
   return <div className={`${base} text-muted-foreground`}>{children}</div>;
 }
 
-/**
- * Inline content for a loaded Nostr event: KindBadge + UserName + title preview.
- */
-function NostrEventContent({ nostrEvent }: { nostrEvent: NostrEvent }) {
-  const title = getEventDisplayTitle(nostrEvent, false);
-  const hasStructuredTitle = title !== nostrEvent.content;
+/** Icon + author + title or one-line body, in the scope row's style. */
+function NostrEventContent({
+  nostrEvent,
+  icon,
+}: {
+  nostrEvent: NostrEvent;
+  icon: ReactNode;
+}) {
   return (
-    <>
-      {/* text-inherit so the root icon tracks ScopeRow's color and hover,
-          matching the plain Reply icon on the parent row */}
-      <KindBadge
-        kind={nostrEvent.kind}
-        variant="compact"
-        className="text-inherit"
-        iconClassname="size-3"
-      />
-      <UserName
-        pubkey={nostrEvent.pubkey}
-        className="text-accent font-semibold flex-shrink-0"
-      />
-      {hasStructuredTitle ? (
-        <span className="truncate min-w-0">{title}</span>
-      ) : (
-        <div className="text-muted-foreground truncate line-clamp-1 min-w-0 flex-1">
-          <RichText
-            className="truncate line-clamp-1 text-xs whitespace-normal [&_img]:size-3.5"
-            event={nostrEvent}
-            options={{ showMedia: false, showEventEmbeds: false }}
-          />
-        </div>
-      )}
-    </>
+    <EventPreviewLine
+      event={nostrEvent}
+      icon={icon}
+      useTitle
+      nameClassName="text-accent font-semibold flex-shrink-0"
+      contentClassName="text-muted-foreground"
+    />
   );
 }
 
@@ -192,7 +175,19 @@ function RootScopeDisplay({
 
   return (
     <ScopeRow onClick={() => addWindow("open", { pointer })}>
-      <NostrEventContent nostrEvent={rootEvent} />
+      <NostrEventContent
+        nostrEvent={rootEvent}
+        icon={
+          // text-inherit so the root icon tracks ScopeRow's color and hover,
+          // matching the plain Reply icon on the parent row
+          <KindBadge
+            kind={rootEvent.kind}
+            variant="compact"
+            className="text-inherit"
+            iconClassname="size-3"
+          />
+        }
+      />
     </ScopeRow>
   );
 }
@@ -228,22 +223,10 @@ export function Kind1111Renderer({ event, depth = 0 }: BaseEventProps) {
 
       {!topLevel && replyPointer && replyEvent && (
         <ScopeRow onClick={handleReplyClick}>
-          <Reply className="size-3 flex-shrink-0" />
-          <UserName
-            pubkey={replyEvent.pubkey}
-            className="text-accent font-semibold flex-shrink-0"
+          <NostrEventContent
+            nostrEvent={replyEvent}
+            icon={<Reply className="size-3 flex-shrink-0" />}
           />
-          <div className="text-muted-foreground truncate line-clamp-1 min-w-0 flex-1">
-            {getEventDisplayTitle(replyEvent, false) !== replyEvent.content ? (
-              getEventDisplayTitle(replyEvent, false)
-            ) : (
-              <RichText
-                className="truncate line-clamp-1 text-xs whitespace-normal [&_img]:size-3.5"
-                event={replyEvent}
-                options={{ showMedia: false, showEventEmbeds: false }}
-              />
-            )}
-          </div>
         </ScopeRow>
       )}
 

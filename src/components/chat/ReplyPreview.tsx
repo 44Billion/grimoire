@@ -2,8 +2,7 @@ import { memo, useEffect, useMemo, useState } from "react";
 import { use$ } from "applesauce-react/hooks";
 import type { EventPointer, AddressPointer } from "nostr-tools/nip19";
 import eventStore from "@/services/event-store";
-import { UserName } from "../nostr/UserName";
-import { RichText } from "../nostr/RichText";
+import { EventPreviewLine } from "../nostr/EventPreviewLine";
 import type { ChatProtocolAdapter } from "@/lib/chat/adapters/base-adapter";
 import type { Conversation } from "@/types/chat";
 import type { NostrEvent } from "@/types/nostr";
@@ -98,16 +97,7 @@ export const ReplyPreview = memo(function ReplyPreview({
       title="Click to scroll to message"
     >
       <span className="flex-shrink-0">↳</span>
-      <UserName
-        pubkey={replyEvent.pubkey}
-        className="font-medium flex-shrink-0"
-      />
-      <div className="line-clamp-1 overflow-hidden flex-1 min-w-0">
-        <RichText
-          event={replyEvent}
-          options={{ showMedia: false, showEventEmbeds: false }}
-        />
-      </div>
+      <EventPreviewLine event={replyEvent} />
     </div>
   );
 });
