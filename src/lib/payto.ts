@@ -1,6 +1,6 @@
 import type { NostrEvent } from "nostr-tools";
 import type { LucideIcon } from "lucide-react";
-import { Rocket, VenetianMask, Wallet, Zap } from "lucide-react";
+import { Bitcoin, Rocket, VenetianMask, Wallet, Zap } from "lucide-react";
 
 /**
  * NIP-A3 — payto: Payment Targets (kind 10133).
@@ -42,11 +42,13 @@ const BITCOIN_SIGN = "\u20BF";
  * A symbol is only used where the codepoint is likely to be in a system font
  * and reads as a currency mark. Where it is not — lightning (U+26A1 is
  * emoji-presentation), silent payments and PayPal (no codepoint at all) — an
- * icon is used instead. The type label is always rendered alongside, so the
- * ambiguous glyphs (◎, ɱ, Ð/Đ) never carry identity on their own.
+ * icon is used instead. Bitcoin gets its icon too: the app font has no ₿, so
+ * a system-font glyph would stand out against every address. The type label
+ * is always rendered alongside, so the ambiguous glyphs (◎, ɱ, Ð/Đ) never
+ * carry identity on their own.
  */
 export const PAYMENT_TYPES: Record<string, PaymentType> = {
-  bitcoin: { label: "Bitcoin", symbol: "₿", scheme: "bitcoin" },
+  bitcoin: { label: "Bitcoin", icon: Bitcoin, scheme: "bitcoin" },
   // BIP-353's identifier is `user@domain`; the ₿ is display-only — "the ₿ is
   // not included in the DNS label which is resolved" — but publishers put it in
   // the tag, so it is stripped before the value goes into a `bitcoin:` URI and
@@ -57,7 +59,7 @@ export const PAYMENT_TYPES: Record<string, PaymentType> = {
   // URI hands the name to a wallet that can.
   bip353: {
     label: "DNS Address",
-    symbol: BITCOIN_SIGN,
+    icon: Bitcoin,
     scheme: "bitcoin",
     normalize: (address) => address.replace(/^\u20BF\s*/, ""),
     display: (address) =>
@@ -141,7 +143,8 @@ export function getPaymentDisplayAddress(target: PaytoTarget): string {
 
 /**
  * The address stripped of that decoration, for a row whose mark already shows
- * it — a BIP-353 name beside a ₿ glyph should not read `₿ ₿alice@example.com`.
+ * it — a BIP-353 name beside the bitcoin mark should not read as
+ * `₿alice@example.com`.
  */
 export function getPaymentBareAddress(target: PaytoTarget): string {
   const entry = PAYMENT_TYPES[target.type];

@@ -24,11 +24,12 @@ import {
 } from "@/lib/payto";
 
 /**
- * A symbol-capable stack, so ₿ / Ӿ / ⓩ / ɱ resolve on Windows, Linux and
- * Android instead of rendering as tofu.
+ * The app font first, so glyphs it covers match the address beside them;
+ * then a symbol-capable stack for the ones it lacks, so they resolve on
+ * Windows, Linux and Android instead of rendering as tofu.
  */
 const SYMBOL_FONT_STACK =
-  'ui-sans-serif, system-ui, "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", sans-serif';
+  'var(--font-mono), "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", sans-serif';
 
 /**
  * The network's glyph where one exists and reads as text, an icon otherwise.
@@ -209,8 +210,8 @@ export function PaymentTargetRow({
   showLabel?: boolean;
 }) {
   const label = getPaymentLabel(target.type);
-  // The mark column already carries a BIP-353 name's ₿; repeating it in the
-  // text reads as a typo.
+  // The mark column already marks a BIP-353 name as bitcoin; repeating the ₿ in
+  // the text reads as a typo.
   const address = getPaymentBareAddress(target);
 
   const className =

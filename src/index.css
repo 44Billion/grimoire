@@ -4,6 +4,28 @@
 /* Shiki syntax highlighting theme */
 @import "./styles/shiki-theme.css";
 
+/* Geist Mono, self-hosted and vendored (OFL, src/assets/fonts/geist-mono).
+   The full upstream files, not a Google-Fonts-derived subset: those keep only
+   ↑ and ↓ from the arrows block, so the palette's → ← ↵ and the ↳ tree
+   connectors fell back to a system font mid-line. One variable file per style
+   covers weights 100–900; the italic file only downloads once italic is used. */
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/geist-mono/GeistMono-Variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/geist-mono/GeistMono-Italic-Variable.woff2")
+    format("woff2");
+}
+
 /* ==========================================================================
    Theme Configuration (@theme)
    These define Tailwind's design tokens - colors, fonts, animations, etc.
@@ -12,7 +34,8 @@
 
 @theme {
   /* Font Family */
-  --font-mono: "Oxygen Mono", monospace;
+  --font-mono:
+    "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   /* Border Radius - using CSS variable for runtime theming */
   --radius-lg: var(--radius);
@@ -305,6 +328,10 @@
   }
   body {
     @apply bg-background text-foreground font-mono;
+    /* Subpixel smoothing thickens light-on-dark strokes until regular and
+       bold read alike; grayscale keeps the weight scale legible. */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     /* iOS PWA safe area insets for notch support */
     padding-top: env(safe-area-inset-top, 0);
     padding-right: env(safe-area-inset-right, 0);

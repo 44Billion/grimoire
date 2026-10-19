@@ -35,6 +35,8 @@ createRoot(document.getElementById("root")!).render(
                 color: "hsl(var(--foreground))",
                 border: "1px solid hsl(var(--border))",
                 borderRadius: "var(--radius)",
+                // sonner ships its own system-ui stack; keep toasts on the app font.
+                fontFamily: "var(--font-mono)",
               },
             }}
           />

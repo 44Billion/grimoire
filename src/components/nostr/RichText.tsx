@@ -198,8 +198,13 @@ export function RichText({
             className={cn(
               // pre-wrap keeps the alignment of ASCII art and indented text;
               // one-line previews override it with `whitespace-normal`
-              "leading-relaxed break-words whitespace-pre-wrap",
+              "break-words whitespace-pre-wrap",
               className,
+              // After className: tailwind-merge drops a `leading-*` that comes
+              // before a font-size class, so a caller's `text-sm` silently
+              // reset this to the size's tight default. A caller's own
+              // `leading-*` still wins.
+              !/\bleading-/.test(className ?? "") && "leading-relaxed",
             )}
           >
             {children}

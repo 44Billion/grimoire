@@ -28,7 +28,6 @@
   background: transparent;
   border: none;
   border-bottom: 1px solid hsl(var(--border));
-  font-family: monospace;
   font-size: 16px;
   color: hsl(var(--foreground));
   outline: none;
@@ -36,13 +35,11 @@
 
 .command-input::placeholder {
   color: hsl(var(--muted-foreground));
-  font-family: monospace;
 }
 
 .command-hint {
   padding: 8px 20px;
   border-bottom: 1px solid hsl(var(--border));
-  font-family: monospace;
   font-size: 12px;
   display: flex;
   align-items: center;
@@ -74,7 +71,6 @@
   text-align: center;
   color: hsl(var(--muted-foreground));
   font-size: 14px;
-  font-family: monospace;
 }
 
 .command-group {
@@ -88,7 +84,6 @@
   color: hsl(var(--muted-foreground));
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  font-family: monospace;
 }
 
 .command-item {
@@ -132,7 +127,6 @@
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-family: monospace;
   font-size: 14px;
 }
 
@@ -163,7 +157,6 @@
 .command-item-description {
   font-size: 12px;
   color: hsl(var(--muted-foreground));
-  font-family: monospace;
 }
 
 .command-item[aria-selected="true"] .command-item-description {
@@ -179,7 +172,6 @@
   justify-content: space-between;
   font-size: 14px;
   color: hsl(var(--muted-foreground));
-  font-family: monospace;
 }
 
 @media (min-width: 768px) {
@@ -227,7 +219,6 @@
   background: hsl(var(--muted));
   border: 1px solid hsl(var(--border));
   font-size: 13px;
-  font-family: monospace;
   margin: 0 4px;
 }
 

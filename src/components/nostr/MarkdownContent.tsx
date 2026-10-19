@@ -322,9 +322,11 @@ export function MarkdownContent({
 
         // Inline code (no language)
         if (!language) {
+          // em-relative so the chip tracks the surrounding prose; `clone` keeps
+          // the padding and rounding on both halves of a wrapped chip.
           return (
             <code
-              className="bg-muted px-0.5 py-0.5 rounded text-xs font-mono"
+              className="bg-muted px-[0.3em] py-[0.1em] rounded text-[0.9em] font-mono box-decoration-clone"
               {...props}
             >
               {children}
@@ -343,13 +345,13 @@ export function MarkdownContent({
       ),
       ul: (props: React.HTMLAttributes<HTMLUListElement>) => (
         <ul
-          className="text-sm list-disc list-inside my-4 space-y-2"
+          className="text-sm leading-relaxed list-disc list-inside my-4 space-y-2"
           {...props}
         />
       ),
       ol: (props: React.HTMLAttributes<HTMLOListElement>) => (
         <ol
-          className="text-sm list-decimal list-inside my-4 space-y-2"
+          className="text-sm leading-relaxed list-decimal list-inside my-4 space-y-2"
           {...props}
         />
       ),
