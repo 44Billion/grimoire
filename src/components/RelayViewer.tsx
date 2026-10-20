@@ -4,6 +4,7 @@ import { useCopy } from "../hooks/useCopy";
 import { Button } from "./ui/button";
 import { UserName } from "./nostr/UserName";
 import { RelaySupportedNips } from "./nostr/RelaySupportedNips";
+import { RelayListsMenu } from "./nostr/RelayListsMenu";
 
 export interface RelayViewerProps {
   url: string;
@@ -40,6 +41,7 @@ export function RelayViewer({ url }: RelayViewerProps) {
             <p className="text-sm mt-2">{info.description}</p>
           )}
         </div>
+        <RelayListsMenu url={url} />
       </div>
 
       {/* Operator */}

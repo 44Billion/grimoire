@@ -3,6 +3,7 @@ import { useEventStore, use$ } from "applesauce-react/hooks";
 import accounts from "@/services/accounts";
 import { useGrimoire } from "@/core/state";
 import { addressLoader } from "@/services/loaders";
+import { markListLoaded } from "@/services/list-sync-state";
 import type { RelayInfo } from "@/types/app";
 import { normalizeRelayURL } from "@/lib/relay-url";
 import { getServersFromEvent } from "@/services/blossom";
@@ -40,7 +41,7 @@ export function useAccountSync() {
       kind: 10002,
       pubkey,
       identifier: "",
-    }).subscribe();
+    }).subscribe({ complete: () => markListLoaded(10002, pubkey) });
 
     // Watch for relay list event in store
     const storeSubscription = eventStore
@@ -100,7 +101,9 @@ export function useAccountSync() {
     const relayListKinds = [10006, 10007, 10012, 10050];
 
     const subscriptions = relayListKinds.map((kind) =>
-      addressLoader({ kind, pubkey, identifier: "" }).subscribe(),
+      addressLoader({ kind, pubkey, identifier: "" }).subscribe({
+        complete: () => markListLoaded(kind, pubkey),
+      }),
     );
 
     return () => {
