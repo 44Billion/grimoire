@@ -552,8 +552,9 @@ export function validateSno(payload: Json, fetchedPalette?: Json): SnoObject {
   }
   const up = payload.up === true;
 
-  // 11. refs
-  const refsRaw = payload.refs ?? [];
+  // 11. refs. Absent means none; a `null` is not absent and is refused, as
+  // sno-reference.py does (`None` is not a list).
+  const refsRaw = payload.refs === undefined ? [] : payload.refs;
   if (!Array.isArray(refsRaw))
     throw new SnoError("rule 11: refs is not an array");
   const refs: SnoRef[] = [];
@@ -580,8 +581,8 @@ export function validateSno(payload: Json, fetchedPalette?: Json): SnoObject {
     refs.push(r as SnoRef);
   }
 
-  // 12. parts
-  const partsRaw = payload.parts ?? [];
+  // 12. parts. As for refs: `null` is refused, not read as absent.
+  const partsRaw = payload.parts === undefined ? [] : payload.parts;
   if (!Array.isArray(partsRaw)) {
     throw new SnoError("rule 12: parts is not an array");
   }
