@@ -56,11 +56,15 @@ import {
 } from "@/components/ui/tooltip";
 import ConnectWalletDialog from "./ConnectWalletDialog";
 import { RelayLink } from "@/components/nostr/RelayLink";
-import { parseZapRequest, getInvoiceDescription } from "@/lib/wallet-utils";
+import {
+  parseZapRequest,
+  getInvoiceDescription,
+  type ZapRequestInfo,
+} from "@/lib/wallet-utils";
 import { getMempoolUrl } from "@/lib/mempool";
 import { Zap } from "lucide-react";
 import { useNostrEvent } from "@/hooks/useNostrEvent";
-import { KindRenderer } from "./nostr/kinds";
+import { EventPreviewLine } from "./nostr/EventPreviewLine";
 import { RichText } from "./nostr/RichText";
 import { UserName } from "./nostr/UserName";
 import { CodeCopyButton } from "./CodeCopyButton";
@@ -259,6 +263,20 @@ function parseAddressCoordinate(
 }
 
 /**
+ * Helper: the other side of a zap — the zapper for incoming payments, the
+ * zapped user (p tag) for outgoing ones when the zap request names them
+ */
+function getZapCounterparty(
+  transaction: Transaction,
+  zapInfo: ZapRequestInfo,
+): { pubkey: string; label: string } {
+  if (transaction.type === "outgoing" && zapInfo.recipient) {
+    return { pubkey: zapInfo.recipient, label: "Zap To" };
+  }
+  return { pubkey: zapInfo.sender, label: "Zap From" };
+}
+
+/**
  * Component to render zap details in the transaction detail dialog
  */
 function ZapTransactionDetail({ transaction }: { transaction: Transaction }) {
@@ -279,16 +297,18 @@ function ZapTransactionDetail({ transaction }: { transaction: Transaction }) {
   // Early return after hooks
   if (!zapInfo) return null;
 
+  const counterparty = getZapCounterparty(transaction, zapInfo);
+
   return (
     <div className="space-y-4 pt-4 border-t border-border">
-      {/* Zap sender */}
+      {/* Zap sender, or recipient for outgoing zaps */}
       <div>
         <Label className="text-xs text-muted-foreground flex items-center gap-1">
           <Zap className="size-3 fill-zap text-zap" />
-          Zap From
+          {counterparty.label}
         </Label>
         <div className="mt-1">
-          <UserName pubkey={zapInfo.sender} />
+          <UserName pubkey={counterparty.pubkey} />
         </div>
       </div>
 
@@ -300,6 +320,7 @@ function ZapTransactionDetail({ transaction }: { transaction: Transaction }) {
             <RichText
               content={zapInfo.message}
               event={zapInfo.zapRequestEvent}
+              options={{ showMedia: false, showEventEmbeds: false }}
             />
           </div>
         </div>
@@ -309,8 +330,12 @@ function ZapTransactionDetail({ transaction }: { transaction: Transaction }) {
       {zappedEvent && (
         <div>
           <Label className="text-xs text-muted-foreground">Zapped Post</Label>
-          <div className="mt-1 border border-muted rounded-md overflow-hidden">
-            <KindRenderer event={zappedEvent} />
+          <div className="mt-1 flex items-center gap-2 min-w-0 text-sm">
+            <EventPreviewLine
+              event={zappedEvent}
+              useTitle
+              contentClassName="text-muted-foreground"
+            />
           </div>
         </div>
       )}
@@ -351,12 +376,16 @@ function TransactionLabel({ transaction }: { transaction: Transaction }) {
     <div className="flex items-center gap-2 min-w-0">
       <Zap className="size-3.5 flex-shrink-0 fill-zap text-zap" />
       <div className="text-sm min-w-0 flex items-center gap-2">
-        <UserName pubkey={zapInfo.sender} className="flex-shrink-0" />
+        <UserName
+          pubkey={getZapCounterparty(transaction, zapInfo).pubkey}
+          className="flex-shrink-0"
+        />
         {zapInfo.message && (
           <span className="line-clamp-1 min-w-0">
             <RichText
               content={zapInfo.message}
               event={zapInfo.zapRequestEvent}
+              options={{ showMedia: false, showEventEmbeds: false }}
             />
           </span>
         )}
