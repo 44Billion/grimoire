@@ -7,6 +7,9 @@ import {
   relayEntriesEqual,
   getRelayMode,
   modeToFlags,
+  applyRelayMode,
+  getRelayModeIn,
+  writeRelaysOf,
   type RelayEntry,
   type RelayListKindConfig,
 } from "./relay-list-utils";
@@ -462,5 +465,87 @@ describe("modeToFlags", () => {
       const entry = { url: "wss://test.com/", ...flags };
       expect(getRelayMode(entry)).toBe(mode);
     }
+  });
+});
+
+describe("applyRelayMode", () => {
+  const A = "wss://a.example.com/";
+  const B = "wss://b.example.com/";
+
+  it("adds a relay with the requested mode", () => {
+    expect(applyRelayMode([["r", A]], B, "read")).toEqual([
+      ["r", A],
+      ["r", B, "read"],
+    ]);
+  });
+
+  it("changes the mode of an existing relay in place", () => {
+    expect(
+      applyRelayMode(
+        [
+          ["r", A, "read"],
+          ["r", B],
+        ],
+        A,
+        "readwrite",
+      ),
+    ).toEqual([
+      ["r", A],
+      ["r", B],
+    ]);
+  });
+
+  it("removes a relay when mode is null", () => {
+    expect(
+      applyRelayMode(
+        [
+          ["r", A],
+          ["r", B],
+        ],
+        A,
+        null,
+      ),
+    ).toEqual([["r", B]]);
+  });
+
+  it("returns null when nothing would change", () => {
+    expect(applyRelayMode([["r", A]], A, "readwrite")).toBeNull();
+    expect(applyRelayMode([["r", A]], B, null)).toBeNull();
+    expect(applyRelayMode([], "not a url", "read")).toBeNull();
+  });
+
+  it("keeps non-r tags and matches URLs after normalization", () => {
+    expect(
+      applyRelayMode(
+        [
+          ["client", "x"],
+          ["r", "wss://a.example.com"],
+        ],
+        A,
+        null,
+      ),
+    ).toEqual([["client", "x"]]);
+  });
+});
+
+describe("getRelayModeIn / writeRelaysOf", () => {
+  const tags = [
+    ["r", "wss://a.example.com"],
+    ["r", "wss://b.example.com", "read"],
+    ["r", "wss://c.example.com", "write"],
+  ];
+
+  it("reports the mode or null", () => {
+    expect(getRelayModeIn(tags, "wss://a.example.com/")).toBe("readwrite");
+    expect(getRelayModeIn(tags, "wss://b.example.com")).toBe("read");
+    expect(getRelayModeIn(tags, "wss://d.example.com")).toBeNull();
+    expect(getRelayModeIn([], "wss://a.example.com")).toBeNull();
+  });
+
+  it("lists write relays only", () => {
+    expect(writeRelaysOf(tags)).toEqual([
+      "wss://a.example.com/",
+      "wss://c.example.com/",
+    ]);
   });
 });

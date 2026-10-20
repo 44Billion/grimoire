@@ -140,7 +140,7 @@ function useEventActions(event: NostrEvent) {
   const { copy, copied } = useCopy();
   const [jsonDialogOpen, setJsonDialogOpen] = useState(false);
   const favoriteConfig = getFavoriteConfig(event.kind);
-  const { isFavorite, toggleFavorite, isUpdating } = useFavoriteList(
+  const { isFavorite, toggleFavorite, isUpdating, canWrite } = useFavoriteList(
     favoriteConfig ?? FALLBACK_FAVORITE_CONFIG,
   );
   const favorited = favoriteConfig ? isFavorite(event) : false;
@@ -305,6 +305,7 @@ function useEventActions(event: NostrEvent) {
     favoriteConfig,
     favorited,
     isUpdating,
+    canWrite,
   };
 }
 
@@ -353,7 +354,8 @@ function EventMenuItems({
       {canSign && actions.favoriteConfig && (
         <Item
           onClick={actions.handleToggleFavorite}
-          disabled={actions.isUpdating}
+          disabled={actions.isUpdating || !actions.canWrite}
+          title={actions.canWrite ? undefined : "List not loaded yet"}
         >
           {actions.isUpdating ? (
             <Loader2 className="size-4 mr-2 animate-spin" />

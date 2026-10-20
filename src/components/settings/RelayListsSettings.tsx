@@ -24,8 +24,6 @@ import { useAccount } from "@/hooks/useAccount";
 import { useRelayInfo } from "@/hooks/useRelayInfo";
 import { publishEvent } from "@/services/hub";
 import accountManager from "@/services/accounts";
-import { NostrConnectSigner } from "applesauce-signers";
-import { normalizeRelayURL } from "@/lib/relay-url";
 import { useGrimoire } from "@/core/state";
 import { cn } from "@/lib/utils";
 import {
@@ -39,50 +37,7 @@ import {
   getRelayMode,
   modeToFlags,
 } from "@/lib/relay-list-utils";
-
-/**
- * Warns when a newly blocked relay is one the app itself depends on.
- *
- * Not a refusal: the user's list is the user's list. But a silent brick is not
- * an acceptable way to honour it.
- */
-function warnIfBlockingOwnInfrastructure(
-  blockedDraft: RelayEntry[],
-  walletRelays: string[],
-) {
-  if (blockedDraft.length === 0) return;
-
-  const blocked = new Set(blockedDraft.map((entry) => entry.url));
-  const account = accountManager.active$.value;
-
-  const signerRelays: string[] =
-    account?.signer instanceof NostrConnectSigner ? account.signer.relays : [];
-
-  const collide = (relays: string[]) =>
-    relays.filter((url) => {
-      try {
-        return blocked.has(normalizeRelayURL(url));
-      } catch {
-        return false;
-      }
-    });
-
-  const signerHits = collide(signerRelays);
-  if (signerHits.length > 0) {
-    toast.warning(
-      `Blocked your remote signer's relay (${signerHits.join(", ")}). Signing will stop working until you unblock it.`,
-      { duration: 12000 },
-    );
-  }
-
-  const walletHits = collide(walletRelays);
-  if (walletHits.length > 0) {
-    toast.warning(
-      `Blocked your wallet's relay (${walletHits.join(", ")}). The wallet will stop responding until you unblock it.`,
-      { duration: 12000 },
-    );
-  }
-}
+import { warnIfBlockingOwnInfrastructure } from "@/lib/relay-block-warning";
 
 // --- Config ---
 
@@ -528,7 +483,10 @@ export function RelayListsSettings() {
       // the wallet — both of which look like the app breaking for no reason.
       // This is the last point where the user still has the context to connect
       // cause and effect.
-      warnIfBlockingOwnInfrastructure(drafts[10006] ?? [], walletRelays ?? []);
+      warnIfBlockingOwnInfrastructure(
+        (drafts[10006] ?? []).map((e) => e.url),
+        walletRelays ?? [],
+      );
     } catch (err) {
       console.error("Failed to publish relay lists:", err);
       toast.error(

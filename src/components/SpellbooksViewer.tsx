@@ -315,8 +315,12 @@ export function SpellbooksViewer() {
   const {
     isFavorite: isBookmarked,
     toggleFavorite: toggleBookmark,
-    isUpdating: bookmarkPending,
+    isUpdating: bookmarkUpdating,
+    canWrite: bookmarkWritable,
   } = useFavoriteList(FAVORITE_LISTS[SPELLBOOK_KIND]);
+  // Pending also while the list hasn't loaded: a click then would write a
+  // list containing only this spellbook.
+  const bookmarkPending = bookmarkUpdating || !bookmarkWritable;
 
   // Load local spellbooks from Dexie
   const localSpellbooks = useLiveQuery(() =>

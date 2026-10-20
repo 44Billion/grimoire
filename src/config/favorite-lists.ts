@@ -78,3 +78,17 @@ export function getFavoriteConfig(
 export const ALL_FAVORITE_LIST_KINDS = [
   ...new Set(Object.values(FAVORITE_LISTS).map((c) => c.listKind)),
 ];
+
+/**
+ * NIP-51 relay lists that are a plain add/remove toggle of `relay` tags, used
+ * with `useListMembership(kind, relayTagStrategy)`. Not in `FAVORITE_LISTS`:
+ * that registry maps an event kind to one list, and a relay belongs to
+ * several. Kind 10002 carries read/write markers and lives in
+ * `useRelayListMembership` instead.
+ */
+export const RELAY_MEMBERSHIP_LISTS: { kind: number; label: string }[] = [
+  { kind: 10050, label: "DM relays" },
+  { kind: 10007, label: "Search relays" },
+  { kind: 10012, label: "Favorite relays" },
+  { kind: 10006, label: "Blocked relays" },
+];

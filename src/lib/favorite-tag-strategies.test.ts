@@ -4,6 +4,8 @@ import {
   eTagStrategy,
   aTagStrategy,
   groupTagStrategy,
+  pTagStrategy,
+  relayTagStrategy,
 } from "./favorite-tag-strategies";
 import type { NostrEvent } from "@/types/nostr";
 
@@ -433,5 +435,80 @@ describe("mixed e/a list", () => {
     expect(aTagStrategy.getItemKey(event)).toBe(
       aTagStrategy.keyFromTag(["a", "30777:authorA:my-book"]),
     );
+  });
+});
+
+// ===========================================================================
+// pTagStrategy
+// ===========================================================================
+
+const PUBKEY_A = "a".repeat(64);
+const PUBKEY_B = "b".repeat(64);
+
+describe("pTagStrategy", () => {
+  it("keys by hex pubkey and rejects anything else", () => {
+    expect(pTagStrategy.getItemKey(PUBKEY_A)).toBe(PUBKEY_A);
+    expect(pTagStrategy.getItemKey("npub1xyz")).toBe("");
+    expect(pTagStrategy.getItemKey("")).toBe("");
+  });
+
+  it("builds a bare p tag", () => {
+    expect(pTagStrategy.buildTag(PUBKEY_A)).toEqual(["p", PUBKEY_A]);
+  });
+
+  it("matches on the pubkey only, ignoring relay hint and petname", () => {
+    const tag = ["p", PUBKEY_A, "wss://relay.example.com", "alice"];
+    expect(pTagStrategy.matchesKey(tag, PUBKEY_A)).toBe(true);
+    expect(pTagStrategy.matchesKey(tag, PUBKEY_B)).toBe(false);
+    expect(pTagStrategy.keyFromTag(["e", PUBKEY_A])).toBeUndefined();
+  });
+
+  it("removing one follow keeps every other tag intact", () => {
+    const tags = [
+      ["p", PUBKEY_A, "wss://a.example", "alice"],
+      ["p", PUBKEY_B, "", "bob"],
+      ["t", "nostr"],
+    ];
+    const next = tags.filter((t) => !pTagStrategy.matchesKey(t, PUBKEY_A));
+    expect(next).toEqual([
+      ["p", PUBKEY_B, "", "bob"],
+      ["t", "nostr"],
+    ]);
+  });
+});
+
+// ===========================================================================
+// relayTagStrategy
+// ===========================================================================
+
+describe("relayTagStrategy", () => {
+  it("keys by normalized URL", () => {
+    expect(relayTagStrategy.getItemKey("wss://relay.example.com")).toBe(
+      relayTagStrategy.getItemKey("wss://relay.example.com/"),
+    );
+    expect(relayTagStrategy.getItemKey("wss://Relay.Example.com")).toBe(
+      relayTagStrategy.getItemKey("wss://relay.example.com"),
+    );
+    expect(relayTagStrategy.getItemKey("not a url")).toBe("");
+  });
+
+  it("builds a normalized relay tag", () => {
+    const tag = relayTagStrategy.buildTag("wss://relay.example.com");
+    expect(tag[0]).toBe("relay");
+    expect(tag[1]).toBe(relayTagStrategy.getItemKey("wss://relay.example.com"));
+  });
+
+  it("matches stored tags regardless of trailing slash", () => {
+    const key = relayTagStrategy.getItemKey("wss://relay.example.com");
+    expect(
+      relayTagStrategy.matchesKey(["relay", "wss://relay.example.com/"], key),
+    ).toBe(true);
+    expect(
+      relayTagStrategy.matchesKey(["relay", "wss://other.example.com"], key),
+    ).toBe(false);
+    expect(relayTagStrategy.keyFromTag(["relay", "not a url"])).toBeUndefined();
+    expect(
+      relayTagStrategy.keyFromTag(["r", "wss://relay.example.com"]),
+    ).toBeUndefined();
   });
 });
